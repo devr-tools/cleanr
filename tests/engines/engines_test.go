@@ -35,10 +35,14 @@ func TestEngineNamesAndSecurityFindingsCoverage(t *testing.T) {
 	t.Parallel()
 
 	if (enginespkg.ChaosEngine{}).Name() != "chaos" ||
+		(enginespkg.ClaimTraceEngine{}).Name() != "claim-trace" ||
 		(enginespkg.DriftEngine{}).Name() != "drift" ||
 		(enginespkg.LoadEngine{}).Name() != "load" ||
+		(enginespkg.MemorySafetyEngine{}).Name() != "memory-safety" ||
 		(enginespkg.PromptInjectionEngine{}).Name() != "prompt-injection" ||
+		(enginespkg.ProvenanceEngine{}).Name() != "provenance" ||
 		(enginespkg.SecurityEngine{}).Name() != "security" ||
+		(enginespkg.ShadowStateEngine{}).Name() != "shadow-state" ||
 		(enginespkg.TokenOptimizationEngine{}).Name() != "token-optimization" {
 		t.Fatal("unexpected engine names")
 	}

@@ -114,6 +114,10 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 - Load behavior with concurrent virtual users and latency or error-budget assertions
 - Chaos conditions such as tight deadlines, noisy context, and duplicate turns
 - Drift across repeated runs of the same scenario, with lexical and semantic similarity checks
+- File-system shadow-state verification for observed writes inside approved locations
+- Exact expected file-mutation checks for create, modify, and delete behavior in controlled workspaces
+- Provenance-aware context attacks that originate from untrusted retrieved, tool, memory, or approval content
+- Approval-bypass and sink-restriction checks for tool-calling agents
 - Trend history across builds so drift and failure deltas are comparable over time
 - Token budgets, duplication, and output-efficiency regressions
 - CI-friendly reporting in text, JSON, and JUnit formats
@@ -142,6 +146,9 @@ Typical production-facing ways teams use `cleanr`:
 - Run concurrency and latency checks against live-like staging endpoints.
 - Catch drift and token-cost regressions in nightly or pre-release runs.
 - Validate tool-using assistants for prompt injection, unsafe instructions, and boundary failures.
+- Verify that local file-writing agents changed only approved paths in a controlled workspace.
+- Assert the exact file mutations a workflow was expected to make, including content checks for created or modified files.
+- Test whether untrusted retrieved or tool-provided context can cross into secret disclosure, approval-bypassed actions, or unapproved sink tools.
 
 Starter configs for common targets:
 

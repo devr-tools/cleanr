@@ -70,6 +70,12 @@ func ValidateConfig(cfg core.Config) error {
 				scenarioNames[name] = i
 			}
 		}
+		for j, source := range scenario.ContextSources {
+			validateContextSource(&errs, fmt.Sprintf("%s.context_sources[%d]", prefix, j), source)
+		}
+		for j, mutation := range scenario.ExpectedMutations {
+			validateExpectedMutation(&errs, fmt.Sprintf("%s.expected_mutations[%d]", prefix, j), mutation)
+		}
 		for j, assertion := range scenario.Assertions {
 			validateAssertion(&errs, fmt.Sprintf("%s.assertions[%d]", prefix, j), assertion)
 		}
@@ -135,6 +141,54 @@ func ValidateConfig(cfg core.Config) error {
 		}
 		if cfg.Suites.Drift.MinSemanticConsistencyScore < 0 || cfg.Suites.Drift.MinSemanticConsistencyScore > 1 {
 			errs.Add("suites.drift.min_semantic_consistency_score", "must be between 0 and 1", "use a decimal threshold such as 0.75")
+		}
+	}
+
+	if cfg.Suites.ShadowState.Enabled {
+		if len(cfg.Suites.ShadowState.Roots) == 0 {
+			errs.Add("suites.shadow_state.roots", "must contain at least one path", "set one or more files or directories that cleanr should snapshot before and after each run")
+		}
+		for i, root := range cfg.Suites.ShadowState.Roots {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.shadow_state.roots[%d]", i), root, "set a file or directory path to observe for side effects")
+		}
+		for i, path := range cfg.Suites.ShadowState.AllowedWritePaths {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.shadow_state.allowed_write_paths[%d]", i), path, "set a file or directory path where mutations are allowed")
+		}
+	}
+
+	if cfg.Suites.Provenance.Enabled {
+		for i, indicator := range cfg.Suites.Provenance.BlockIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.provenance.block_indicators[%d]", i), indicator, "set a non-empty refusal marker")
+		}
+		for i, indicator := range cfg.Suites.Provenance.ValidationIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.provenance.validation_indicators[%d]", i), indicator, "set a non-empty validation marker")
+		}
+		for i, indicator := range cfg.Suites.Provenance.SensitiveIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.provenance.sensitive_indicators[%d]", i), indicator, "set a non-empty sensitive-data marker")
+		}
+		for i, name := range cfg.Suites.Provenance.PrivilegedToolNames {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.provenance.privileged_tool_names[%d]", i), name, "set a non-empty tool name")
+		}
+		for i, name := range cfg.Suites.Provenance.ApprovalRequiredToolNames {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.provenance.approval_required_tool_names[%d]", i), name, "set a non-empty tool name")
+		}
+		for i, name := range cfg.Suites.Provenance.ApprovedSinkToolNames {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.provenance.approved_sink_tool_names[%d]", i), name, "set a non-empty tool name")
+		}
+	}
+
+	if cfg.Suites.ClaimTrace.Enabled {
+		for i, indicator := range cfg.Suites.ClaimTrace.CitationIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.claim_trace.citation_indicators[%d]", i), indicator, "set a non-empty citation marker")
+		}
+		for i, indicator := range cfg.Suites.ClaimTrace.ToolClaimIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.claim_trace.tool_claim_indicators[%d]", i), indicator, "set a non-empty tool-claim marker")
+		}
+		for i, indicator := range cfg.Suites.ClaimTrace.ApprovalIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.claim_trace.approval_indicators[%d]", i), indicator, "set a non-empty approval marker")
+		}
+		for i, indicator := range cfg.Suites.ClaimTrace.StateChangeIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.claim_trace.state_change_indicators[%d]", i), indicator, "set a non-empty state-change marker")
 		}
 	}
 
@@ -260,5 +314,41 @@ func validateAssertion(errs *ValidationErrors, prefix string, assertion core.Ass
 		default:
 			errs.Add(prefix+".severity", "must be one of low, medium, high, or critical", "omit severity to use the default, or pick a supported severity level")
 		}
+	}
+}
+
+func validateContextSource(errs *ValidationErrors, prefix string, source core.ContextSource) {
+	requireNonEmpty(errs, prefix+".kind", source.Kind, "set the source type, for example retrieved, tool, memory, or approval")
+	requireNonEmpty(errs, prefix+".trust", source.Trust, "set the trust tier, for example trusted, untrusted, or approved")
+	requireNonEmpty(errs, prefix+".content", source.Content, "set the source content that should be provided to the model during testing")
+
+	switch strings.TrimSpace(source.Kind) {
+	case "retrieved", "tool", "memory", "approval":
+	case "":
+	default:
+		errs.Add(prefix+".kind", "must be one of retrieved, tool, memory, or approval", "pick a supported context source kind")
+	}
+
+	switch strings.TrimSpace(source.Trust) {
+	case "trusted", "untrusted", "approved":
+	case "":
+	default:
+		errs.Add(prefix+".trust", "must be one of trusted, untrusted, or approved", "pick a supported trust tier")
+	}
+}
+
+func validateExpectedMutation(errs *ValidationErrors, prefix string, mutation core.ExpectedMutation) {
+	requireNonEmpty(errs, prefix+".path", mutation.Path, "set the expected file path that should be created, modified, or deleted")
+	requireNonEmpty(errs, prefix+".kind", mutation.Kind, "set the expected mutation kind: created, modified, or deleted")
+
+	switch strings.TrimSpace(mutation.Kind) {
+	case "created", "modified", "deleted":
+	case "":
+	default:
+		errs.Add(prefix+".kind", "must be one of created, modified, or deleted", "pick a supported file mutation kind")
+	}
+
+	if strings.TrimSpace(mutation.Kind) == "deleted" && strings.TrimSpace(mutation.ContentContains) != "" {
+		errs.Add(prefix+".content_contains", "cannot be set when kind is deleted", "remove content_contains for deleted-file expectations")
 	}
 }

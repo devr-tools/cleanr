@@ -62,6 +62,22 @@ func responseDetails(resp core.Response, base map[string]any) map[string]any {
 		base["tool_call_count"] = len(normalized.ToolCalls)
 		base["tool_calls"] = normalized.ToolCalls
 	}
+	if len(normalized.SourceUses) > 0 {
+		base["source_use_count"] = len(normalized.SourceUses)
+		base["source_uses"] = normalized.SourceUses
+	}
+	if len(normalized.Approvals) > 0 {
+		base["approval_count"] = len(normalized.Approvals)
+		base["approvals"] = normalized.Approvals
+	}
+	if len(normalized.StateChanges) > 0 {
+		base["state_change_count"] = len(normalized.StateChanges)
+		base["state_changes"] = normalized.StateChanges
+	}
+	if len(normalized.MemoryOperations) > 0 {
+		base["memory_operation_count"] = len(normalized.MemoryOperations)
+		base["memory_operations"] = normalized.MemoryOperations
+	}
 	if len(normalized.Raw) > 0 {
 		base["provider_raw"] = normalized.Raw
 	}

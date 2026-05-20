@@ -47,14 +47,30 @@ type AnthropicConfig struct {
 }
 
 type Scenario struct {
-	Name              string            `json:"name"`
-	System            string            `json:"system"`
-	Input             string            `json:"input"`
-	Metadata          map[string]string `json:"metadata"`
-	Tags              []string          `json:"tags"`
-	ExpectedContains  []string          `json:"expected_contains"`
-	ForbiddenContains []string          `json:"forbidden_contains"`
-	Assertions        []Assertion       `json:"assertions"`
+	Name              string             `json:"name"`
+	System            string             `json:"system"`
+	Input             string             `json:"input"`
+	Metadata          map[string]string  `json:"metadata"`
+	ContextSources    []ContextSource    `json:"context_sources,omitempty"`
+	ExpectedMutations []ExpectedMutation `json:"expected_mutations,omitempty"`
+	Tags              []string           `json:"tags"`
+	ExpectedContains  []string           `json:"expected_contains"`
+	ForbiddenContains []string           `json:"forbidden_contains"`
+	Assertions        []Assertion        `json:"assertions"`
+}
+
+type ContextSource struct {
+	Name     string            `json:"name,omitempty"`
+	Kind     string            `json:"kind"`
+	Trust    string            `json:"trust"`
+	Content  string            `json:"content"`
+	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+type ExpectedMutation struct {
+	Path            string `json:"path"`
+	Kind            string `json:"kind"`
+	ContentContains string `json:"content_contains,omitempty"`
 }
 
 type Assertion struct {
@@ -73,6 +89,10 @@ type SuitesConfig struct {
 	Load              LoadConfig              `json:"load"`
 	Chaos             ChaosConfig             `json:"chaos"`
 	Drift             DriftConfig             `json:"drift"`
+	ShadowState       ShadowStateConfig       `json:"shadow_state"`
+	Provenance        ProvenanceConfig        `json:"provenance"`
+	ClaimTrace        ClaimTraceConfig        `json:"claim_trace"`
+	MemorySafety      MemorySafetyConfig      `json:"memory_safety"`
 	TokenOptimization TokenOptimizationConfig `json:"token_optimization"`
 }
 
@@ -117,6 +137,34 @@ type DriftConfig struct {
 	StableTags                  []string `json:"stable_tags"`
 	MinConsistencyScore         float64  `json:"min_consistency_score"`
 	MinSemanticConsistencyScore float64  `json:"min_semantic_consistency_score"`
+}
+
+type ShadowStateConfig struct {
+	Enabled           bool     `json:"enabled"`
+	Roots             []string `json:"roots"`
+	AllowedWritePaths []string `json:"allowed_write_paths"`
+}
+
+type ProvenanceConfig struct {
+	Enabled                   bool     `json:"enabled"`
+	BlockIndicators           []string `json:"block_indicators"`
+	ValidationIndicators      []string `json:"validation_indicators"`
+	SensitiveIndicators       []string `json:"sensitive_indicators"`
+	PrivilegedToolNames       []string `json:"privileged_tool_names"`
+	ApprovalRequiredToolNames []string `json:"approval_required_tool_names"`
+	ApprovedSinkToolNames     []string `json:"approved_sink_tool_names"`
+}
+
+type ClaimTraceConfig struct {
+	Enabled               bool     `json:"enabled"`
+	CitationIndicators    []string `json:"citation_indicators"`
+	ToolClaimIndicators   []string `json:"tool_claim_indicators"`
+	ApprovalIndicators    []string `json:"approval_indicators"`
+	StateChangeIndicators []string `json:"state_change_indicators"`
+}
+
+type MemorySafetyConfig struct {
+	Enabled bool `json:"enabled"`
 }
 
 type TokenOptimizationConfig struct {
@@ -179,15 +227,19 @@ type TokenUsage struct {
 }
 
 type ProviderResponse struct {
-	Provider     string         `json:"provider,omitempty"`
-	ID           string         `json:"id,omitempty"`
-	Model        string         `json:"model,omitempty"`
-	Role         string         `json:"role,omitempty"`
-	Status       string         `json:"status,omitempty"`
-	FinishReason string         `json:"finish_reason,omitempty"`
-	StopSequence string         `json:"stop_sequence,omitempty"`
-	ToolCalls    []ToolCall     `json:"tool_calls,omitempty"`
-	Raw          map[string]any `json:"raw,omitempty"`
+	Provider         string             `json:"provider,omitempty"`
+	ID               string             `json:"id,omitempty"`
+	Model            string             `json:"model,omitempty"`
+	Role             string             `json:"role,omitempty"`
+	Status           string             `json:"status,omitempty"`
+	FinishReason     string             `json:"finish_reason,omitempty"`
+	StopSequence     string             `json:"stop_sequence,omitempty"`
+	ToolCalls        []ToolCall         `json:"tool_calls,omitempty"`
+	SourceUses       []SourceUse        `json:"source_uses,omitempty"`
+	Approvals        []ApprovalArtifact `json:"approvals,omitempty"`
+	StateChanges     []StateChange      `json:"state_changes,omitempty"`
+	MemoryOperations []MemoryOperation  `json:"memory_operations,omitempty"`
+	Raw              map[string]any     `json:"raw,omitempty"`
 }
 
 type ToolCall struct {
@@ -198,6 +250,44 @@ type ToolCall struct {
 	Arguments string         `json:"arguments,omitempty"`
 	Input     any            `json:"input,omitempty"`
 	Status    string         `json:"status,omitempty"`
+	Raw       map[string]any `json:"raw,omitempty"`
+}
+
+type SourceUse struct {
+	ID       string         `json:"id,omitempty"`
+	Kind     string         `json:"kind,omitempty"`
+	Name     string         `json:"name,omitempty"`
+	Location string         `json:"location,omitempty"`
+	Raw      map[string]any `json:"raw,omitempty"`
+}
+
+type ApprovalArtifact struct {
+	ID       string         `json:"id,omitempty"`
+	Kind     string         `json:"kind,omitempty"`
+	Status   string         `json:"status,omitempty"`
+	Actor    string         `json:"actor,omitempty"`
+	Summary  string         `json:"summary,omitempty"`
+	Artifact string         `json:"artifact,omitempty"`
+	Raw      map[string]any `json:"raw,omitempty"`
+}
+
+type StateChange struct {
+	Kind    string         `json:"kind,omitempty"`
+	Target  string         `json:"target,omitempty"`
+	Action  string         `json:"action,omitempty"`
+	Status  string         `json:"status,omitempty"`
+	Summary string         `json:"summary,omitempty"`
+	Raw     map[string]any `json:"raw,omitempty"`
+}
+
+type MemoryOperation struct {
+	Action    string         `json:"action,omitempty"`
+	Namespace string         `json:"namespace,omitempty"`
+	Key       string         `json:"key,omitempty"`
+	UserID    string         `json:"user_id,omitempty"`
+	SessionID string         `json:"session_id,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Value     string         `json:"value,omitempty"`
 	Raw       map[string]any `json:"raw,omitempty"`
 }
 

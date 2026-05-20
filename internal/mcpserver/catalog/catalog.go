@@ -58,6 +58,10 @@ func DescribeSuites(_ context.Context, _ map[string]any) (toolkit.Result, error)
 			{Name: "load", Description: "Checks concurrency behavior, latency budgets, and error-rate thresholds.", ConfigFields: []string{"enabled", "virtual_users", "requests_per_user", "max_error_rate_pct", "p95_latency_ms"}},
 			{Name: "chaos", Description: "Checks resilience under degraded conditions such as tight deadlines or noisy context.", ConfigFields: []string{"enabled", "faults", "timeout_scale", "noise_bytes", "max_error_rate_pct"}},
 			{Name: "drift", Description: "Checks response stability across repeated executions.", ConfigFields: []string{"enabled", "iterations", "max_normalized_drift", "stable_tags", "min_consistency_score"}},
+			{Name: "shadow_state", Description: "Checks observed file mutations against approved write paths.", ConfigFields: []string{"enabled", "roots", "allowed_write_paths"}},
+			{Name: "provenance", Description: "Checks whether untrusted context can override policy or trigger privileged actions.", ConfigFields: []string{"enabled", "block_indicators", "validation_indicators", "sensitive_indicators", "privileged_tool_names"}},
+			{Name: "claim_trace", Description: "Checks whether claimed citations, tool use, approvals, and state changes are backed by trace evidence.", ConfigFields: []string{"enabled", "citation_indicators", "tool_claim_indicators", "approval_indicators", "state_change_indicators"}},
+			{Name: "memory_safety", Description: "Checks whether stale, revoked, poisoned, or cross-user memory flows into responses or tool calls.", ConfigFields: []string{"enabled"}},
 			{Name: "token_optimization", Description: "Checks prompt and response token budgets, ratios, and duplication.", ConfigFields: []string{"enabled", "max_input_tokens", "max_output_tokens", "max_total_tokens", "max_output_input_ratio", "max_prompt_duplication_ratio", "max_response_duplication_ratio", "suggested_max_output_tokens"}},
 		},
 	}

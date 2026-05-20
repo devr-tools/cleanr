@@ -85,6 +85,14 @@ func buildRecommendations(report Report) []string {
 			recs = append(recs, "Increase resilience under degraded request conditions by validating inputs and handling duplicate or truncated context safely.")
 		case "drift":
 			recs = append(recs, "Stabilize prompts or decoding settings for deterministic paths and snapshot important regression scenarios.")
+		case "shadow-state":
+			recs = append(recs, "Restrict agent side effects to approved paths and verify the observed file mutations against an explicit allowlist.")
+		case "provenance":
+			recs = append(recs, "Separate trusted and untrusted context sources explicitly and require refusal or validation before untrusted context can influence privileged actions.")
+		case "claim-trace":
+			recs = append(recs, "Require the agent to ground tool, citation, approval, and mutation claims in normalized trace evidence before treating the run as releasable.")
+		case "memory-safety":
+			recs = append(recs, "Partition memory by user and freshness, and block stale, revoked, poisoned, or cross-user memory from flowing into responses or tool calls.")
 		case "token-optimization":
 			recs = append(recs, "Reduce prompt and response token waste with tighter context windows, deduplicated instructions, and explicit output length caps.")
 		}

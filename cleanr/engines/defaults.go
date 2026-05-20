@@ -19,6 +19,18 @@ func Default(cfg core.Config) []core.Engine {
 	if cfg.Suites.Drift.Enabled {
 		out = append(out, DriftEngine{})
 	}
+	if cfg.Suites.ShadowState.Enabled {
+		out = append(out, ShadowStateEngine{})
+	}
+	if cfg.Suites.Provenance.Enabled {
+		out = append(out, ProvenanceEngine{})
+	}
+	if cfg.Suites.ClaimTrace.Enabled {
+		out = append(out, ClaimTraceEngine{})
+	}
+	if cfg.Suites.MemorySafety.Enabled {
+		out = append(out, MemorySafetyEngine{})
+	}
 	if cfg.Suites.TokenOptimization.Enabled {
 		out = append(out, TokenOptimizationEngine{})
 	}

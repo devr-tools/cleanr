@@ -24,6 +24,11 @@
 - [x] Add assertion DSL.
 - [x] Add MCP server mode for agent and MCPO access.
 - [x] Add snapshot baselines.
+- [x] Add provider-neutral trace evidence model for source uses, approvals, state changes, and memory operations.
+- [x] Add claim-vs-trace verification suite.
+- [x] Add initial memory safety suite for stale, revoked, poisoned, and cross-user memory cases.
+- [x] Add file-based shadow-state verification for approved write locations.
+- [x] Add provenance-aware context-source attack testing for untrusted retrieved and tool-like inputs.
 
 ## Now
 
@@ -57,13 +62,21 @@ Exit criteria: drift report includes both lexical and semantic consistency metri
 
 ### Agent and tool testing
 
-- [ ] Add tool-call trace model.
+- [x] Add tool-call trace model.
 Deliverable: normalized tool invocation structure in the SDK.
 Exit criteria: assertions can inspect tool name, arguments, order, and counts.
 
 - [ ] Add agent safety cases.
 Deliverable: prebuilt adversarial scenarios for data exfiltration, unsafe tools, runaway loops, and instruction override.
 Exit criteria: sample policy packs exist and are documented.
+
+- [ ] Expand trace-backed state adapters beyond file mutations.
+Deliverable: provider-neutral state evidence for common action surfaces such as tickets, SQL, and outbound communications.
+Exit criteria: claim-vs-trace and policy suites can verify non-file side effects without custom target code.
+
+- [ ] Deepen longitudinal memory replay coverage.
+Deliverable: multi-session fixtures for stale-memory replay, revocation, and poisoning regressions.
+Exit criteria: nightly replay packs can reproduce cross-session memory failures with stable fixtures.
 
 ### Packaging
 

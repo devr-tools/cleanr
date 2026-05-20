@@ -119,7 +119,18 @@ The foundation release is in place:
 - token optimization suite
 - text, JSON, and JUnit reporting
 
-This proves the basic runner model, but the current product still focuses mostly on response inspection. The next phase needs to expand the abstraction from "prompt in, text out" toward "workflow in, evidence out."
+The first Phase 2 release-gate pieces are also now in place:
+
+- normalized trace evidence for source uses, approvals, state changes, and memory operations
+- claim-vs-trace verification for unsupported citations, tool claims, approvals, and state-change claims
+- initial longitudinal memory safety coverage for stale, revoked, poisoned, and cross-user memory replay
+
+The first action-verification slices are now in place as well:
+
+- file-based shadow-state verification for approved write locations
+- provenance-aware attacks driven by trust-tagged scenario context sources
+
+This proves the basic runner model, but the current product still focuses mostly on response inspection plus a narrow set of workflow checks. The next phase still needs to expand the abstraction from "prompt in, text out" toward "workflow in, evidence out."
 
 ## Strategic direction by phase
 
