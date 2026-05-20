@@ -1,0 +1,139 @@
+package cleanr
+
+import "time"
+
+type Config struct {
+	Version   string          `json:"version"`
+	Target    TargetConfig    `json:"target"`
+	Scenarios []Scenario      `json:"scenarios"`
+	Suites    SuitesConfig    `json:"suites"`
+	Reporting ReportingConfig `json:"reporting"`
+}
+
+type TargetConfig struct {
+	Name            string            `json:"name"`
+	URL             string            `json:"url"`
+	Method          string            `json:"method"`
+	Headers         map[string]string `json:"headers"`
+	TimeoutMS       int               `json:"timeout_ms"`
+	PromptField     string            `json:"prompt_field"`
+	SystemField     string            `json:"system_field"`
+	ResponseField   string            `json:"response_field"`
+	RequestTemplate any               `json:"request_template"`
+}
+
+type Scenario struct {
+	Name              string            `json:"name"`
+	System            string            `json:"system"`
+	Input             string            `json:"input"`
+	Metadata          map[string]string `json:"metadata"`
+	Tags              []string          `json:"tags"`
+	ExpectedContains  []string          `json:"expected_contains"`
+	ForbiddenContains []string          `json:"forbidden_contains"`
+}
+
+type SuitesConfig struct {
+	PromptInjection PromptInjectionConfig `json:"prompt_injection"`
+	Security        SecurityConfig        `json:"security"`
+	Load            LoadConfig            `json:"load"`
+	Chaos           ChaosConfig           `json:"chaos"`
+	Drift           DriftConfig           `json:"drift"`
+}
+
+type PromptInjectionConfig struct {
+	Enabled         bool     `json:"enabled"`
+	BlockIndicators []string `json:"block_indicators"`
+}
+
+type SecurityConfig struct {
+	Enabled                  bool     `json:"enabled"`
+	LeakPatterns             []string `json:"leak_patterns"`
+	MaxPIIMatches            int      `json:"max_pii_matches"`
+	DangerousToolIndicators  []string `json:"dangerous_tool_indicators"`
+	SecretExposureIndicators []string `json:"secret_exposure_indicators"`
+}
+
+type LoadConfig struct {
+	Enabled         bool `json:"enabled"`
+	VirtualUsers    int  `json:"virtual_users"`
+	RequestsPerUser int  `json:"requests_per_user"`
+	MaxErrorRatePct int  `json:"max_error_rate_pct"`
+	P95LatencyMS    int  `json:"p95_latency_ms"`
+}
+
+type ChaosConfig struct {
+	Enabled       bool     `json:"enabled"`
+	Faults        []string `json:"faults"`
+	TimeoutScale  float64  `json:"timeout_scale"`
+	NoiseBytes    int      `json:"noise_bytes"`
+	MaxErrorRate  int      `json:"max_error_rate_pct"`
+	ResponseField string   `json:"response_field"`
+}
+
+type DriftConfig struct {
+	Enabled             bool     `json:"enabled"`
+	Iterations          int      `json:"iterations"`
+	MaxNormalizedDrift  float64  `json:"max_normalized_drift"`
+	StableTags          []string `json:"stable_tags"`
+	MinConsistencyScore float64  `json:"min_consistency_score"`
+}
+
+type ReportingConfig struct {
+	Format string `json:"format"`
+	Output string `json:"output"`
+}
+
+type Request struct {
+	Scenario Scenario
+	System   string
+	Prompt   string
+	Timeout  time.Duration
+	Headers  map[string]string
+	Template any
+}
+
+type Response struct {
+	StatusCode   int
+	Body         []byte
+	Text         string
+	Latency      time.Duration
+	Err          error
+	ExtractError error
+}
+
+type Finding struct {
+	Severity string `json:"severity"`
+	Message  string `json:"message"`
+}
+
+type CaseResult struct {
+	Name       string         `json:"name"`
+	Passed     bool           `json:"passed"`
+	Duration   time.Duration  `json:"duration"`
+	Score      float64        `json:"score,omitempty"`
+	LatencyP95 time.Duration  `json:"latency_p95,omitempty"`
+	Findings   []Finding      `json:"findings,omitempty"`
+	Details    map[string]any `json:"details,omitempty"`
+}
+
+type SuiteResult struct {
+	Name     string         `json:"name"`
+	Passed   bool           `json:"passed"`
+	Duration time.Duration  `json:"duration"`
+	Cases    []CaseResult   `json:"cases"`
+	Findings []Finding      `json:"findings,omitempty"`
+	Meta     map[string]any `json:"meta,omitempty"`
+}
+
+type Report struct {
+	Name            string        `json:"name"`
+	Passed          bool          `json:"passed"`
+	GeneratedAt     time.Time     `json:"generated_at"`
+	Duration        time.Duration `json:"duration"`
+	TotalSuites     int           `json:"total_suites"`
+	FailedSuites    int           `json:"failed_suites"`
+	TotalCases      int           `json:"total_cases"`
+	FailedCases     int           `json:"failed_cases"`
+	Suites          []SuiteResult `json:"suites"`
+	Recommendations []string      `json:"recommendations,omitempty"`
+}
