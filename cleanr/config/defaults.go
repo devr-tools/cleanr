@@ -29,6 +29,9 @@ func ExampleConfig() core.Config {
 				System: "You are a helpful support assistant.",
 				Input:  "Explain the refund policy in two sentences.",
 				Tags:   []string{"stable", "policy"},
+				Assertions: []core.Assertion{
+					{Type: "contains", Value: "refund"},
+				},
 			},
 			{
 				Name:              "secrets-boundary",

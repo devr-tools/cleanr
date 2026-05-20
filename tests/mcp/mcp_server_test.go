@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"cleanr/cleanr"
 	"context"
 	"encoding/json"
 	"strings"
@@ -50,15 +51,22 @@ func TestMCPServerListsToolsAfterInitialization(t *testing.T) {
 	})
 
 	tools := listResp["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 3 {
-		t.Fatalf("expected 3 tools, got %d", len(tools))
+	if len(tools) != 6 {
+		t.Fatalf("expected 6 tools, got %d", len(tools))
 	}
 
 	names := make([]string, 0, len(tools))
 	for _, tool := range tools {
 		names = append(names, tool.(map[string]any)["name"].(string))
 	}
-	for _, want := range []string{"cleanr_example_config", "cleanr_validate_config", "cleanr_run"} {
+	for _, want := range []string{
+		"cleanr_example_config",
+		"cleanr_validate_config",
+		"cleanr_run",
+		"cleanr_render_report",
+		"cleanr_describe_suites",
+		"cleanr_supported_targets",
+	} {
 		if !containsString(names, want) {
 			t.Fatalf("expected tool %q in %v", want, names)
 		}
@@ -153,6 +161,68 @@ reporting:
 	reportText := structured["report_text"].(string)
 	if !strings.Contains(reportText, "\"passed\": true") {
 		t.Fatalf("expected json report output, got %s", reportText)
+	}
+}
+
+func TestMCPServerDescribeSuitesToolReturnsSuiteCatalog(t *testing.T) {
+	server := initializedMCPServer(t)
+
+	resp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      5,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name":      "cleanr_describe_suites",
+			"arguments": map[string]any{},
+		},
+	})
+
+	result := resp["result"].(map[string]any)
+	structured := result["structuredContent"].(map[string]any)
+	suites := structured["suites"].([]any)
+	if len(suites) < 6 {
+		t.Fatalf("expected built-in suite catalog, got %#v", structured)
+	}
+
+	first := suites[0].(map[string]any)
+	if first["name"] == "" || first["description"] == "" {
+		t.Fatalf("expected suite metadata, got %#v", first)
+	}
+}
+
+func TestMCPServerRenderReportToolRendersText(t *testing.T) {
+	server := initializedMCPServer(t)
+
+	reportJSON, err := json.Marshal(cleanr.Report{
+		Name:         "demo",
+		Passed:       true,
+		TotalSuites:  1,
+		FailedSuites: 0,
+		TotalCases:   1,
+		FailedCases:  0,
+	})
+	if err != nil {
+		t.Fatalf("marshal report: %v", err)
+	}
+
+	resp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      6,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cleanr_render_report",
+			"arguments": map[string]any{
+				"report_json": string(reportJSON),
+				"format":      "text",
+			},
+		},
+	})
+
+	result := resp["result"].(map[string]any)
+	structured := result["structuredContent"].(map[string]any)
+	rendered := structured["rendered"].(string)
+	if !strings.Contains(rendered, "cleanr PASS") {
+		t.Fatalf("expected rendered text report, got %s", rendered)
 	}
 }
 

@@ -13,6 +13,7 @@ type TargetConfig = core.TargetConfig
 type OpenAIConfig = core.OpenAIConfig
 type AnthropicConfig = core.AnthropicConfig
 type Scenario = core.Scenario
+type Assertion = core.Assertion
 type SuitesConfig = core.SuitesConfig
 type PromptInjectionConfig = core.PromptInjectionConfig
 type SecurityConfig = core.SecurityConfig

@@ -37,7 +37,8 @@ func (SecurityEngine) Run(ctx context.Context, runCtx *core.RunContext) core.Sui
 			Prompt:   scenario.Input,
 			Timeout:  runCtx.Config.Target.Timeout(),
 		})
-		findings := responseFindings(resp, scenario.ForbiddenContains)
+		findings := responseFindings(resp, nil)
+		findings = append(findings, evaluateScenarioAssertions(scenario, resp)...)
 		text := resp.Text
 		piiMatches := 0
 		for _, re := range piiPatterns {
@@ -61,20 +62,16 @@ func (SecurityEngine) Run(ctx context.Context, runCtx *core.RunContext) core.Sui
 				findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("secret exposure indicator present: %s", indicator)})
 			}
 		}
-		for _, expected := range scenario.ExpectedContains {
-			if !strings.Contains(strings.ToLower(text), strings.ToLower(expected)) {
-				findings = append(findings, core.Finding{Severity: "medium", Message: fmt.Sprintf("expected phrase missing: %s", expected)})
-			}
-		}
 		cases = append(cases, core.CaseResult{
 			Name:     scenario.Name,
 			Passed:   len(findings) == 0,
 			Duration: time.Since(start),
 			Findings: findings,
 			Details: responseDetails(resp, map[string]any{
-				"pii_matches":  piiMatches,
-				"status_code":  resp.StatusCode,
-				"response_len": len(resp.Text),
+				"assertion_count": len(scenarioAssertions(scenario)),
+				"pii_matches":     piiMatches,
+				"status_code":     resp.StatusCode,
+				"response_len":    len(resp.Text),
 			}),
 		})
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"cleanr/cleanr"
 )
@@ -11,6 +12,8 @@ import (
 type mockTarget struct{}
 type verboseMockTarget struct{}
 type stableTarget struct{}
+type assertionTarget struct{}
+type failingAssertionTarget struct{}
 
 func (mockTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
 	return cleanr.Response{
@@ -32,6 +35,35 @@ func (stableTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
 	return cleanr.Response{
 		StatusCode: 200,
 		Text:       "stable answer",
+	}
+}
+
+func (assertionTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
+		StatusCode: 200,
+		Text:       "Refunds are available within 30 days of purchase.",
+		Latency:    40 * time.Millisecond,
+		Body:       []byte(`{"meta":{"policy_id":"refunds"}}`),
+		Normalized: cleanr.ProviderResponse{
+			Provider:     "openai",
+			Model:        "gpt-4o-mini",
+			FinishReason: "stop",
+			ToolCalls: []cleanr.ToolCall{
+				{Name: "lookup_policy", Arguments: `{"policy_id":"refunds"}`},
+			},
+		},
+	}
+}
+
+func (failingAssertionTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
+		StatusCode: 202,
+		Text:       "Pending.",
+		Latency:    120 * time.Millisecond,
+		Normalized: cleanr.ProviderResponse{
+			Provider:     "anthropic",
+			FinishReason: "max_tokens",
+		},
 	}
 }
 
@@ -73,25 +105,48 @@ func TestTextReport(t *testing.T) {
 	out := cleanr.TextReport(cleanr.Report{
 		Name:         "demo",
 		Passed:       false,
+		Duration:     1500 * time.Millisecond,
 		TotalSuites:  1,
 		FailedSuites: 1,
 		TotalCases:   1,
 		FailedCases:  1,
 		Suites: []cleanr.SuiteResult{{
-			Name:   "security",
-			Passed: false,
+			Name:     "security",
+			Passed:   false,
+			Duration: 900 * time.Millisecond,
 			Cases: []cleanr.CaseResult{{
-				Name:   "case-1",
-				Passed: false,
+				Name:       "case-1",
+				Passed:     false,
+				Duration:   250 * time.Millisecond,
+				LatencyP95: 120 * time.Millisecond,
+				Score:      0.42,
 				Findings: []cleanr.Finding{{
 					Severity: "high",
 					Message:  "problem",
 				}},
+				Details: map[string]any{
+					"provider":       "openai",
+					"provider_model": "gpt-test",
+					"tool_calls":     []any{"ignored"},
+				},
 			}},
+			Meta: map[string]any{
+				"total_tokens": 123,
+			},
 		}},
 	})
-	if !strings.Contains(out, "cleanr FAIL") {
-		t.Fatalf("unexpected report output: %s", out)
+	for _, want := range []string{
+		"cleanr FAIL",
+		"summary: 1/1 suites failed, 1/1 cases failed",
+		"suite summary:",
+		"FAIL  security  1 cases, 1 failed | 900ms",
+		"- case-1 [FAIL]  duration 250ms | score 0.42 | p95 120ms | provider=openai | provider_model=gpt-test",
+		"HIGH: problem",
+		"meta: total_tokens=123",
+	} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("expected %q in report:\n%s", want, out)
+		}
 	}
 }
 
@@ -122,4 +177,75 @@ func TestTokenOptimizationEngineFlagsWastefulOutput(t *testing.T) {
 	if report.Suites[0].Cases[0].Passed {
 		t.Fatalf("expected wasteful case to fail")
 	}
+}
+
+func TestSecurityEnginePassesScenarioAssertions(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "assertions-pass",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy.",
+		Assertions: []cleanr.Assertion{
+			{Type: "contains", Value: "30 days"},
+			{Type: "regex", Pattern: `Refunds.*30 days`},
+			{Type: "status_code", IntValue: intPtr(200)},
+			{Type: "latency_ms", IntValue: intPtr(100)},
+			{Type: "finish_reason", Value: "stop"},
+			{Type: "tool_call_count", IntValue: intPtr(1)},
+			{Type: "tool_call_name", Value: "lookup_policy"},
+			{Type: "json_path", Path: "response.provider_model", Value: "gpt-4o-mini"},
+			{Type: "json_path", Path: "response.body.meta.policy_id", Value: "refunds"},
+		},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Security.Enabled = true
+
+	report := cleanr.NewRunner(cfg, assertionTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected assertion-backed security suite to pass: %+v", report)
+	}
+	details := report.Suites[0].Cases[0].Details
+	if details["assertion_count"] != float64(9) && details["assertion_count"] != 9 {
+		t.Fatalf("unexpected assertion_count details: %+v", details)
+	}
+}
+
+func TestSecurityEngineFailsScenarioAssertions(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "assertions-fail",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy.",
+		Assertions: []cleanr.Assertion{
+			{Type: "status_code", IntValue: intPtr(200)},
+			{Type: "finish_reason", Value: "stop"},
+			{Type: "tool_call_count", IntValue: intPtr(0)},
+		},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Security.Enabled = true
+
+	report := cleanr.NewRunner(cfg, failingAssertionTarget{}).Run(context.Background())
+	if report.Passed {
+		t.Fatalf("expected assertion-backed security suite to fail")
+	}
+	findings := report.Suites[0].Cases[0].Findings
+	if len(findings) < 2 {
+		t.Fatalf("expected assertion findings, got %+v", findings)
+	}
+	if !strings.Contains(findings[0].Message, "assertion failed") && !strings.Contains(findings[1].Message, "assertion failed") {
+		t.Fatalf("expected assertion failure messages, got %+v", findings)
+	}
+}
+
+func intPtr(v int) *int {
+	return &v
 }

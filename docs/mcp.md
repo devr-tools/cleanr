@@ -10,11 +10,14 @@ Start the MCP server with:
 ./dist/cleanr mcp
 ```
 
-The server exposes three tools:
+The server exposes these tools:
 
 - `cleanr_example_config`: return a starter config in `json` or `yaml`
+- `cleanr_describe_suites`: describe the built-in suites and their key config fields
+- `cleanr_supported_targets`: describe the supported target types and their key config fields
 - `cleanr_validate_config`: validate inline config content or a local `config_path`
 - `cleanr_run`: execute suites from inline config content or a local `config_path`
+- `cleanr_render_report`: render a JSON cleanr report as `text`, `json`, or `junit`
 
 The stdio transport follows newline-delimited JSON-RPC messages and writes logs only to `stderr`.
 
@@ -52,6 +55,18 @@ For `cleanr_run`, you can also pass:
 
 - `report_format`: `text`, `json`, or `junit`
 - `timeout_ms`: optional whole-run timeout
+
+For `cleanr_render_report`, pass:
+
+- `report_json`: serialized cleanr report JSON
+- `format`: `text`, `json`, or `junit`
+
+## Internal layout
+
+The MCP implementation is intentionally split to avoid one growing server file:
+
+- `internal/mcpserver/`: transport and JSON-RPC handling
+- `internal/mcpserver/tools/`: MCP tool definitions, schemas, and handlers
 
 ## Notes
 

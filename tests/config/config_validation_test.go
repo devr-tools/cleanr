@@ -133,6 +133,64 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 	}
 }
 
+func TestValidateConfigInvalidAssertions(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name    string
+		mutate  func(*cleanr.Config)
+		wantErr string
+	}{
+		{
+			name: "unsupported assertion type",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "banana"}}
+			},
+			wantErr: "invalid config: scenarios[0].assertions[0].type: must be one of contains, not_contains, regex, json_path, status_code, latency_ms, finish_reason, tool_call_count, or tool_call_name. Fix: pick one of the built-in assertion types",
+		},
+		{
+			name: "invalid regex assertion",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "regex", Pattern: "("}}
+			},
+			wantErr: "invalid config: scenarios[0].assertions[0].pattern: must be a valid Go regular expression. Fix: fix the pattern syntax or remove the assertion",
+		},
+		{
+			name: "json path assertion requires path",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "json_path", Value: "gpt-4o-mini"}}
+			},
+			wantErr: "invalid config: scenarios[0].assertions[0].path: is required. Fix: set the response path to check, for example response.provider_model or response.body.output.0.content.0.text",
+		},
+		{
+			name: "tool call count accepts only non-negative values",
+			mutate: func(cfg *cleanr.Config) {
+				n := -1
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "tool_call_count", IntValue: &n}}
+			},
+			wantErr: "invalid config: scenarios[0].assertions[0].int_value: must be >= 0. Fix: use a non-negative expected tool call count",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg := cleanr.ExampleConfig()
+			tt.mutate(&cfg)
+
+			err := cleanr.ValidateConfig(cfg)
+			if err == nil {
+				t.Fatalf("expected error %q, got nil", tt.wantErr)
+			}
+			if err.Error() != tt.wantErr {
+				t.Fatalf("expected error %q, got %q", tt.wantErr, err.Error())
+			}
+		})
+	}
+}
+
 func TestLoadConfigFileValidationErrors(t *testing.T) {
 	t.Parallel()
 

@@ -70,6 +70,9 @@ func ValidateConfig(cfg core.Config) error {
 				scenarioNames[name] = i
 			}
 		}
+		for j, assertion := range scenario.Assertions {
+			validateAssertion(&errs, fmt.Sprintf("%s.assertions[%d]", prefix, j), assertion)
+		}
 	}
 
 	if cfg.Suites.Load.Enabled {
@@ -170,5 +173,51 @@ func requireNonEmpty(errs *ValidationErrors, path, value, hint string) {
 func requirePositiveInt(errs *ValidationErrors, path string, value int, hint string) {
 	if value <= 0 {
 		errs.Add(path, "must be > 0", hint)
+	}
+}
+
+func validateAssertion(errs *ValidationErrors, prefix string, assertion core.Assertion) {
+	switch strings.TrimSpace(assertion.Type) {
+	case "contains", "not_contains":
+		requireNonEmpty(errs, prefix+".value", assertion.Value, "set the text fragment the response should include or exclude")
+	case "regex":
+		requireNonEmpty(errs, prefix+".pattern", assertion.Pattern, "set a valid Go regular expression to match against the response field")
+		if strings.TrimSpace(assertion.Pattern) != "" {
+			if _, err := regexp.Compile(assertion.Pattern); err != nil {
+				errs.Add(prefix+".pattern", "must be a valid Go regular expression", "fix the pattern syntax or remove the assertion")
+			}
+		}
+	case "json_path":
+		requireNonEmpty(errs, prefix+".path", assertion.Path, "set the response path to check, for example response.provider_model or response.body.output.0.content.0.text")
+	case "status_code":
+		if assertion.IntValue == nil {
+			errs.Add(prefix+".int_value", "is required", "set the expected HTTP status code such as 200")
+		} else if *assertion.IntValue < 100 || *assertion.IntValue > 599 {
+			errs.Add(prefix+".int_value", "must be between 100 and 599", "use a valid HTTP status code")
+		}
+	case "latency_ms":
+		if assertion.IntValue == nil {
+			errs.Add(prefix+".int_value", "is required", "set the maximum allowed latency in milliseconds")
+		} else if *assertion.IntValue < 0 {
+			errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative millisecond threshold")
+		}
+	case "finish_reason", "tool_call_name":
+		requireNonEmpty(errs, prefix+".value", assertion.Value, "set the expected provider finish reason or tool name")
+	case "tool_call_count":
+		if assertion.IntValue == nil {
+			errs.Add(prefix+".int_value", "is required", "set the expected number of tool calls, including 0 when no tool calls should be present")
+		} else if *assertion.IntValue < 0 {
+			errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative expected tool call count")
+		}
+	default:
+		errs.Add(prefix+".type", "must be one of contains, not_contains, regex, json_path, status_code, latency_ms, finish_reason, tool_call_count, or tool_call_name", "pick one of the built-in assertion types")
+	}
+
+	if severity := strings.TrimSpace(assertion.Severity); severity != "" {
+		switch severity {
+		case "low", "medium", "high", "critical":
+		default:
+			errs.Add(prefix+".severity", "must be one of low, medium, high, or critical", "omit severity to use the default, or pick a supported severity level")
+		}
 	}
 }

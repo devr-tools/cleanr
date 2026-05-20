@@ -54,6 +54,17 @@ type Scenario struct {
 	Tags              []string          `json:"tags"`
 	ExpectedContains  []string          `json:"expected_contains"`
 	ForbiddenContains []string          `json:"forbidden_contains"`
+	Assertions        []Assertion       `json:"assertions"`
+}
+
+type Assertion struct {
+	Type     string `json:"type"`
+	Path     string `json:"path,omitempty"`
+	Value    string `json:"value,omitempty"`
+	Pattern  string `json:"pattern,omitempty"`
+	IntValue *int   `json:"int_value,omitempty"`
+	Severity string `json:"severity,omitempty"`
+	Message  string `json:"message,omitempty"`
 }
 
 type SuitesConfig struct {
