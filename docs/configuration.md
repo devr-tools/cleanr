@@ -77,6 +77,7 @@ suites:
     enabled: true
     iterations: 4
     max_normalized_drift: 0.32
+    max_snapshot_drift: 0.18
     stable_tags: [stable]
     min_consistency_score: 0.68
   token_optimization:
@@ -337,10 +338,14 @@ Supported built-in chaos faults:
 - `enabled`
 - `iterations`
 - `max_normalized_drift`
+- `max_snapshot_drift`
+- `baseline_file`
 - `stable_tags`
 - `min_consistency_score`
 
 Used to measure stability across repeated runs.
+
+If `baseline_file` is set and points to an existing snapshot file, drift also compares the current representative response against the checked-in baseline for each stable scenario.
 
 ### `token_optimization`
 
@@ -372,6 +377,7 @@ The validator checks for:
 - invalid assertion types, regex patterns, paths, or numeric thresholds
 - unsupported `target.type` or `target.openai.api_mode`
 - invalid `target.anthropic.max_tokens`
+- invalid `suites.drift.max_snapshot_drift`
 - invalid absolute URLs
 - invalid load, chaos, drift, and token thresholds
 - duplicate scenario names

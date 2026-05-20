@@ -7,6 +7,8 @@ import (
 	"cleanr/cleanr"
 )
 
+func assertionIntPtr(v int) *int { return &v }
+
 func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 	t.Parallel()
 
@@ -157,6 +159,21 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 				cfg.Suites.TokenOptimization.SuggestedMaxOutputTokens = -1
 			},
 			wantSub: "suites.token_optimization.max_input_tokens",
+		},
+		{
+			name: "assertion validation",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{
+					{Type: "regex", Pattern: "[", Severity: "bogus"},
+					{Type: "status_code"},
+					{Type: "latency_ms", IntValue: assertionIntPtr(-1)},
+					{Type: "tool_call_count", IntValue: assertionIntPtr(-1)},
+					{Type: "tool_call_name", Value: ""},
+					{Type: "json_path", Path: ""},
+					{Type: "unknown"},
+				}
+			},
+			wantSub: "assertions[0].pattern",
 		},
 		{
 			name: "unknown target type",

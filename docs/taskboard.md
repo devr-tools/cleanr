@@ -23,6 +23,7 @@
 - [x] Define provider-neutral target response envelope.
 - [x] Add assertion DSL.
 - [x] Add MCP server mode for agent and MCPO access.
+- [x] Add snapshot baselines.
 
 ## Now
 
@@ -49,10 +50,6 @@ Exit criteria: docs specify report fields and compatibility expectations.
 ## Next
 
 ### Assertions and regression
-
-- [ ] Add snapshot baselines.
-Deliverable: baseline files that can be created, updated, and compared in CI.
-Exit criteria: drift suite can fail on meaningful regression against checked-in snapshots.
 
 - [ ] Add semantic drift scoring.
 Deliverable: similarity-based drift scoring that is more robust than raw edit distance.
@@ -92,11 +89,10 @@ Exit criteria: tagged release process documented and repeatable.
 
 ## Suggested execution order
 
-1. snapshots
-2. semantic drift
-3. tool-call tracing
-4. Gemini adapter
-5. distributed load workers
+1. semantic drift
+2. tool-call tracing
+3. Gemini adapter
+4. distributed load workers
 
 ## Definition of Phase 2 done
 

@@ -41,6 +41,19 @@ The generated file includes:
 - all currently supported suites enabled with starter thresholds
 - text reporting as the default output mode
 
+## Capture a Baseline
+
+Before using drift as a regression gate, write a baseline snapshot file from a known-good build:
+
+```bash
+./dist/cleanr snapshot -config cleanr.json
+./dist/cleanr snapshot -config cleanr.yaml
+```
+
+If `suites.drift.baseline_file` is set, `cleanr snapshot` writes there. Otherwise it defaults to `cleanr.snapshots.yaml`.
+
+Commit that snapshot file to the repository once it reflects expected behavior.
+
 If you want a native provider config instead of the default HTTP starter, begin from one of these examples:
 
 - `examples/openai-responses.yaml`
@@ -111,6 +124,8 @@ Set an overall execution timeout:
 
 CLI flags override `reporting.format` and `reporting.output` from the config file.
 
+If `suites.drift.baseline_file` is configured and the baseline file exists, the drift suite also compares the current response against the checked-in snapshot and fails on meaningful baseline regressions.
+
 ## Exit Codes
 
 - `0`: all suites passed
@@ -125,6 +140,7 @@ For an initial rollout, keep the first config simple:
 
 - start with a small set of representative scenarios
 - add a few scenario assertions for output text, status code, or finish reason
+- capture a baseline snapshot from a known-good run and check it into the repo
 - confirm the response extraction path is correct
 - tune load, chaos, and drift thresholds after a few real runs
 - emit JUnit in CI so failures show up as native test results

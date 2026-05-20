@@ -60,6 +60,7 @@ The core `cleanr` commands are:
 
 ```bash
 cleanr init
+cleanr snapshot -config cleanr.json
 cleanr validate -config cleanr.json
 cleanr run -config cleanr.json
 cleanr version
@@ -70,6 +71,7 @@ Typical first run:
 
 ```bash
 cleanr init
+cleanr snapshot -config cleanr.json
 cleanr validate -config cleanr.json
 cleanr run -config cleanr.json
 ```
@@ -77,6 +79,7 @@ cleanr run -config cleanr.json
 What each command does:
 
 - `cleanr init`: generate a starter config file
+- `cleanr snapshot -config <file>`: capture or refresh baseline snapshots for drift regression checks
 - `cleanr validate -config <file>`: check config shape and required fields before execution
 - `cleanr run -config <file>`: execute enabled suites and emit a report
 - `cleanr version`: print the installed CLI version

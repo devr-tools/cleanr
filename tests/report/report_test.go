@@ -38,7 +38,18 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		t.Fatalf("write text report: %v", err)
 	}
 	textOut := text.String()
-	if !strings.Contains(textOut, "recommendations:") || !strings.Contains(textOut, "HIGH: suite issue") {
+	for _, want := range []string{
+		"Overview",
+		"Details",
+		"Recommendations",
+		"Finding  HIGH: suite issue",
+		"Finding  CRITICAL: boom",
+	} {
+		if !strings.Contains(textOut, want) {
+			t.Fatalf("expected %q in text report:\n%s", want, textOut)
+		}
+	}
+	if strings.Contains(textOut, "\x1b[") {
 		t.Fatalf("unexpected text report: %s", textOut)
 	}
 

@@ -3,6 +3,8 @@ package tests
 import (
 	"bytes"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,6 +14,12 @@ import (
 	"cleanr/internal/cli"
 	"cleanr/internal/testutil"
 )
+
+type cliRoundTripperFunc func(*http.Request) (*http.Response, error)
+
+func (f cliRoundTripperFunc) RoundTrip(req *http.Request) (*http.Response, error) {
+	return f(req)
+}
 
 func TestValidateCommandPrintsActionableFieldErrors(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
@@ -159,6 +167,51 @@ func TestRunCommandAutoDetectsDefaultYAMLConfig(t *testing.T) {
 		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "cleanr PASS") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestSnapshotCommandWritesBaselineFile(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "happy-path",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy in two sentences.",
+		Tags:   []string{"stable"},
+	}}
+	cfg.Suites.Drift.BaselineFile = "snapshots/cleanr.snapshots.yaml"
+	path := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+		t.Fatalf("write yaml config: %v", err)
+	}
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		body := `{"output":{"text":"Refunds are available within 30 days of purchase."}}`
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	})
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"snapshot", "-config", path}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	snapshotPath := filepath.Join(filepath.Dir(path), "snapshots", "cleanr.snapshots.yaml")
+	snapshot, err := cleanr.LoadSnapshotFile(snapshotPath)
+	if err != nil {
+		t.Fatalf("load snapshot file: %v", err)
+	}
+	if len(snapshot.Scenarios) != 1 || snapshot.Scenarios[0].Text != "Refunds are available within 30 days of purchase." {
+		t.Fatalf("unexpected snapshot payload: %+v", snapshot)
+	}
+	if !strings.Contains(stdout.String(), "wrote 1 snapshots to") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
 	}
 }

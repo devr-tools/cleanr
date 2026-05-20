@@ -112,6 +112,14 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 			},
 			wantErr: "invalid config: suites.drift.iterations: must be >= 2. Fix: set iterations to 2 or more so drift can compare repeated runs",
 		},
+		{
+			name: "snapshot drift threshold must be between zero and one",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Suites.Drift.Enabled = true
+				cfg.Suites.Drift.MaxSnapshotDrift = 1.5
+			},
+			wantErr: "invalid config: suites.drift.max_snapshot_drift: must be between 0 and 1. Fix: use a decimal threshold such as 0.18",
+		},
 	}
 
 	for _, tt := range tests {

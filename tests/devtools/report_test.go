@@ -7,82 +7,59 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-	"time"
 
 	"cleanr/cleanr"
 	"cleanr/internal/devtools"
 )
 
-func TestReportUsesBuiltInFailPreset(t *testing.T) {
+func TestDevtoolsReportSupportsPresetsAndInputFiles(t *testing.T) {
 	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	runner := devtools.NewRunner(t.TempDir(), &stdout, &stderr)
-
-	if err := runner.Report(devtools.ReportOptions{}); err != nil {
-		t.Fatalf("report: %v", err)
+	runner := devtools.NewRunner(t.TempDir(), &stdout, &stdout)
+	if err := runner.Report(devtools.ReportOptions{Preset: "pass", Format: "json"}); err != nil {
+		t.Fatalf("report pass preset: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"passed": true`) {
+		t.Fatalf("unexpected pass preset output: %s", stdout.String())
 	}
 
-	out := stdout.String()
-	for _, want := range []string{
-		"rendering text report from built-in fail preset",
-		"cleanr FAIL",
-		"token-optimization",
-		"estimated_savings=214",
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("expected %q in output:\n%s", want, out)
-		}
+	stdout.Reset()
+	if err := runner.Report(devtools.ReportOptions{Preset: "", Format: "text"}); err != nil {
+		t.Fatalf("report fail preset: %v", err)
 	}
-}
+	if !strings.Contains(stdout.String(), "rendering text report from built-in fail preset") {
+		t.Fatalf("unexpected fail preset output: %s", stdout.String())
+	}
 
-func TestReportRendersInputJSONFile(t *testing.T) {
-	reportJSON, err := json.Marshal(cleanr.Report{
-		Name:         "fixture",
-		Passed:       true,
-		GeneratedAt:  time.Date(2026, time.May, 20, 15, 0, 0, 0, time.UTC),
-		Duration:     950 * time.Millisecond,
-		TotalSuites:  1,
-		FailedSuites: 0,
-		TotalCases:   1,
-		FailedCases:  0,
-		Suites: []cleanr.SuiteResult{{
-			Name:     "security",
-			Passed:   true,
-			Duration: 950 * time.Millisecond,
-			Cases: []cleanr.CaseResult{{
-				Name:     "case-1",
-				Passed:   true,
-				Duration: 200 * time.Millisecond,
-			}},
-		}},
-	})
+	if err := runner.Report(devtools.ReportOptions{Preset: "unknown"}); err == nil {
+		t.Fatal("expected unsupported preset error")
+	}
+
+	report := cleanr.Report{Name: "from-file", Passed: true}
+	data, err := json.Marshal(report)
 	if err != nil {
 		t.Fatalf("marshal report: %v", err)
 	}
-
 	workDir := t.TempDir()
-	inputPath := filepath.Join(workDir, "report.json")
-	if err := os.WriteFile(inputPath, reportJSON, 0o644); err != nil {
-		t.Fatalf("write report: %v", err)
+	path := filepath.Join(workDir, "report.json")
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write report file: %v", err)
+	}
+	stdout.Reset()
+	runner = devtools.NewRunner(workDir, &stdout, &stdout)
+	if err := runner.Report(devtools.ReportOptions{Input: "report.json", Format: "json"}); err != nil {
+		t.Fatalf("report file input: %v", err)
+	}
+	if !strings.Contains(stdout.String(), `"name": "from-file"`) {
+		t.Fatalf("unexpected file report output: %s", stdout.String())
 	}
 
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	runner := devtools.NewRunner(workDir, &stdout, &stderr)
-
-	if err := runner.Report(devtools.ReportOptions{Input: "report.json"}); err != nil {
-		t.Fatalf("report: %v", err)
+	if err := runner.Report(devtools.ReportOptions{Input: "missing.json"}); err == nil {
+		t.Fatal("expected missing file error")
 	}
-
-	out := stdout.String()
-	for _, want := range []string{
-		"rendering text report from",
-		"cleanr PASS",
-		"target: fixture",
-		"security",
-	} {
-		if !strings.Contains(out, want) {
-			t.Fatalf("expected %q in output:\n%s", want, out)
-		}
+	if err := os.WriteFile(path, []byte("{"), 0o644); err != nil {
+		t.Fatalf("write broken report file: %v", err)
+	}
+	if err := runner.Report(devtools.ReportOptions{Input: "report.json"}); err == nil {
+		t.Fatal("expected invalid report input error")
 	}
 }

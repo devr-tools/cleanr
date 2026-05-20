@@ -2,6 +2,7 @@ package snapshots
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"cleanr/cleanr/core"
@@ -29,6 +30,12 @@ func Capture(ctx context.Context, cfg core.Config, target core.Target) (File, er
 		})
 		if resp.Err != nil {
 			return File{}, resp.Err
+		}
+		if resp.ExtractError != nil {
+			return File{}, fmt.Errorf("capture snapshot for %s: %w", scenario.Name, resp.ExtractError)
+		}
+		if resp.StatusCode >= 400 {
+			return File{}, fmt.Errorf("capture snapshot for %s: received status %d", scenario.Name, resp.StatusCode)
 		}
 		snapshot.Scenarios = append(snapshot.Scenarios, ScenarioSnapshot{
 			Name:       scenario.Name,

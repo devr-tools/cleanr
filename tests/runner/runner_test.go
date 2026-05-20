@@ -163,12 +163,16 @@ func TestTextReport(t *testing.T) {
 	})
 	for _, want := range []string{
 		"cleanr FAIL",
-		"summary: 1/1 suites failed, 1/1 cases failed",
-		"suite summary:",
-		"FAIL  security  1 cases, 1 failed | 900ms",
-		"- case-1 [FAIL]  duration 250ms | score 0.42 | p95 120ms | provider=openai | provider_model=gpt-test",
-		"HIGH: problem",
-		"meta: total_tokens=123",
+		"Suites      1 total | 1 failed",
+		"Cases       1 total | 1 failed",
+		"Overview",
+		"[FAIL] security  1 cases, 1 failed | 900ms",
+		"Details",
+		"security [FAIL]",
+		"- case-1 [FAIL]",
+		"Metrics  duration 250ms | score 0.42 | p95 120ms | provider=openai | provider_model=gpt-test",
+		"Finding  HIGH: problem",
+		"Meta     total_tokens=123",
 	} {
 		if !strings.Contains(out, want) {
 			t.Fatalf("expected %q in report:\n%s", want, out)

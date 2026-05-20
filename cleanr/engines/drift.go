@@ -77,7 +77,7 @@ func (DriftEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 		if representativeSet {
 			details = responseDetails(representative, details)
 		}
-		if cfg.BaselineFile != "" {
+		if cfg.BaselineFile != "" && representativeSet {
 			if snapshot, ok := baseline.FindScenario(scenario.Name); ok {
 				snapshotDrift := normalizedDistance(snapshot.Text, representative.Text)
 				details["baseline_text"] = trimForReport(snapshot.Text)
@@ -99,6 +99,8 @@ func (DriftEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 			} else {
 				findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("missing baseline snapshot for scenario %s", scenario.Name)})
 			}
+		} else if cfg.BaselineFile != "" {
+			findings = append(findings, core.Finding{Severity: "high", Message: "no successful response available for baseline comparison"})
 		}
 		cases = append(cases, core.CaseResult{
 			Name:     scenario.Name,
