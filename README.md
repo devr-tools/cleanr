@@ -1,7 +1,7 @@
 <p align="center">
   <img src="img/cleanr.png" alt="cleanr logo" width="420">
 </p>
-
+[![CI](https://github.com/alxxjohn/cleanr/actions/workflows/ci.yml/badge.svg)](https://github.com/alxxjohn/cleanr/actions/workflows/ci.yml)
 `cleanr` is a Go-based AI testing SDK and CLI for validating AI applications in CI with adversarial, security, load, chaos, drift, and token-efficiency suites.
 
 ## Overview

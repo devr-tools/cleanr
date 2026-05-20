@@ -41,6 +41,8 @@ func TestOpenAITargetParsesResponsesAPIUsage(t *testing.T) {
 			return jsonResponse(t, http.StatusOK, map[string]any{
 				"id":     "resp_test",
 				"object": "response",
+				"model":  "gpt-4.1-mini",
+				"status": "completed",
 				"output": []any{
 					map[string]any{
 						"type": "message",
@@ -91,6 +93,74 @@ func TestOpenAITargetParsesResponsesAPIUsage(t *testing.T) {
 	}
 	if resp.Usage.InputTokens != 21 || resp.Usage.OutputTokens != 8 || resp.Usage.TotalTokens != 29 || resp.Usage.Heuristic {
 		t.Fatalf("unexpected usage: %+v", resp.Usage)
+	}
+	if resp.Normalized.Provider != "openai" || resp.Normalized.ID != "resp_test" || resp.Normalized.Model != "gpt-4.1-mini" || resp.Normalized.Status != "completed" {
+		t.Fatalf("unexpected normalized response: %+v", resp.Normalized)
+	}
+}
+
+func TestOpenAITargetNormalizesChatCompletionToolCalls(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":     "chatcmpl_tool",
+				"object": "chat.completion",
+				"model":  "gpt-4o-mini",
+				"choices": []any{
+					map[string]any{
+						"index": 0,
+						"message": map[string]any{
+							"role":    "assistant",
+							"content": nil,
+							"tool_calls": []any{
+								map[string]any{
+									"id":   "call_123",
+									"type": "function",
+									"function": map[string]any{
+										"name":      "lookup_policy",
+										"arguments": "{\"policy_id\":\"refunds\"}",
+									},
+								},
+							},
+						},
+						"finish_reason": "tool_calls",
+					},
+				},
+				"usage": map[string]any{
+					"prompt_tokens":     18,
+					"completion_tokens": 4,
+					"total_tokens":      22,
+				},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type: "openai",
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:   "chat_completions",
+			Model:     "gpt-4o-mini",
+			APIKeyEnv: "OPENAI_API_KEY",
+			BaseURL:   "https://openai.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.Request{
+		Prompt:  "Use tools when needed.",
+		Timeout: 2 * time.Second,
+	})
+
+	if resp.Err != nil || resp.ExtractError != nil {
+		t.Fatalf("unexpected response errors: err=%v extract=%v", resp.Err, resp.ExtractError)
+	}
+	if len(resp.Normalized.ToolCalls) != 1 {
+		t.Fatalf("unexpected normalized tool calls: %+v", resp.Normalized.ToolCalls)
+	}
+	toolCall := resp.Normalized.ToolCalls[0]
+	if resp.Normalized.FinishReason != "tool_calls" || toolCall.Name != "lookup_policy" || toolCall.Arguments != "{\"policy_id\":\"refunds\"}" {
+		t.Fatalf("unexpected normalized tool call payload: normalized=%+v tool=%+v", resp.Normalized, toolCall)
 	}
 }
 
@@ -166,6 +236,10 @@ func TestRunCommandSupportsOpenAIChatCompletionsTarget(t *testing.T) {
 
 	report := runConfigAsJSONReport(t, configPath)
 	requirePassingSecurityReport(t, report, "openai-chat")
+	details := report.Suites[0].Cases[0].Details
+	if details["provider"] != "openai" || details["provider_model"] != "gpt-4o-mini" || details["finish_reason"] != "stop" {
+		t.Fatalf("unexpected normalized details: %+v", details)
+	}
 }
 
 func TestRunCommandSupportsOpenAIResponsesTarget(t *testing.T) {
@@ -184,12 +258,14 @@ func TestRunCommandSupportsOpenAIResponsesTarget(t *testing.T) {
 			t.Fatalf("unexpected request: %v", err)
 		}
 
-		return jsonResponse(t, http.StatusOK, map[string]any{
-			"id":     "resp_test",
-			"object": "response",
-			"output": []any{
-				map[string]any{
-					"type": "message",
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":     "resp_test",
+				"object": "response",
+				"model":  "gpt-4.1-mini",
+				"status": "completed",
+				"output": []any{
+					map[string]any{
+						"type": "message",
 					"role": "assistant",
 					"content": []any{
 						map[string]any{
