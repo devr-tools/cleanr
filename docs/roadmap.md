@@ -35,30 +35,9 @@ Those capabilities can matter later, but they are not the wedge.
 
 ## Differentiation wedge
 
-The roadmap is now centered on five product wedges that are still under-served in the market.
+The roadmap is now centered on the remaining product wedges that are still under-served in the market.
 
-### 1. Shadow-state verification
-
-Verify what the agent actually changed in a simulated or controlled environment, not just what it said it changed.
-
-Examples:
-
-- verify that a ticket was updated with the correct fields
-- verify that a database mutation stayed within row and column constraints
-- verify that a draft email was created but not sent
-- verify that a file write occurred only in approved locations
-
-### 2. Provenance-aware attack testing
-
-Model inputs should not be treated as a flat blob. `cleanr` should track trust tiers across user input, system instructions, retrieved content, tool output, memory, and human approvals.
-
-Examples:
-
-- fail if untrusted retrieved text overrides system policy
-- fail if tool output is treated as authority without validation
-- fail if indirect prompt injection crosses from untrusted content into privileged actions
-
-### 3. Claim-vs-trace verification
+### 1. Claim-vs-trace verification
 
 Agents frequently claim they checked a source, called a tool, obtained approval, or completed an action when the execution trace does not support that claim.
 
@@ -69,7 +48,7 @@ Agents frequently claim they checked a source, called a tool, obtained approval,
 - claimed approval steps with no approval artifact
 - claimed state changes that do not match observed side effects
 
-### 4. Longitudinal memory and state safety
+### 2. Longitudinal memory and state safety
 
 Single-turn evals miss risks that accumulate over time. `cleanr` should treat memory, saved context, and persistent state as first-class attack and regression surfaces.
 
@@ -81,7 +60,7 @@ Examples:
 - memory poisoning
 - trust decay across long-running sessions
 
-### 5. Release policy as code
+### 3. Release policy as code
 
 Teams need machine-checkable rules for what an agent may and may not do before merge.
 
@@ -129,6 +108,8 @@ The first action-verification slices are now in place as well:
 
 - file-based shadow-state verification for approved write locations
 - provenance-aware attacks driven by trust-tagged scenario context sources
+- expected file-mutation assertions for create, modify, and delete checks
+- provenance policy checks for approval-required tools and approved sink tools
 
 This proves the basic runner model, but the current product still focuses mostly on response inspection plus a narrow set of workflow checks. The next phase still needs to expand the abstraction from "prompt in, text out" toward "workflow in, evidence out."
 
@@ -142,12 +123,9 @@ Objective: turn `cleanr` from a foundation eval runner into a credible CI gate f
 
 Primary outcomes:
 
-- provider-neutral workflow evidence model
-- tool-call and trace capture as first-class inputs to assertions
 - release-policy DSL for tool permissions, trust boundaries, and side effects
-- claim-vs-trace verification suite
-- shadow-state verification harnesses for common action surfaces
-- provenance-aware prompt-injection and data-exfiltration tests
+- multi-surface state verification beyond file writes
+- deeper provenance-aware prompt-injection and data-exfiltration tests
 - stronger docs and sample projects for real agent stacks
 
 Exit criteria:
@@ -163,7 +141,6 @@ Objective: make `cleanr` credible for higher-risk and longer-lived agent systems
 
 Primary outcomes:
 
-- longitudinal memory safety suite
 - stale-memory and memory-poisoning regression packs
 - seeded replay with fixed workflow metadata where supported
 - change-impact replay and blast-radius summaries
@@ -199,7 +176,6 @@ Exit criteria:
 ### 1. Evidence model and target abstraction
 
 - Expand the target abstraction from text responses to workflow evidence.
-- Normalize tool calls, approvals, retrieval events, state mutations, and final outputs into one provider-neutral envelope.
 - Preserve support for HTTP-first targets while making richer adapters possible.
 - Keep evidence exportable in text, JSON, and JUnit-compatible forms where practical.
 
@@ -212,24 +188,20 @@ Exit criteria:
 
 ### 3. Claim-vs-trace verification
 
-- Add checks for claimed tool use with no invocation.
-- Add checks for claimed citations or approvals with no evidence.
-- Add checks for claimed state changes that do not match observed mutations.
 - Produce focused failure output that pinpoints the first unsupported claim.
 
 ### 4. Shadow-state verification
 
 - Introduce pluggable state verifiers for common surfaces such as SQL, HTTP side effects, files, queues, and outbound communications.
-- Support pre-run and post-run snapshots with diffing.
-- Add allowlists and deny rules for mutation scope.
-- Report both intended and observed state changes.
+- Extend file-state verification into reusable adapters for richer mutation surfaces.
+- Add draft-not-send and row/column-scoped mutation verification patterns.
+- Report both intended and observed state changes across multiple surface types.
 
 ### 5. Provenance-aware adversarial testing
 
-- Add trust-tagged scenario inputs and context sources.
-- Add indirect prompt-injection attacks that originate from retrieved or tool-provided content.
+- Expand indirect prompt-injection attacks beyond prompt-appended source injections.
 - Add exfiltration tests that target cross-boundary data flow instead of only unsafe text output.
-- Add role-confusion and approval-bypass tests for multi-step workflows.
+- Extend approval-bypass and sink-restriction checks into multi-step and role-confusion workflows.
 
 ### 6. Docs and developer adoption
 
@@ -243,7 +215,6 @@ Exit criteria:
 ### 1. Longitudinal memory safety
 
 - Add fixtures for persistent memory reads and writes.
-- Test stale facts, revoked facts, poisoned facts, and cross-session bleed.
 - Add expiry and freshness assertions.
 - Add replay support for multi-session scenarios.
 
@@ -277,10 +248,9 @@ Establish the release-gate core.
 
 Make state and trust boundaries enforceable.
 
-- shadow-state verification for at least one mutation surface
-- trust-tiered adversarial scenarios
 - policy assertions for approvals, sinks, and irreversible actions
-- indirect prompt-injection coverage for retrieved and tool-provided content
+- additional state verifiers beyond file writes
+- deeper multi-step provenance and indirect prompt-injection coverage
 
 ### Milestone C
 
