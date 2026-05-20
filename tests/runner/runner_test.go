@@ -179,7 +179,9 @@ func TestTextReport(t *testing.T) {
 		}},
 	})
 	for _, want := range []string{
-		"cleanr FAIL",
+		"▄████",
+		"Report Summary",
+		"Status      FAIL",
 		"Suites      1 total | 1 failed",
 		"Cases       1 total | 1 failed",
 		"Overview",

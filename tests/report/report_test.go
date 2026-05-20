@@ -39,6 +39,8 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 	}
 	textOut := text.String()
 	for _, want := range []string{
+		"Report Summary",
+		"Status      FAIL",
 		"Overview",
 		"Details",
 		"Recommendations",

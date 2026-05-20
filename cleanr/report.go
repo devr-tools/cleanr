@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	imgpkg "cleanr/img"
 )
 
 func WriteReport(w io.Writer, report Report, format string) error {
@@ -37,8 +39,12 @@ func renderTextReport(report Report, palette textPalette) string {
 	if !report.Passed {
 		status = "FAIL"
 	}
-	fmt.Fprintf(&b, "%s %s\n", palette.accent("cleanr"), palette.status(report.Passed, status))
+	if banner := renderBanner(palette); banner != "" {
+		fmt.Fprintf(&b, "%s\n\n", banner)
+	}
+	fmt.Fprintf(&b, "%s\n", palette.accent("Report Summary"))
 	fmt.Fprintf(&b, "%s\n", palette.accent(strings.Repeat("=", 48)))
+	writeKeyValue(&b, palette, "Status", palette.status(report.Passed, status))
 	writeKeyValue(&b, palette, "Target", report.Name)
 	if !report.GeneratedAt.IsZero() {
 		writeKeyValue(&b, palette, "Generated", report.GeneratedAt.Format(time.RFC3339))
@@ -85,6 +91,21 @@ func renderTextReport(report Report, palette textPalette) string {
 		}
 	}
 	return strings.TrimRight(b.String(), "\n") + "\n"
+}
+
+func renderBanner(palette textPalette) string {
+	banner := imgpkg.Banner()
+	if banner == "" {
+		return ""
+	}
+	if !palette.color {
+		return banner
+	}
+	lines := strings.Split(banner, "\n")
+	for i, line := range lines {
+		lines[i] = palette.accent(line)
+	}
+	return strings.Join(lines, "\n")
 }
 
 type junitSuites struct {
