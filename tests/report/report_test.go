@@ -24,6 +24,27 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		Recommendations: []string{
 			"tighten prompts",
 		},
+		Trend: &cleanr.TrendReport{
+			HistoryLength:   2,
+			CurrentBuildID:  "build-2",
+			PreviousBuildID: "build-1",
+			PreviousAt:      time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC),
+			Summary: cleanr.TrendSummary{
+				FailedSuitesDelta: 1,
+				FailedCasesDelta:  2,
+				DurationDelta:     250 * time.Millisecond,
+				RegressedSuites:   1,
+			},
+			Suites: []cleanr.SuiteTrend{{
+				Name:             "drift",
+				Status:           "regressed",
+				FailedCasesDelta: 1,
+				ScoreDelta:       -0.12,
+				Drift: &cleanr.DriftTrend{
+					SemanticDriftDelta: 0.18,
+				},
+			}},
+		},
 		Suites: []cleanr.SuiteResult{{
 			Name:     "security",
 			Passed:   false,
@@ -43,6 +64,10 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		"Status      FAIL",
 		"Overview",
 		"Details",
+		"Trends",
+		"Compared",
+		"drift",
+		"semantic_drift_delta=+0.180",
 		"Recommendations",
 		"Finding  HIGH: suite issue",
 		"Finding  CRITICAL: boom",

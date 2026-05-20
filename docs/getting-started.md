@@ -116,6 +116,12 @@ Write JSON or JUnit output:
 ./dist/cleanr run -config cleanr.json -format junit -output cleanr-junit.xml
 ```
 
+Track trend history across builds:
+
+```bash
+./dist/cleanr run -config cleanr.json -trend-file reports/cleanr.trends.yaml -build-id "$GITHUB_SHA"
+```
+
 Set an overall execution timeout:
 
 ```bash
@@ -143,6 +149,7 @@ For an initial rollout, keep the first config simple:
 - capture a baseline snapshot from a known-good run and check it into the repo
 - confirm the response extraction path is correct
 - tune load, chaos, and drift thresholds after a few real runs
+- add `reporting.trend_file` once the suite is stable enough to track build-over-build drift deltas
 - emit JUnit in CI so failures show up as native test results
 
 The next reference to read is [configuration.md](configuration.md).

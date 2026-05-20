@@ -77,9 +77,12 @@ suites:
     enabled: true
     iterations: 4
     max_normalized_drift: 0.32
+    max_semantic_drift: 0.25
     max_snapshot_drift: 0.18
+    max_semantic_snapshot_drift: 0.2
     stable_tags: [stable]
     min_consistency_score: 0.68
+    min_semantic_consistency_score: 0.75
   token_optimization:
     enabled: true
     max_input_tokens: 700
@@ -92,6 +95,8 @@ suites:
 
 reporting:
   format: text
+  trend_file: reports/cleanr.trends.yaml
+  trend_limit: 30
 ```
 
 OpenAI-native examples are available in:
@@ -369,8 +374,11 @@ Used to catch excessive prompt size, verbose output, and repeated content.
 
 - `format`: `text`, `json`, or `junit`
 - `output`: optional destination file path
+- `trend_file`: optional JSON or YAML history file updated on each `run`
+- `trend_limit`: optional number of runs to retain in `trend_file`
+- `build_id`: optional build identifier recorded in the trend history and current report
 
-If `output` is omitted, reports are written to standard output. CLI flags can override both values at runtime.
+If `output` is omitted, reports are written to standard output. If `trend_file` is set, `cleanr run` compares the current report to the previous retained run, attaches deltas to the current report, and appends the new run to the history file. CLI flags can override these values at runtime.
 
 ## Validation Rules
 
@@ -387,6 +395,7 @@ The validator checks for:
 - invalid `suites.drift.max_semantic_snapshot_drift`
 - invalid absolute URLs
 - invalid load, chaos, drift, and token thresholds
+- invalid `reporting.trend_limit`
 - duplicate scenario names
 - invalid regular expressions in `suites.security.leak_patterns`
 - unsupported report formats

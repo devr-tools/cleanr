@@ -50,6 +50,9 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	configPath := fs.String("config", "", "Path to cleanr config")
 	format := fs.String("format", "", "Report format: text, json, junit")
 	output := fs.String("output", "", "Optional output file")
+	trendFile := fs.String("trend-file", "", "Optional trend history file")
+	buildID := fs.String("build-id", "", "Optional build identifier for trend history")
+	trendLimit := fs.Int("trend-limit", 0, "Maximum number of trend history runs to keep")
 	timeout := fs.Duration("timeout", 0, "Overall execution timeout")
 	if err := fs.Parse(args); err != nil {
 		return 2
@@ -72,7 +75,17 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	if *output != "" {
 		cfg.Reporting.Output = *output
 	}
+	if *trendFile != "" {
+		cfg.Reporting.TrendFile = *trendFile
+	}
+	if *buildID != "" {
+		cfg.Reporting.BuildID = *buildID
+	}
+	if *trendLimit != 0 {
+		cfg.Reporting.TrendLimit = *trendLimit
+	}
 	cfg.Suites.Drift.BaselineFile = resolveConfigRelativePath(resolvedConfigPath, cfg.Suites.Drift.BaselineFile)
+	cfg.Reporting.TrendFile = resolveConfigRelativePath(resolvedConfigPath, cfg.Reporting.TrendFile)
 
 	ctx := context.Background()
 	if *timeout > 0 {
@@ -81,6 +94,10 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		defer cancel()
 	}
 	report := cleanr.NewHTTPRunner(cfg).Run(ctx)
+	if err := cleanr.AttachTrendHistory(&report, cfg.Reporting.TrendFile, cfg.Reporting.BuildID, cfg.Reporting.TrendLimit); err != nil {
+		_, _ = fmt.Fprintf(stderr, "trend history error: %v\n", err)
+		return 2
+	}
 
 	dest := stdout
 	if cfg.Reporting.Output != "" {

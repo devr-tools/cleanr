@@ -73,6 +73,7 @@ func validateGoFileLayout(files []string) error {
 		switch {
 		case strings.HasPrefix(file, "cleanr/"):
 		case strings.HasPrefix(file, "cmd/"):
+		case strings.HasPrefix(file, "img/"):
 		case strings.HasPrefix(file, "internal/"):
 		case strings.HasPrefix(file, "tests/") && strings.HasSuffix(file, "_test.go"):
 		default:

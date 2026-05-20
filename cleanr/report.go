@@ -84,6 +84,21 @@ func renderTextReport(report Report, palette textPalette) string {
 			writeIndentedValue(&b, palette, 2, "Meta", meta)
 		}
 	}
+	if report.Trend != nil {
+		writeSectionHeader(&b, palette, "Trends")
+		if report.Trend.Baseline {
+			writeIndentedValue(&b, palette, 2, "Baseline", "captured first history point for this target")
+		} else {
+			writeIndentedValue(&b, palette, 2, "Compared", trendComparedText(*report.Trend))
+			writeIndentedValue(&b, palette, 2, "Summary", trendSummaryText(report.Trend.Summary))
+			for _, suiteTrend := range report.Trend.Suites {
+				if suiteTrend.Status == "unchanged" && suiteTrend.Drift == nil && suiteTrend.FailedCasesDelta == 0 && suiteTrend.ScoreDelta == 0 {
+					continue
+				}
+				writeIndentedValue(&b, palette, 2, suiteTrend.Name, suiteTrendText(suiteTrend))
+			}
+		}
+	}
 	if len(report.Recommendations) > 0 {
 		writeSectionHeader(&b, palette, "Recommendations")
 		for _, rec := range report.Recommendations {
@@ -209,6 +224,68 @@ func caseSummaryText(c CaseResult) string {
 
 func suiteMetaText(meta map[string]any) string {
 	return strings.Join(scalarDetailParts(meta), " | ")
+}
+
+func trendComparedText(trend TrendReport) string {
+	if trend.PreviousBuildID != "" {
+		return fmt.Sprintf("%s at %s", trend.PreviousBuildID, trend.PreviousAt.Format(time.RFC3339))
+	}
+	if !trend.PreviousAt.IsZero() {
+		return trend.PreviousAt.Format(time.RFC3339)
+	}
+	return "previous recorded run"
+}
+
+func trendSummaryText(summary TrendSummary) string {
+	parts := []string{
+		fmt.Sprintf("failed_suites_delta=%+d", summary.FailedSuitesDelta),
+		fmt.Sprintf("failed_cases_delta=%+d", summary.FailedCasesDelta),
+		fmt.Sprintf("duration_delta=%s", summary.DurationDelta.Round(time.Millisecond).String()),
+	}
+	if summary.RegressedSuites > 0 {
+		parts = append(parts, fmt.Sprintf("regressed_suites=%d", summary.RegressedSuites))
+	}
+	if summary.ImprovedSuites > 0 {
+		parts = append(parts, fmt.Sprintf("improved_suites=%d", summary.ImprovedSuites))
+	}
+	return strings.Join(parts, " | ")
+}
+
+func suiteTrendText(trend SuiteTrend) string {
+	parts := []string{trend.Status}
+	if trend.FailedCasesDelta != 0 {
+		parts = append(parts, fmt.Sprintf("failed_cases_delta=%+d", trend.FailedCasesDelta))
+	}
+	if trend.ScoreDelta != 0 {
+		parts = append(parts, fmt.Sprintf("score_delta=%+.3f", trend.ScoreDelta))
+	}
+	if trend.Drift != nil {
+		parts = append(parts, driftTrendParts(*trend.Drift)...)
+	}
+	return strings.Join(parts, " | ")
+}
+
+func driftTrendParts(trend DriftTrend) []string {
+	parts := make([]string, 0, 6)
+	if trend.NormalizedDriftDelta != 0 {
+		parts = append(parts, fmt.Sprintf("normalized_drift_delta=%+.3f", trend.NormalizedDriftDelta))
+	}
+	if trend.SemanticDriftDelta != 0 {
+		parts = append(parts, fmt.Sprintf("semantic_drift_delta=%+.3f", trend.SemanticDriftDelta))
+	}
+	if trend.ConsistencyScoreDelta != 0 {
+		parts = append(parts, fmt.Sprintf("consistency_score_delta=%+.3f", trend.ConsistencyScoreDelta))
+	}
+	if trend.SemanticConsistencyScoreDelta != 0 {
+		parts = append(parts, fmt.Sprintf("semantic_consistency_score_delta=%+.3f", trend.SemanticConsistencyScoreDelta))
+	}
+	if trend.BaselineDriftDelta != 0 {
+		parts = append(parts, fmt.Sprintf("baseline_drift_delta=%+.3f", trend.BaselineDriftDelta))
+	}
+	if trend.BaselineSemanticDriftDelta != 0 {
+		parts = append(parts, fmt.Sprintf("baseline_semantic_drift_delta=%+.3f", trend.BaselineSemanticDriftDelta))
+	}
+	return parts
 }
 
 func scalarDetailParts(values map[string]any) []string {

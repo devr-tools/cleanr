@@ -74,13 +74,15 @@ jobs:
         run: ./dist/cleanr validate -config cleanr.yaml
 
       - name: Run cleanr
-        run: ./dist/cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml
+        run: ./dist/cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml -trend-file reports/cleanr.trends.yaml -build-id "${{ github.sha }}"
 
       - name: Upload report
         uses: actions/upload-artifact@v4
         with:
           name: cleanr-report
-          path: cleanr-junit.xml
+          path: |
+            cleanr-junit.xml
+            reports/cleanr.trends.yaml
 ```
 
 ## Local-to-CI Workflow
@@ -98,6 +100,8 @@ A practical rollout path is:
 - `text`: good for local development and terminal-first review
 - `json`: good for automation, custom ingestion, or post-processing
 - `junit`: good for CI systems that already understand test reports
+
+Trend history is orthogonal to the main report format. If `reporting.trend_file` or `-trend-file` is set, `cleanr` also writes a compact JSON or YAML history file that can be persisted as a CI artifact and compared by later runs.
 
 ## Release Workflow Notes
 

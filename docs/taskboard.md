@@ -75,7 +75,7 @@ Exit criteria: tagged release process documented and repeatable.
 
 - [ ] Add Gemini adapter.
 - [ ] Add distributed load workers.
-- [ ] Add trend reports across builds.
+- [x] Add trend reports across builds.
 - [ ] Add signed attestations for compliance evidence.
 - [ ] Add plugin system for custom suites.
 - [ ] Add hosted result aggregation.

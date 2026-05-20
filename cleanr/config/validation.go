@@ -169,6 +169,9 @@ func ValidateConfig(cfg core.Config) error {
 			errs.Add("reporting.format", "must be one of text, json, or junit", "use one of the built-in report formats or omit the field for text output")
 		}
 	}
+	if cfg.Reporting.TrendLimit < 0 {
+		errs.Add("reporting.trend_limit", "must be >= 0", "use 0 to disable history trimming or set a positive run-retention count such as 30")
+	}
 
 	if errs.HasAny() {
 		return errs

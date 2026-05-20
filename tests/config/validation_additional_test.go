@@ -192,6 +192,13 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			},
 			wantSub: "target.type",
 		},
+		{
+			name: "negative trend limit",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Reporting.TrendLimit = -1
+			},
+			wantSub: "reporting.trend_limit",
+		},
 	}
 
 	for _, tt := range tests {

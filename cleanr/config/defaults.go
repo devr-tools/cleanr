@@ -216,4 +216,7 @@ func applyDefaults(cfg *core.Config) {
 			cfg.Suites.TokenOptimization.SuggestedMaxOutputTokens = 180
 		}
 	}
+	if cfg.Reporting.TrendFile != "" && cfg.Reporting.TrendLimit == 0 {
+		cfg.Reporting.TrendLimit = 30
+	}
 }

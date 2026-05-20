@@ -2,7 +2,7 @@
   <img src="img/cleanr.png" alt="cleanr logo" width="420">
 </p>
 
-**cleanr** is a Go-based AI testing SDK and CLI for validating AI applications in CI with adversarial, security, load, chaos, drift, and token-efficiency suites.
+**cleanr** is a Go-based AI testing SDK and CLI for validating AI applications in CI with adversarial, security, load, chaos, drift, token-efficiency, and cross-build trend reporting.
 
 ## Installation
 
@@ -82,6 +82,7 @@ What each command does:
 - `cleanr snapshot -config <file>`: capture or refresh baseline snapshots for drift regression checks
 - `cleanr validate -config <file>`: check config shape and required fields before execution
 - `cleanr run -config <file>`: execute enabled suites and emit a report
+- `cleanr run -config <file> -trend-file <file> -build-id <id>`: compare the current run to prior builds and append trend history
 - `cleanr version`: print the installed CLI version
 - `cleanr mcp`: start the MCP server for agent and tool integrations
 
@@ -94,6 +95,7 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 - Load behavior with concurrent virtual users and latency or error-budget assertions
 - Chaos conditions such as tight deadlines, noisy context, and duplicate turns
 - Drift across repeated runs of the same scenario, with lexical and semantic similarity checks
+- Trend history across builds so drift and failure deltas are comparable over time
 - Token budgets, duplication, and output-efficiency regressions
 - CI-friendly reporting in text, JSON, and JUnit formats
 - MCP server mode for agent and tool-based integrations
@@ -107,6 +109,7 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 | Load | `virtual_users`, `requests_per_user`, `max_error_rate_pct`, `p95_latency_ms` |
 | Scenario assertions | `status_code`, `latency_ms`, `finish_reason`, tool-call checks |
 | Drift | `iterations`, `max_normalized_drift`, `max_semantic_drift`, `min_consistency_score`, `min_semantic_consistency_score` |
+| Trend reporting | `reporting.trend_file`, `reporting.trend_limit`, `reporting.build_id` |
 | Token efficiency | `max_input_tokens`, `max_output_tokens`, `max_total_tokens`, output/input ratio, duplication ratios |
 
 The example configs currently ship with starter thresholds such as `8` virtual users, `8` requests per user, `5%` max error rate, and `2500ms` p95 latency so teams can tune from a realistic baseline instead of starting from zero. See [docs/configuration.md](docs/configuration.md) and the [`examples/`](examples) directory.

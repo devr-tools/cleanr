@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 
 	"cleanr/cleanr"
@@ -166,7 +167,7 @@ func TestRunCommandAutoDetectsDefaultYAMLConfig(t *testing.T) {
 	if exitCode != 0 {
 		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "cleanr PASS") {
+	if !strings.Contains(stdout.String(), "Status      PASS") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
 	}
 }
@@ -213,5 +214,119 @@ func TestSnapshotCommandWritesBaselineFile(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "wrote 1 snapshots to") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestRunCommandPersistsTrendHistory(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "trend-drift",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy.",
+		Tags:   []string{"stable"},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Drift.Enabled = true
+	cfg.Suites.Drift.Iterations = 2
+	cfg.Suites.Drift.StableTags = []string{"stable"}
+	cfg.Suites.Drift.MaxNormalizedDrift = 1
+	cfg.Suites.Drift.MaxSemanticDrift = 1
+	cfg.Suites.Drift.MinConsistencyScore = 0
+	cfg.Suites.Drift.MinSemanticConsistencyScore = 0
+	cfg.Reporting.Format = "json"
+	cfg.Reporting.TrendFile = "reports/cleanr.trends.yaml"
+	cfg.Reporting.TrendLimit = 5
+
+	path := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+		t.Fatalf("write yaml config: %v", err)
+	}
+
+	var mu sync.Mutex
+	runNumber := 0
+	requestInRun := 0
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if requestInRun == 0 {
+			runNumber++
+		}
+		var body string
+		switch runNumber {
+		case 1:
+			body = `{"output":{"text":"Refunds are available within 30 days of purchase."}}`
+		default:
+			if requestInRun%2 == 0 {
+				body = `{"output":{"text":"Refunds are available within 30 days of purchase."}}`
+			} else {
+				body = `{"output":{"text":"A refund is available within 30 days after purchase."}}`
+			}
+		}
+		requestInRun++
+		if requestInRun == 2 {
+			requestInRun = 0
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	})
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	var stdout1 bytes.Buffer
+	var stderr1 bytes.Buffer
+	exitCode := cli.Run([]string{"run", "-config", path, "-build-id", "build-1"}, &stdout1, &stderr1)
+	if exitCode != 0 {
+		t.Fatalf("expected first run exit code 0, got %d, stderr=%s", exitCode, stderr1.String())
+	}
+
+	var firstReport cleanr.Report
+	if err := json.Unmarshal(stdout1.Bytes(), &firstReport); err != nil {
+		t.Fatalf("decode first report: %v\n%s", err, stdout1.String())
+	}
+	if firstReport.Trend == nil || !firstReport.Trend.Baseline {
+		t.Fatalf("expected baseline trend on first run, got %+v", firstReport.Trend)
+	}
+
+	var stdout2 bytes.Buffer
+	var stderr2 bytes.Buffer
+	exitCode = cli.Run([]string{"run", "-config", path, "-build-id", "build-2"}, &stdout2, &stderr2)
+	if exitCode != 0 {
+		t.Fatalf("expected second run exit code 0, got %d, stderr=%s", exitCode, stderr2.String())
+	}
+
+	var secondReport cleanr.Report
+	if err := json.Unmarshal(stdout2.Bytes(), &secondReport); err != nil {
+		t.Fatalf("decode second report: %v\n%s", err, stdout2.String())
+	}
+	if secondReport.Trend == nil || secondReport.Trend.Baseline {
+		t.Fatalf("expected non-baseline trend on second run, got %+v", secondReport.Trend)
+	}
+	if secondReport.Trend.HistoryLength != 2 {
+		t.Fatalf("expected history length 2, got %+v", secondReport.Trend)
+	}
+	if secondReport.Trend.PreviousBuildID != "build-1" || secondReport.Trend.CurrentBuildID != "build-2" {
+		t.Fatalf("unexpected trend build IDs: %+v", secondReport.Trend)
+	}
+	if len(secondReport.Trend.Suites) == 0 || secondReport.Trend.Suites[0].Drift == nil {
+		t.Fatalf("expected drift trend delta in report, got %+v", secondReport.Trend)
+	}
+
+	historyPath := filepath.Join(filepath.Dir(path), "reports", "cleanr.trends.yaml")
+	history, err := cleanr.LoadTrendHistoryFile(historyPath)
+	if err != nil {
+		t.Fatalf("load trend history: %v", err)
+	}
+	if len(history.Runs) != 2 {
+		t.Fatalf("expected 2 trend runs, got %+v", history)
+	}
+	if history.Runs[1].BuildID != "build-2" {
+		t.Fatalf("unexpected latest trend run: %+v", history.Runs[1])
 	}
 }

@@ -131,8 +131,11 @@ type TokenOptimizationConfig struct {
 }
 
 type ReportingConfig struct {
-	Format string `json:"format"`
-	Output string `json:"output"`
+	Format     string `json:"format"`
+	Output     string `json:"output"`
+	TrendFile  string `json:"trend_file"`
+	TrendLimit int    `json:"trend_limit"`
+	BuildID    string `json:"build_id"`
 }
 
 type Request struct {
@@ -219,7 +222,43 @@ type Report struct {
 	TotalCases      int           `json:"total_cases"`
 	FailedCases     int           `json:"failed_cases"`
 	Suites          []SuiteResult `json:"suites"`
+	Trend           *TrendReport  `json:"trend,omitempty"`
 	Recommendations []string      `json:"recommendations,omitempty"`
+}
+
+type TrendReport struct {
+	Baseline        bool         `json:"baseline"`
+	HistoryLength   int          `json:"history_length"`
+	CurrentBuildID  string       `json:"current_build_id,omitempty"`
+	PreviousBuildID string       `json:"previous_build_id,omitempty"`
+	PreviousAt      time.Time    `json:"previous_at,omitempty"`
+	Summary         TrendSummary `json:"summary"`
+	Suites          []SuiteTrend `json:"suites,omitempty"`
+}
+
+type TrendSummary struct {
+	FailedSuitesDelta int           `json:"failed_suites_delta"`
+	FailedCasesDelta  int           `json:"failed_cases_delta"`
+	DurationDelta     time.Duration `json:"duration_delta"`
+	RegressedSuites   int           `json:"regressed_suites"`
+	ImprovedSuites    int           `json:"improved_suites"`
+}
+
+type SuiteTrend struct {
+	Name             string      `json:"name"`
+	Status           string      `json:"status"`
+	FailedCasesDelta int         `json:"failed_cases_delta"`
+	ScoreDelta       float64     `json:"score_delta,omitempty"`
+	Drift            *DriftTrend `json:"drift,omitempty"`
+}
+
+type DriftTrend struct {
+	NormalizedDriftDelta          float64 `json:"normalized_drift_delta,omitempty"`
+	SemanticDriftDelta            float64 `json:"semantic_drift_delta,omitempty"`
+	ConsistencyScoreDelta         float64 `json:"consistency_score_delta,omitempty"`
+	SemanticConsistencyScoreDelta float64 `json:"semantic_consistency_score_delta,omitempty"`
+	BaselineDriftDelta            float64 `json:"baseline_drift_delta,omitempty"`
+	BaselineSemanticDriftDelta    float64 `json:"baseline_semantic_drift_delta,omitempty"`
 }
 
 type Target interface {

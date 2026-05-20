@@ -8,6 +8,7 @@ import (
 	configpkg "cleanr/cleanr/config"
 	"cleanr/cleanr/core"
 	snapshotspkg "cleanr/cleanr/snapshots"
+	trendspkg "cleanr/cleanr/trends"
 )
 
 type Config = core.Config
@@ -31,10 +32,16 @@ type ProviderResponse = core.ProviderResponse
 type ToolCall = core.ToolCall
 type SnapshotFile = snapshotspkg.File
 type ScenarioSnapshot = snapshotspkg.ScenarioSnapshot
+type TrendHistoryFile = trendspkg.HistoryFile
+type TrendHistoryRun = trendspkg.HistoryRun
 type Finding = core.Finding
 type CaseResult = core.CaseResult
 type SuiteResult = core.SuiteResult
 type Report = core.Report
+type TrendReport = core.TrendReport
+type TrendSummary = core.TrendSummary
+type SuiteTrend = core.SuiteTrend
+type DriftTrend = core.DriftTrend
 type Target = core.Target
 type Engine = core.Engine
 type RunContext = core.RunContext
@@ -75,6 +82,18 @@ func WriteSnapshotFile(path string, snapshot SnapshotFile) error {
 
 func CaptureSnapshots(ctx context.Context, cfg Config, target Target) (SnapshotFile, error) {
 	return snapshotspkg.Capture(ctx, cfg, target)
+}
+
+func LoadTrendHistoryFile(path string) (TrendHistoryFile, error) {
+	return trendspkg.LoadFile(path)
+}
+
+func WriteTrendHistoryFile(path string, history TrendHistoryFile) error {
+	return trendspkg.WriteFile(path, history)
+}
+
+func AttachTrendHistory(report *Report, path, buildID string, limit int) error {
+	return trendspkg.AttachAndPersist(report, path, buildID, limit)
 }
 
 func NewTarget(cfg TargetConfig, client *http.Client) Target {

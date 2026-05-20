@@ -61,3 +61,5 @@ suites:
 
 reporting:
   format: text
+  trend_file: reports/cleanr.trends.yaml
+  trend_limit: 30
