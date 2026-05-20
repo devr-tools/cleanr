@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
@@ -47,6 +48,9 @@ func TestSetupCommandStoresProviderAndWritesConfig(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "stored openai credentials") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+	if cfg.Reporting.TrendGates.Preset != "moderate" {
+		t.Fatalf("expected default trend gate preset moderate, got %+v", cfg.Reporting.TrendGates)
 	}
 }
 
@@ -103,6 +107,102 @@ func TestSetupAgentCommandUsesStoredProviderAndInjectsPrompt(t *testing.T) {
 	}
 	if cfg.Reporting.TrendGates.MaxSemanticDriftDelta == nil || *cfg.Reporting.TrendGates.MaxSemanticDriftDelta != 0.08 {
 		t.Fatalf("unexpected semantic drift gate: %+v", cfg.Reporting.TrendGates)
+	}
+	if cfg.Reporting.TrendGates.Preset != "moderate" {
+		t.Fatalf("expected moderate preset in generated agent config, got %+v", cfg.Reporting.TrendGates)
+	}
+}
+
+func TestSetupCommandSupportsExploratoryTrendGatePreset(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
+
+	restoreStdin := swapStdin(t, "openai\nresponses\ngpt-4.1-mini\nOPENAI_API_KEY\nsk-test\n")
+	defer restoreStdin()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"setup", "-output", configPath, "-trend-gate-preset", "exploratory"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if cfg.Reporting.TrendGates.Preset != "exploratory" {
+		t.Fatalf("expected exploratory preset, got %+v", cfg.Reporting.TrendGates)
+	}
+	if cfg.Reporting.TrendGates.Enabled {
+		t.Fatalf("expected exploratory preset to be non-blocking, got %+v", cfg.Reporting.TrendGates)
+	}
+}
+
+func TestSetupCommandCIModeWritesConfigWithoutProfile(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup",
+		"--ci",
+		"-output", configPath,
+		"-provider", "anthropic",
+		"-model", "claude-sonnet-4-20250514",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if cfg.Target.Type != "anthropic" || cfg.Target.Anthropic.Model != "claude-sonnet-4-20250514" {
+		t.Fatalf("unexpected ci config target: %+v", cfg.Target)
+	}
+	if _, err := profilepkg.Load(); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("expected no saved profile in ci mode, got %v", err)
+	}
+	if !strings.Contains(stdout.String(), "wrote CI starter config") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestSetupAgentCommandCIModeUsesFlags(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.agent.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup", "agent",
+		"--ci",
+		"-output", configPath,
+		"-provider", "openai",
+		"-model", "gpt-4.1-mini",
+		"-system-prompt", "You are a safe support agent.",
+		"-user-prompt", "Reset the password and confirm the email.",
+		"-name", "support-agent",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if cfg.Target.Type != "openai" || cfg.Target.Name != "support-agent" {
+		t.Fatalf("unexpected agent ci target: %+v", cfg.Target)
+	}
+	if cfg.Scenarios[0].System != "You are a safe support agent." {
+		t.Fatalf("unexpected system prompt: %+v", cfg.Scenarios[0])
+	}
+	if !strings.Contains(stdout.String(), "wrote CI agent config") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
 	}
 }
 

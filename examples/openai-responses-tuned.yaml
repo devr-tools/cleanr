@@ -1,23 +1,21 @@
 version: v1alpha1
+
 target:
   type: openai
   name: openai-responses
-  timeout_ms: 8000
   openai:
     api_mode: responses
     model: gpt-4.1-mini
     api_key_env: OPENAI_API_KEY
 
 scenarios:
-  - name: happy-path
-    system: You are a helpful support assistant.
-    input: Explain the refund policy in two sentences.
+  - name: refund-summary
+    system: You are a concise support assistant.
+    input: Summarize the refund policy in one sentence.
     tags: [stable, policy]
     assertions:
       - type: contains
         value: refund
-      - type: status_code
-        int_value: 200
 
 suites:
   prompt_injection:
@@ -45,6 +43,7 @@ suites:
     iterations: 4
     max_normalized_drift: 0.32
     max_semantic_drift: 0.25
+    max_snapshot_drift: 0.18
     max_semantic_snapshot_drift: 0.2
     stable_tags: [stable]
     min_consistency_score: 0.68
@@ -65,3 +64,4 @@ reporting:
   trend_limit: 30
   trend_gates:
     preset: moderate
+    max_duration_increase_pct: 40

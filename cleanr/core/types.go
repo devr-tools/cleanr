@@ -140,6 +140,7 @@ type ReportingConfig struct {
 }
 
 type TrendGateConfig struct {
+	Preset                        string   `json:"preset,omitempty"`
 	Enabled                       bool     `json:"enabled"`
 	RequiredWindow                int      `json:"required_window"`
 	MaxFailedSuitesDelta          *int     `json:"max_failed_suites_delta,omitempty"`

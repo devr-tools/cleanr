@@ -98,14 +98,7 @@ reporting:
   trend_file: reports/cleanr.trends.yaml
   trend_limit: 30
   trend_gates:
-    enabled: true
-    required_window: 2
-    max_failed_suites_delta: 0
-    max_failed_cases_delta: 0
-    max_duration_increase_pct: 25
-    max_semantic_drift_delta: 0.08
-    max_baseline_semantic_drift_delta: 0.05
-    fail_on_regressed_suites: true
+    preset: moderate
 ```
 
 OpenAI-native examples are available in:
@@ -113,6 +106,7 @@ OpenAI-native examples are available in:
 - `examples/openai-responses.yaml`
 - `examples/openai-chat-completions.yaml`
 - `examples/anthropic-messages.yaml`
+- `examples/openai-responses-tuned.yaml`
 
 ## `target`
 
@@ -394,6 +388,7 @@ The `cleanr trends` command reads that retained history file and emits a compact
 
 `trend_gates` supports:
 
+- `preset`: `strict`, `moderate`, or `exploratory`
 - `enabled`
 - `required_window`
 - `max_failed_suites_delta`
@@ -404,6 +399,25 @@ The `cleanr trends` command reads that retained history file and emits a compact
 - `fail_on_regressed_suites`
 
 Trend gates are opt-in. When enabled, `cleanr run` still writes the full report, but it returns exit code `1` if a configured build-over-build regression threshold is breached.
+
+Preset behavior:
+
+- `strict`: blocks on any new failed suite or case, allows up to `15%` duration growth, `0.05` semantic drift delta, and `0.03` baseline semantic drift delta.
+- `moderate`: blocks on any new failed suite or case, allows up to `25%` duration growth, `0.08` semantic drift delta, and `0.05` baseline semantic drift delta.
+- `exploratory`: keeps trend reporting enabled but makes trend gates non-blocking by default.
+
+You can start from a preset and override only one dimension. For example, this keeps the `moderate` preset but allows more latency growth between builds:
+
+```yaml
+reporting:
+  trend_file: reports/cleanr.trends.yaml
+  trend_limit: 30
+  trend_gates:
+    preset: moderate
+    max_duration_increase_pct: 40
+```
+
+That exact pattern is also available as a copyable file in `examples/openai-responses-tuned.yaml`.
 
 ## Validation Rules
 

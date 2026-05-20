@@ -13,6 +13,13 @@ type ReleaseOptions struct {
 	Output  string
 }
 
+type HomebrewFormulaOptions struct {
+	Version    string
+	Checksums  string
+	Repository string
+	Output     string
+}
+
 type Platform struct {
 	GOOS   string
 	GOARCH string

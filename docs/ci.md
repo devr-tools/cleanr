@@ -26,7 +26,9 @@ It currently:
 
 - resolves the release version from the tag or manual input
 - runs `make release VERSION=<version>`
+- runs `make homebrew-formula VERSION=<version>`
 - publishes the generated archives with `softprops/action-gh-release`
+- updates the `alxxjohn/homebrew-cleanr` tap when `HOMEBREW_TAP_TOKEN` is configured
 
 Release packaging currently targets:
 
@@ -36,6 +38,8 @@ Release packaging currently targets:
 - `linux/arm64`
 
 Each release directory includes compressed archives plus a `SHA256SUMS` file.
+
+The release job also generates `dist/releases/<version>/cleanr.rb`, which is the Homebrew formula pushed to the tap repository.
 
 ## Exit Code Contract
 
@@ -112,15 +116,23 @@ reporting:
   trend_file: reports/cleanr.trends.yaml
   trend_limit: 30
   trend_gates:
-    enabled: true
-    required_window: 2
-    max_failed_suites_delta: 0
-    max_failed_cases_delta: 0
-    max_duration_increase_pct: 25
-    max_semantic_drift_delta: 0.08
-    max_baseline_semantic_drift_delta: 0.05
-    fail_on_regressed_suites: true
+    preset: moderate
 ```
+
+Use `preset: strict` when you want tighter budgets, or `preset: exploratory` when you want the same trend history and summaries without CI-blocking gates.
+
+If you want to keep a preset but tune one threshold, add only that field. For example:
+
+```yaml
+reporting:
+  trend_file: reports/cleanr.trends.yaml
+  trend_limit: 30
+  trend_gates:
+    preset: moderate
+    max_duration_increase_pct: 40
+```
+
+That exact policy is checked in as `examples/openai-responses-tuned.yaml` so teams can copy a working partial-override pattern directly.
 
 To summarize the retained window for dashboards or release notes, run:
 
@@ -133,6 +145,13 @@ To summarize the retained window for dashboards or release notes, run:
 `make release VERSION=vX.Y.Z` writes artifacts to `dist/releases/<version>/`.
 
 That output structure is what the repository release workflow publishes, so local release dry runs should use the same command.
+
+`make homebrew-formula VERSION=vX.Y.Z REPOSITORY=owner/name` generates the matching Homebrew formula from the release checksums.
+
+To publish the formula automatically, configure:
+
+- a tap repository, currently expected at `alxxjohn/homebrew-cleanr`
+- a `HOMEBREW_TAP_TOKEN` GitHub Actions secret with push access to that tap repository
 
 ## Future CI Direction
 

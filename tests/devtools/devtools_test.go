@@ -117,6 +117,60 @@ exit 0
 	}
 }
 
+func TestDevtoolsHomebrewFormula(t *testing.T) {
+	repo := t.TempDir()
+	tag := "v1.2.3"
+	checksumPath := filepath.Join(repo, "dist", "releases", tag, "SHA256SUMS")
+	mustWriteFile(t, checksumPath, strings.Join([]string{
+		"aaaa1111 cleanr_v1.2.3_darwin_amd64.tar.gz",
+		"bbbb2222 cleanr_v1.2.3_darwin_arm64.tar.gz",
+		"cccc3333 cleanr_v1.2.3_linux_amd64.tar.gz",
+		"dddd4444 cleanr_v1.2.3_linux_arm64.tar.gz",
+	}, "\n")+"\n")
+
+	var stdout bytes.Buffer
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
+		Version:    tag,
+		Checksums:  "dist/releases/v1.2.3/SHA256SUMS",
+		Repository: "alxxjohn/cleanr",
+		Output:     "dist/homebrew/cleanr.rb",
+	}); err != nil {
+		t.Fatalf("homebrew formula: %v", err)
+	}
+
+	formulaPath := filepath.Join(repo, "dist", "homebrew", "cleanr.rb")
+	data, err := os.ReadFile(formulaPath)
+	if err != nil {
+		t.Fatalf("read formula: %v", err)
+	}
+	formula := string(data)
+	if !strings.Contains(formula, `homepage "https://github.com/alxxjohn/cleanr"`) {
+		t.Fatalf("formula missing homepage: %s", formula)
+	}
+	if !strings.Contains(formula, `version "1.2.3"`) {
+		t.Fatalf("formula missing version: %s", formula)
+	}
+	if !strings.Contains(formula, `url "https://github.com/alxxjohn/cleanr/releases/download/v1.2.3/cleanr_v1.2.3_darwin_arm64.tar.gz"`) {
+		t.Fatalf("formula missing darwin arm url: %s", formula)
+	}
+	if !strings.Contains(formula, `sha256 "dddd4444"`) {
+		t.Fatalf("formula missing linux arm checksum: %s", formula)
+	}
+	if !strings.Contains(stdout.String(), "wrote Homebrew formula") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+
+	if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
+		Version:    tag,
+		Checksums:  "dist/releases/v1.2.3/missing.txt",
+		Repository: "alxxjohn/cleanr",
+		Output:     "dist/homebrew/missing.rb",
+	}); err == nil {
+		t.Fatalf("expected missing checksum file error")
+	}
+}
+
 func mustWriteFile(t *testing.T, path, contents string) {
 	t.Helper()
 

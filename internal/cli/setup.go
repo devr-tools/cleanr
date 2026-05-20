@@ -8,6 +8,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"cleanr/cleanr"
@@ -28,9 +29,18 @@ const (
 	defaultAnthropicMaxTokens = 1024
 )
 
+type setupPrompter interface {
+	ask(label, fallback string) (string, error)
+	askRequired(label, fallback string) (string, error)
+	askChoice(label, fallback string, options []string) (string, error)
+	askSecret(label, fallback string) (string, error)
+	confirmOpenBrowser(providerName, url string, force bool) error
+}
+
 type promptSession struct {
-	reader *bufio.Reader
-	out    io.Writer
+	reader      *bufio.Reader
+	out         io.Writer
+	interactive bool
 }
 
 func setupCmd(args []string, stdout, stderr io.Writer) int {
@@ -52,6 +62,9 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	apiModeFlag := fs.String("api-mode", "", "OpenAI API mode: responses or chat_completions")
 	baseURLFlag := fs.String("base-url", "", "Optional provider base URL override")
 	maxTokensFlag := fs.Int("max-tokens", 0, "Optional Anthropic max_tokens override")
+	trendGatePreset := fs.String("trend-gate-preset", "moderate", "Trend gate preset: strict, moderate, or exploratory")
+	ciMode := fs.Bool("ci", false, "Generate config non-interactively for CI and do not store credentials locally")
+	browserMode := fs.Bool("browser", false, "Open the provider browser dashboard automatically during interactive setup")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -61,8 +74,7 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		return 2
 	}
 
-	session := promptSession{reader: bufio.NewReader(stdin), out: stdout}
-	provider, err := gatherProviderProfile(session, profilepkg.Provider{
+	providerOverride := profilepkg.Provider{
 		Name:      *providerFlag,
 		Model:     *modelFlag,
 		APIKey:    *apiKeyFlag,
@@ -70,20 +82,30 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		APIMode:   *apiModeFlag,
 		BaseURL:   *baseURLFlag,
 		MaxTokens: *maxTokensFlag,
-	})
+	}
+
+	prompter := newSetupPrompter(stdin, stdout, *ciMode)
+	provider, err := gatherProviderProfile(prompter, providerOverride, *ciMode, *browserMode)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "setup error: %v\n", err)
 		return 2
 	}
 
-	if err := profilepkg.UpsertProvider(provider); err != nil {
-		_, _ = fmt.Fprintf(stderr, "setup error: save profile: %v\n", err)
+	if !*ciMode {
+		if err := profilepkg.UpsertProvider(provider); err != nil {
+			_, _ = fmt.Fprintf(stderr, "setup error: save profile: %v\n", err)
+			return 2
+		}
+	}
+
+	if err := writeGeneratedConfig(*output, starterConfigForProvider(provider, *trendGatePreset)); err != nil {
+		_, _ = fmt.Fprintf(stderr, "setup error: write config: %v\n", err)
 		return 2
 	}
 
-	if err := writeGeneratedConfig(*output, starterConfigForProvider(provider)); err != nil {
-		_, _ = fmt.Fprintf(stderr, "setup error: write config: %v\n", err)
-		return 2
+	if *ciMode {
+		_, _ = fmt.Fprintf(stdout, "wrote CI starter config to %s\n", *output)
+		return 0
 	}
 
 	profilePath, err := profilepkg.Path()
@@ -112,6 +134,9 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	apiModeFlag := fs.String("api-mode", "", "OpenAI API mode override")
 	baseURLFlag := fs.String("base-url", "", "Optional provider base URL override")
 	maxTokensFlag := fs.Int("max-tokens", 0, "Optional Anthropic max_tokens override")
+	trendGatePreset := fs.String("trend-gate-preset", "moderate", "Trend gate preset: strict, moderate, or exploratory")
+	ciMode := fs.Bool("ci", false, "Generate config non-interactively for CI and do not store credentials locally")
+	browserMode := fs.Bool("browser", false, "Open the provider browser dashboard automatically during interactive setup")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -121,8 +146,7 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		return 2
 	}
 
-	session := promptSession{reader: bufio.NewReader(stdin), out: stdout}
-	provider, err := resolveAgentProvider(session, profilepkg.Provider{
+	providerOverride := profilepkg.Provider{
 		Name:      *providerFlag,
 		Model:     *modelFlag,
 		APIKey:    *apiKeyFlag,
@@ -130,31 +154,29 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		APIMode:   *apiModeFlag,
 		BaseURL:   *baseURLFlag,
 		MaxTokens: *maxTokensFlag,
-	})
+	}
+
+	prompter := newSetupPrompter(stdin, stdout, *ciMode)
+	provider, err := resolveAgentProvider(prompter, providerOverride, *ciMode, *browserMode)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "setup error: %v\n", err)
 		return 2
 	}
 
-	agentName, err := session.ask("Agent name", firstNonEmpty(*nameFlag, defaultAgentName))
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "setup error: %v\n", err)
-		return 2
-	}
-	systemPrompt, err := session.askRequired("System prompt", *systemPromptFlag)
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "setup error: %v\n", err)
-		return 2
-	}
-	userPrompt, err := session.ask("Primary user prompt", firstNonEmpty(*userPromptFlag, defaultAgentPrompt))
+	agentName, systemPrompt, userPrompt, err := gatherAgentInputs(prompter, *nameFlag, *systemPromptFlag, *userPromptFlag, *ciMode)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "setup error: %v\n", err)
 		return 2
 	}
 
-	if err := writeGeneratedConfig(*output, starterAgentConfig(provider, agentName, systemPrompt, userPrompt)); err != nil {
+	if err := writeGeneratedConfig(*output, starterAgentConfig(provider, agentName, systemPrompt, userPrompt, *trendGatePreset)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "setup error: write config: %v\n", err)
 		return 2
+	}
+
+	if *ciMode {
+		_, _ = fmt.Fprintf(stdout, "wrote CI agent config to %s\n", *output)
+		return 0
 	}
 
 	_, _ = fmt.Fprintf(stdout, "wrote agent config to %s\n", *output)
@@ -162,9 +184,34 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	return 0
 }
 
-func resolveAgentProvider(session promptSession, override profilepkg.Provider) (profilepkg.Provider, error) {
-	if strings.TrimSpace(override.Name) != "" {
-		provider, err := gatherProviderProfile(session, override)
+func newSetupPrompter(stdin io.Reader, stdout io.Writer, ciMode bool) setupPrompter {
+	if ciMode {
+		return promptSession{
+			reader: bufio.NewReader(stdin),
+			out:    stdout,
+		}
+	}
+
+	stdinFile, stdinOK := stdin.(*os.File)
+	stdoutFile, stdoutOK := stdout.(*os.File)
+	if stdinOK && stdoutOK && terminalUIAvailable() && isTerminalFile(stdinFile) && isTerminalFile(stdoutFile) {
+		return tuiSession{in: stdinFile, out: stdoutFile}
+	}
+
+	return promptSession{
+		reader:      bufio.NewReader(stdin),
+		out:         stdout,
+		interactive: stdinOK && stdoutOK && isTerminalFile(stdinFile) && isTerminalFile(stdoutFile),
+	}
+}
+
+func resolveAgentProvider(prompter setupPrompter, override profilepkg.Provider, ciMode, browserMode bool) (profilepkg.Provider, error) {
+	if ciMode {
+		return ciProviderProfile(override)
+	}
+
+	if hasProviderOverride(override) {
+		provider, err := gatherProviderProfile(prompter, override, false, browserMode)
 		if err != nil {
 			return profilepkg.Provider{}, err
 		}
@@ -182,7 +229,7 @@ func resolveAgentProvider(session promptSession, override profilepkg.Provider) (
 		return profilepkg.Provider{}, err
 	}
 
-	provider, err = gatherProviderProfile(session, override)
+	provider, err = gatherProviderProfile(prompter, override, false, browserMode)
 	if err != nil {
 		return profilepkg.Provider{}, err
 	}
@@ -192,8 +239,12 @@ func resolveAgentProvider(session promptSession, override profilepkg.Provider) (
 	return provider, nil
 }
 
-func gatherProviderProfile(session promptSession, initial profilepkg.Provider) (profilepkg.Provider, error) {
-	providerName, err := session.askChoice("Provider", firstNonEmpty(initial.Name, "openai"), []string{"openai", "anthropic"})
+func gatherProviderProfile(prompter setupPrompter, initial profilepkg.Provider, ciMode, browserMode bool) (profilepkg.Provider, error) {
+	if ciMode {
+		return ciProviderProfile(initial)
+	}
+
+	providerName, err := prompter.askChoice("Provider", firstNonEmpty(initial.Name, "openai"), []string{"openai", "anthropic"})
 	if err != nil {
 		return profilepkg.Provider{}, err
 	}
@@ -208,54 +259,196 @@ func gatherProviderProfile(session promptSession, initial profilepkg.Provider) (
 		MaxTokens: initial.MaxTokens,
 	}
 
-	switch providerName {
+	if err := prompter.confirmOpenBrowser(displayProviderName(provider.Name), providerAuthURL(provider.Name), browserMode); err != nil {
+		return profilepkg.Provider{}, err
+	}
+
+	switch provider.Name {
 	case "openai":
-		provider.APIMode, err = session.askChoice("OpenAI API mode", firstNonEmpty(provider.APIMode, defaultOpenAIAPIMode), []string{"responses", "chat_completions"})
+		provider.APIMode, err = prompter.askChoice("OpenAI API mode", firstNonEmpty(provider.APIMode, defaultOpenAIAPIMode), []string{"responses", "chat_completions"})
 		if err != nil {
 			return profilepkg.Provider{}, err
 		}
-		provider.Model, err = session.ask("OpenAI model", firstNonEmpty(provider.Model, defaultOpenAIModel))
+		provider.Model, err = prompter.ask("OpenAI model", firstNonEmpty(provider.Model, defaultOpenAIModel))
 		if err != nil {
 			return profilepkg.Provider{}, err
 		}
-		provider.APIKeyEnv, err = session.ask("OpenAI API key env", firstNonEmpty(provider.APIKeyEnv, defaultOpenAIKeyEnv))
+		provider.APIKeyEnv, err = prompter.ask("OpenAI API key env", firstNonEmpty(provider.APIKeyEnv, defaultOpenAIKeyEnv))
 		if err != nil {
 			return profilepkg.Provider{}, err
 		}
-		provider.APIKey, err = session.askRequired("OpenAI API key", provider.APIKey)
+		provider.APIKey, err = prompter.askSecret("OpenAI API key", provider.APIKey)
 		if err != nil {
 			return profilepkg.Provider{}, err
+		}
+		if strings.TrimSpace(provider.APIKey) == "" {
+			return profilepkg.Provider{}, fmt.Errorf("openai api key is required")
 		}
 	case "anthropic":
-		provider.Model, err = session.ask("Anthropic model", firstNonEmpty(provider.Model, defaultAnthropicModel))
+		provider.Model, err = prompter.ask("Anthropic model", firstNonEmpty(provider.Model, defaultAnthropicModel))
 		if err != nil {
 			return profilepkg.Provider{}, err
 		}
-		provider.APIKeyEnv, err = session.ask("Anthropic API key env", firstNonEmpty(provider.APIKeyEnv, defaultAnthropicKeyEnv))
+		provider.APIKeyEnv, err = prompter.ask("Anthropic API key env", firstNonEmpty(provider.APIKeyEnv, defaultAnthropicKeyEnv))
 		if err != nil {
 			return profilepkg.Provider{}, err
 		}
-		provider.APIKey, err = session.askRequired("Anthropic API key", provider.APIKey)
+		provider.APIKey, err = prompter.askSecret("Anthropic API key", provider.APIKey)
 		if err != nil {
 			return profilepkg.Provider{}, err
+		}
+		if strings.TrimSpace(provider.APIKey) == "" {
+			return profilepkg.Provider{}, fmt.Errorf("anthropic api key is required")
 		}
 		maxTokens := provider.MaxTokens
 		if maxTokens <= 0 {
 			maxTokens = defaultAnthropicMaxTokens
 		}
-		maxTokensRaw, err := session.ask("Anthropic max tokens", fmt.Sprintf("%d", maxTokens))
+		maxTokensRaw, err := prompter.ask("Anthropic max tokens", fmt.Sprintf("%d", maxTokens))
 		if err != nil {
 			return profilepkg.Provider{}, err
 		}
 		if _, err := fmt.Sscanf(strings.TrimSpace(maxTokensRaw), "%d", &provider.MaxTokens); err != nil || provider.MaxTokens <= 0 {
 			return profilepkg.Provider{}, fmt.Errorf("anthropic max tokens must be a positive integer")
 		}
+	default:
+		return profilepkg.Provider{}, fmt.Errorf("provider must be one of openai or anthropic")
 	}
 
 	return provider, nil
 }
 
-func starterConfigForProvider(provider profilepkg.Provider) cleanr.Config {
+func gatherAgentInputs(prompter setupPrompter, nameFlag, systemPromptFlag, userPromptFlag string, ciMode bool) (string, string, string, error) {
+	if ciMode {
+		agentName := firstNonEmpty(nameFlag, os.Getenv("CLEANR_AGENT_NAME"), defaultAgentName)
+		systemPrompt := firstNonEmpty(systemPromptFlag, os.Getenv("CLEANR_SYSTEM_PROMPT"))
+		if strings.TrimSpace(systemPrompt) == "" {
+			return "", "", "", fmt.Errorf("system prompt is required in CI mode; set -system-prompt or CLEANR_SYSTEM_PROMPT")
+		}
+		userPrompt := firstNonEmpty(userPromptFlag, os.Getenv("CLEANR_USER_PROMPT"), defaultAgentPrompt)
+		return agentName, systemPrompt, userPrompt, nil
+	}
+
+	agentName, err := prompter.ask("Agent name", firstNonEmpty(nameFlag, defaultAgentName))
+	if err != nil {
+		return "", "", "", err
+	}
+	systemPrompt, err := prompter.askRequired("System prompt", systemPromptFlag)
+	if err != nil {
+		return "", "", "", err
+	}
+	userPrompt, err := prompter.ask("Primary user prompt", firstNonEmpty(userPromptFlag, defaultAgentPrompt))
+	if err != nil {
+		return "", "", "", err
+	}
+	return agentName, systemPrompt, userPrompt, nil
+}
+
+func ciProviderProfile(initial profilepkg.Provider) (profilepkg.Provider, error) {
+	providerName := strings.ToLower(strings.TrimSpace(firstNonEmpty(initial.Name, os.Getenv("CLEANR_PROVIDER"), "openai")))
+	switch providerName {
+	case "openai":
+		provider := initializedProvider(profilepkg.Provider{
+			Name:      "openai",
+			Model:     firstNonEmpty(initial.Model, os.Getenv("CLEANR_MODEL"), defaultOpenAIModel),
+			APIMode:   normalizedOpenAIAPIMode(firstNonEmpty(initial.APIMode, os.Getenv("CLEANR_OPENAI_API_MODE"), defaultOpenAIAPIMode)),
+			APIKeyEnv: firstNonEmpty(initial.APIKeyEnv, os.Getenv("CLEANR_API_KEY_ENV"), defaultOpenAIKeyEnv),
+			APIKey:    firstNonEmpty(initial.APIKey, os.Getenv("CLEANR_API_KEY")),
+			BaseURL:   firstNonEmpty(initial.BaseURL, os.Getenv("CLEANR_BASE_URL")),
+		})
+		if err := validateOpenAIProfile(provider); err != nil {
+			return profilepkg.Provider{}, err
+		}
+		return provider, nil
+	case "anthropic":
+		maxTokens, err := resolveAnthropicMaxTokens(initial.MaxTokens)
+		if err != nil {
+			return profilepkg.Provider{}, err
+		}
+		return initializedProvider(profilepkg.Provider{
+			Name:      "anthropic",
+			Model:     firstNonEmpty(initial.Model, os.Getenv("CLEANR_MODEL"), defaultAnthropicModel),
+			APIKeyEnv: firstNonEmpty(initial.APIKeyEnv, os.Getenv("CLEANR_API_KEY_ENV"), defaultAnthropicKeyEnv),
+			APIKey:    firstNonEmpty(initial.APIKey, os.Getenv("CLEANR_API_KEY")),
+			BaseURL:   firstNonEmpty(initial.BaseURL, os.Getenv("CLEANR_BASE_URL")),
+			MaxTokens: maxTokens,
+		}), nil
+	default:
+		return profilepkg.Provider{}, fmt.Errorf("provider must be one of openai or anthropic")
+	}
+}
+
+func resolveAnthropicMaxTokens(flagValue int) (int, error) {
+	if flagValue > 0 {
+		return flagValue, nil
+	}
+	raw := strings.TrimSpace(os.Getenv("CLEANR_ANTHROPIC_MAX_TOKENS"))
+	if raw == "" {
+		return defaultAnthropicMaxTokens, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("CLEANR_ANTHROPIC_MAX_TOKENS must be a positive integer")
+	}
+	return value, nil
+}
+
+func validateOpenAIProfile(provider profilepkg.Provider) error {
+	switch provider.APIMode {
+	case "responses", "chat_completions":
+		return nil
+	default:
+		return fmt.Errorf("openai api mode must be responses or chat_completions")
+	}
+}
+
+func initializedProvider(provider profilepkg.Provider) profilepkg.Provider {
+	provider.Name = strings.ToLower(strings.TrimSpace(provider.Name))
+	provider.Model = strings.TrimSpace(provider.Model)
+	provider.APIMode = strings.TrimSpace(provider.APIMode)
+	provider.APIKeyEnv = strings.TrimSpace(provider.APIKeyEnv)
+	provider.APIKey = strings.TrimSpace(provider.APIKey)
+	provider.BaseURL = strings.TrimSpace(provider.BaseURL)
+	return provider
+}
+
+func hasProviderOverride(provider profilepkg.Provider) bool {
+	return strings.TrimSpace(provider.Name) != "" ||
+		strings.TrimSpace(provider.Model) != "" ||
+		strings.TrimSpace(provider.APIKey) != "" ||
+		strings.TrimSpace(provider.APIKeyEnv) != "" ||
+		strings.TrimSpace(provider.APIMode) != "" ||
+		strings.TrimSpace(provider.BaseURL) != "" ||
+		provider.MaxTokens > 0
+}
+
+func providerAuthURL(providerName string) string {
+	switch providerName {
+	case "anthropic":
+		return "https://console.anthropic.com/settings/keys"
+	default:
+		return "https://platform.openai.com/settings/organization/api-keys"
+	}
+}
+
+func displayProviderName(providerName string) string {
+	switch providerName {
+	case "anthropic":
+		return "Anthropic"
+	default:
+		return "OpenAI"
+	}
+}
+
+func normalizedOpenAIAPIMode(value string) string {
+	mode := strings.ToLower(strings.TrimSpace(value))
+	if mode == "" {
+		return defaultOpenAIAPIMode
+	}
+	return mode
+}
+
+func starterConfigForProvider(provider profilepkg.Provider, trendGatePreset string) cleanr.Config {
 	cfg := cleanr.ExampleConfig()
 	cfg.Target.URL = ""
 	cfg.Target.Method = ""
@@ -294,22 +487,15 @@ func starterConfigForProvider(provider profilepkg.Provider) cleanr.Config {
 	cfg.Reporting.TrendFile = filepath.Join("reports", cfg.Target.Name+".trends.yaml")
 	cfg.Reporting.TrendLimit = 30
 	cfg.Reporting.TrendGates = cleanr.TrendGateConfig{
-		Enabled:                       true,
-		RequiredWindow:                2,
-		MaxFailedSuitesDelta:          intPtr(0),
-		MaxFailedCasesDelta:           intPtr(0),
-		MaxDurationIncreasePct:        float64Ptr(25),
-		MaxSemanticDriftDelta:         float64Ptr(0.08),
-		MaxBaselineSemanticDriftDelta: float64Ptr(0.05),
-		FailOnRegressedSuites:         true,
+		Preset: firstNonEmpty(trendGatePreset, "moderate"),
 	}
 
 	return cfg
 }
 
-func starterAgentConfig(provider profilepkg.Provider, agentName, systemPrompt, userPrompt string) cleanr.Config {
+func starterAgentConfig(provider profilepkg.Provider, agentName, systemPrompt, userPrompt, trendGatePreset string) cleanr.Config {
 	slug := slugify(agentName)
-	cfg := starterConfigForProvider(provider)
+	cfg := starterConfigForProvider(provider, trendGatePreset)
 	cfg.Target.Name = slug
 	cfg.Suites.Drift.BaselineFile = filepath.Join("snapshots", slug+".snapshots.yaml")
 	cfg.Reporting.TrendFile = filepath.Join("reports", slug+".trends.yaml")
@@ -400,6 +586,39 @@ func (p promptSession) askChoice(label, fallback string, options []string) (stri
 		}
 	}
 	return "", fmt.Errorf("%s must be one of %s", strings.ToLower(label), strings.Join(options, ", "))
+}
+
+func (p promptSession) askSecret(label, fallback string) (string, error) {
+	return p.ask(label, fallback)
+}
+
+func (p promptSession) confirmOpenBrowser(providerName, url string, force bool) error {
+	if force {
+		if err := openBrowserURL(url); err != nil {
+			_, _ = fmt.Fprintf(p.out, "browser open failed; visit %s manually: %v\n", url, err)
+			return nil
+		}
+		_, _ = fmt.Fprintf(p.out, "opened browser for %s. Finish login or key creation, then return here.\n", providerName)
+		return nil
+	}
+	if !p.interactive {
+		return nil
+	}
+
+	answer, err := p.ask(fmt.Sprintf("Open browser for %s authentication? [Y/n]", providerName), "y")
+	if err != nil {
+		return err
+	}
+	answer = strings.ToLower(strings.TrimSpace(answer))
+	if answer == "n" || answer == "no" {
+		return nil
+	}
+	if err := openBrowserURL(url); err != nil {
+		_, _ = fmt.Fprintf(p.out, "browser open failed; visit %s manually: %v\n", url, err)
+		return nil
+	}
+	_, _ = fmt.Fprintf(p.out, "opened browser for %s. Finish login or key creation, then return here.\n", providerName)
+	return nil
 }
 
 func firstNonEmpty(values ...string) string {

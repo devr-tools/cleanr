@@ -9,10 +9,10 @@
 ### Homebrew
 
 ```bash
-brew install cleanr
+brew install alxxjohn/cleanr/cleanr
 ```
 
-Homebrew is the intended macOS installation path, but this repository does not currently ship a published tap or formula. Until that exists, use the `curl` or GitHub Releases methods below.
+This installs from the `alxxjohn/homebrew-cleanr` tap after a tagged release publishes the formula.
 
 ### Install with `curl`
 
@@ -83,8 +83,8 @@ cleanr trends -config cleanr.yaml
 What each command does:
 
 - `cleanr init`: generate a starter config file
-- `cleanr setup`: interactively connect an OpenAI or Anthropic provider, store the API token locally, and write a starter YAML config
-- `cleanr setup agent`: interactively inject an agent prompt and generate an agent-focused YAML config
+- `cleanr setup`: launch an interactive setup flow with arrow-key provider selection, optional browser-open key setup, local token storage, and starter YAML generation
+- `cleanr setup agent`: launch an interactive agent setup flow that reuses the provider profile, injects an agent prompt, and generates an agent-focused YAML config
 - `cleanr snapshot -config <file>`: capture or refresh baseline snapshots for drift regression checks
 - `cleanr validate -config <file>`: check config shape and required fields before execution
 - `cleanr run -config <file>`: execute enabled suites and emit a report
@@ -136,15 +136,13 @@ Starter configs for common targets:
 - [examples/openai-responses.yaml](examples/openai-responses.yaml)
 - [examples/openai-chat-completions.yaml](examples/openai-chat-completions.yaml)
 - [examples/anthropic-messages.yaml](examples/anthropic-messages.yaml)
+- [examples/openai-responses-tuned.yaml](examples/openai-responses-tuned.yaml)
 
-Those examples now include a starter `reporting.trend_gates` policy for CI:
-- no new failed suites
-- no new failed cases
-- no more than `25%` duration growth
-- no more than `0.08` semantic drift delta
-- no more than `0.05` baseline semantic drift delta
+Those examples now use `reporting.trend_gates.preset: moderate` by default. You can switch that to `strict` or `exploratory`, or keep the preset and override one field such as `max_duration_increase_pct`.
 
 Interactive setup stores provider credentials in `~/.cleanr/profile.json` with local-only file permissions. Native provider targets automatically reuse those stored credentials when the configured API key env var is not already set in the shell.
+
+For CI or non-interactive environments, use `cleanr setup --ci` or `cleanr setup agent --ci` with flags such as `-provider`, `-model`, and `-system-prompt`. CI mode skips the TUI, skips browser launch, and writes config without persisting secrets locally.
 
 ## Documentation
 

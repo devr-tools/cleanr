@@ -49,7 +49,8 @@ If you want `cleanr` to set up a native provider for you instead of editing the 
 
 That flow:
 
-- prompts for `openai` or `anthropic`
+- shows a terminal UI with arrow-key provider selection when run in a real terminal
+- can open the provider dashboard in your browser so you can sign in and create an API key
 - prompts for the model, API key env var name, and API key
 - stores the API key in `~/.cleanr/profile.json`
 - writes a starter `cleanr.yaml`
@@ -61,6 +62,15 @@ If you are testing an agent and want to seed the config with a specific system p
 ```
 
 That flow reuses the saved provider profile, asks for the agent prompt and a primary user task, then writes an agent-focused YAML config such as `cleanr.agent.yaml`.
+
+If you need the same setup flow in CI without prompts, browser launch, or local token storage, use:
+
+```bash
+./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
+./dist/cleanr setup agent --ci -provider openai -model gpt-4.1-mini -name support-agent -system-prompt "You are a safe support agent." -user-prompt "Reset the password and confirm the email."
+```
+
+CI mode generates the config only. It does not write `~/.cleanr/profile.json`, so your pipeline should provide the actual provider secret through the env var referenced by the generated config.
 
 ## Capture a Baseline
 
@@ -80,6 +90,9 @@ If you want a native provider config instead of the default HTTP starter, begin 
 - `examples/openai-responses.yaml`
 - `examples/openai-chat-completions.yaml`
 - `examples/anthropic-messages.yaml`
+- `examples/openai-responses-tuned.yaml`
+
+Use `examples/openai-responses-tuned.yaml` when you want a concrete example of preset-based trend gating with one tuned override instead of a fully custom threshold block.
 
 ## Point It at Your Endpoint
 

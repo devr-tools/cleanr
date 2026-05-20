@@ -172,6 +172,9 @@ func ValidateConfig(cfg core.Config) error {
 	if cfg.Reporting.TrendLimit < 0 {
 		errs.Add("reporting.trend_limit", "must be >= 0", "use 0 to disable history trimming or set a positive run-retention count such as 30")
 	}
+	if !isValidTrendGatePreset(cfg.Reporting.TrendGates.Preset) {
+		errs.Add("reporting.trend_gates.preset", "must be one of strict, moderate, or exploratory", "choose a built-in trend gate preset or remove the field to set thresholds manually")
+	}
 	if cfg.Reporting.TrendGates.Enabled {
 		if strings.TrimSpace(cfg.Reporting.TrendFile) == "" {
 			errs.Add("reporting.trend_file", "is required when trend gates are enabled", "set reporting.trend_file so cleanr can compare the current run to prior retained runs")

@@ -1,45 +1,81 @@
-# name: Release
+name: Release
 
-# on:
-#   push:
-#     tags:
-#       - "v*"
-#   workflow_dispatch:
-#     inputs:
-#       version:
-#         description: Release version to package
-#         required: true
-#         default: v0.0.0-dev
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Release version to package
+        required: true
+        default: v0.0.0-dev
 
-# jobs:
-#   release:
-#     runs-on: ubuntu-latest
-#     permissions:
-#       contents: write
-#     steps:
-#       - name: Checkout
-#         uses: actions/checkout@v4
+permissions:
+  contents: write
 
-#       - name: Set up Go
-#         uses: actions/setup-go@v5
-#         with:
-#           go-version-file: go.mod
-#           cache: true
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      HOMEBREW_TAP_REPOSITORY: alxxjohn/homebrew-cleanr
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
 
-#       - name: Resolve version
-#         id: version
-#         run: |
-#           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-#             echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-#           else
-#             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-#           fi
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
 
-#       - name: Package release artifacts
-#         run: make release VERSION=${{ steps.version.outputs.value }}
+      - name: Resolve version
+        id: version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+          fi
 
-#       - name: Publish GitHub release
-#         uses: softprops/action-gh-release@v2
-#         with:
-#           tag_name: ${{ steps.version.outputs.value }}
-#           files: dist/releases/${{ steps.version.outputs.value }}/*
+      - name: Package release artifacts
+        run: make release VERSION=${{ steps.version.outputs.value }}
+
+      - name: Generate Homebrew formula
+        run: make homebrew-formula VERSION=${{ steps.version.outputs.value }} REPOSITORY=${{ github.repository }}
+
+      - name: Publish GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.value }}
+          files: dist/releases/${{ steps.version.outputs.value }}/*
+
+      - name: Checkout Homebrew tap
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        uses: actions/checkout@v4
+        with:
+          repository: ${{ env.HOMEBREW_TAP_REPOSITORY }}
+          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          path: homebrew-tap
+
+      - name: Publish Homebrew formula
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          mkdir -p homebrew-tap/Formula
+          cp "dist/releases/${VERSION}/cleanr.rb" homebrew-tap/Formula/cleanr.rb
+          cd homebrew-tap
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if [ -z "$(git status --short -- Formula/cleanr.rb)" ]; then
+            echo "Homebrew formula already up to date."
+            exit 0
+          fi
+          git add Formula/cleanr.rb
+          git commit -m "Update cleanr ${VERSION}"
+          git push
+
+      - name: Skip Homebrew tap publish
+        if: ${{ secrets.HOMEBREW_TAP_TOKEN == '' }}
+        run: echo "HOMEBREW_TAP_TOKEN is not set; skipped Homebrew tap publish."

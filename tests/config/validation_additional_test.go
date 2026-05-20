@@ -218,6 +218,14 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			},
 			wantSub: "reporting.trend_gates.required_window",
 		},
+		{
+			name: "trend gates invalid preset",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Reporting.TrendFile = "reports/history.yaml"
+				cfg.Reporting.TrendGates.Preset = "chaotic"
+			},
+			wantSub: "reporting.trend_gates.preset",
+		},
 	}
 
 	for _, tt := range tests {
@@ -231,6 +239,50 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 				t.Fatalf("expected %q in error, got %v", tt.wantSub, err)
 			}
 		})
+	}
+}
+
+func TestLoadConfigDataPreservesTrendGatePresetOverrides(t *testing.T) {
+	t.Parallel()
+
+	data := []byte(`
+version: v1alpha1
+target:
+  type: openai
+  name: openai-responses
+  openai:
+    api_mode: responses
+    model: gpt-4.1-mini
+    api_key_env: OPENAI_API_KEY
+scenarios:
+  - name: refund-summary
+    input: Summarize the refund policy in one sentence.
+suites:
+  drift:
+    enabled: true
+reporting:
+  trend_file: reports/cleanr.trends.yaml
+  trend_limit: 30
+  trend_gates:
+    preset: moderate
+    max_duration_increase_pct: 40
+`)
+
+	cfg, err := cleanr.LoadConfigData(data, "yaml")
+	if err != nil {
+		t.Fatalf("load config data: %v", err)
+	}
+	if cfg.Reporting.TrendGates.Preset != "moderate" {
+		t.Fatalf("expected preset to survive load, got %+v", cfg.Reporting.TrendGates)
+	}
+	if cfg.Reporting.TrendGates.MaxDurationIncreasePct == nil || *cfg.Reporting.TrendGates.MaxDurationIncreasePct != 40 {
+		t.Fatalf("expected duration override to survive load, got %+v", cfg.Reporting.TrendGates)
+	}
+	if !cfg.Reporting.TrendGates.Enabled {
+		t.Fatalf("expected moderate preset to enable gates, got %+v", cfg.Reporting.TrendGates)
+	}
+	if cfg.Reporting.TrendGates.MaxSemanticDriftDelta == nil || *cfg.Reporting.TrendGates.MaxSemanticDriftDelta != 0.08 {
+		t.Fatalf("expected preset defaults to fill missing fields, got %+v", cfg.Reporting.TrendGates)
 	}
 }
 

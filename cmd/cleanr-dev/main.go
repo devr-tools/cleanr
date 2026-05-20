@@ -96,6 +96,26 @@ func run(args []string) int {
 			return 1
 		}
 		return 0
+	case "homebrew-formula":
+		fs := flag.NewFlagSet("homebrew-formula", flag.ContinueOnError)
+		fs.SetOutput(os.Stderr)
+		version := fs.String("version", "", "Release tag version, for example v1.2.3")
+		checksums := fs.String("checksums", "", "Path to the SHA256SUMS file for the release")
+		repository := fs.String("repository", "", "GitHub repository in owner/name form")
+		output := fs.String("output", "", "Output path for the generated formula")
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
+			Version:    *version,
+			Checksums:  *checksums,
+			Repository: *repository,
+			Output:     *output,
+		}); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "homebrew-formula failed: %v\n", err)
+			return 1
+		}
+		return 0
 	case "report":
 		fs := flag.NewFlagSet("report", flag.ContinueOnError)
 		fs.SetOutput(os.Stderr)
@@ -121,5 +141,5 @@ func run(args []string) int {
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|fmt|fmt-check|lint|test|gofiles|build|release|report>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
 }

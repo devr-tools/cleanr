@@ -1,5 +1,6 @@
 GO ?= go
 VERSION ?= dev
+REPOSITORY ?= alxxjohn/cleanr
 GOCACHE ?= $(CURDIR)/.gocache
 REPORT_FORMAT ?= text
 REPORT_PRESET ?= fail
@@ -9,7 +10,7 @@ REPORT_INPUT ?=
 
 export GOCACHE
 
-.PHONY: menu help fmt fmt-check lint test gofiles check build release deploy report clean
+.PHONY: menu help fmt fmt-check lint test gofiles check build release homebrew-formula deploy report clean
 
 menu:
 	@printf "\ncleanr make menu\n\n"
@@ -21,6 +22,7 @@ menu:
 	@printf "  make check       Run gofiles, fmt-check, lint, and test\n"
 	@printf "  make build       Build the cleanr CLI to dist/cleanr\n"
 	@printf "  make release     Package release artifacts to dist/releases (use VERSION=...)\n"
+	@printf "  make homebrew-formula  Generate a Homebrew formula for a release (use VERSION=...)\n"
 	@printf "  make deploy      Alias for make release\n"
 	@printf "  make report      Preview the terminal report UI\n"
 	@printf "  make clean       Remove dist/ and .gocache/\n"
@@ -57,6 +59,9 @@ build:
 
 release:
 	$(GO) run ./cmd/cleanr-dev release -version $(VERSION) -output dist/releases
+
+homebrew-formula:
+	$(GO) run ./cmd/cleanr-dev homebrew-formula -version $(VERSION) -checksums dist/releases/$(VERSION)/SHA256SUMS -repository $(REPOSITORY) -output dist/releases/$(VERSION)/cleanr.rb
 
 deploy: release
 
