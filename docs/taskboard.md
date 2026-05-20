@@ -17,6 +17,7 @@
 - [x] Add text, JSON, and JUnit report output.
 - [x] Add initial README and quickstart.
 - [x] Improve validation error quality.
+- [x] Add YAML config support.
 
 ## Now
 
@@ -31,10 +32,6 @@ Deliverable: normalized response model for text, tool calls, usage, finish reaso
 Exit criteria: HTTP and provider adapters both map into the same assertion layer.
 
 ### Config and DX
-
-- [ ] Add YAML config support.
-Deliverable: `cleanr.yaml` is a first-class config format alongside JSON.
-Exit criteria: `init`, `validate`, and `run` work for YAML configs.
 
 - [ ] Add provider-native token usage ingestion.
 Deliverable: adapters can populate exact input/output token counts instead of relying only on heuristic estimation.

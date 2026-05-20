@@ -4,31 +4,117 @@
   <img src="img/cleanr.png" alt="cleanr logo" width="420">
 </p>
 
-`cleanr` is a Go-based AI testing SDK and CLI for exercising AI applications in CI with adversarial, security, load, chaos, and drift test suites.
+`cleanr` is a Go-based AI testing SDK and CLI for validating AI applications in CI with adversarial, security, load, chaos, drift, and token-efficiency suites.
 
-## What it does
+## Overview
+
+`cleanr` is designed for teams that need repeatable release checks for AI systems, not just ad hoc prompt testing. The current codebase focuses on an HTTP-first target model so it can exercise chat, completion, agent, and tool-calling APIs without requiring a provider-specific integration layer.
+
+Core capabilities:
 
 - Prompt-injection testing with refusal and boundary checks
 - Security scanning for secret leakage, PII-like output, and unsafe tool instructions
-- Load testing with concurrent virtual users and latency/error SLO assertions
+- Load testing with concurrent virtual users and latency or error-budget assertions
 - Chaos testing with degraded request conditions such as tight deadlines and noisy context
 - Drift testing for response stability across repeated runs
-- Token optimization testing for prompt/completion budgets, duplication, and waste reduction opportunities
-- CI-friendly summaries with text, JSON, and JUnit output
+- Token optimization testing for prompt and completion budgets, duplication, and waste reduction opportunities
+- CI-friendly reporting in text, JSON, and JUnit formats
 
-## Architecture
+## Project Status
 
-`cleanr` is structured as:
+`cleanr` is in a foundation-stage release. The core runner, config model, HTTP adapter, report formats, CI workflows, and release packaging are in place. The next major phase is focused on provider adapters, stronger assertion primitives, and richer documentation.
 
-- `cleanr/`: public SDK types, runner, engines, HTTP target adapter, reporters
-- `internal/cli/`: CLI entrypoint logic
-- `cmd/cleanr/`: main package
+## Quick Start
 
-The initial target adapter is HTTP-first so teams can point `cleanr` at chat, completion, agent, or tool-calling APIs. The SDK surface is intentionally simple: implement the `Target` interface if you want to test non-HTTP runtimes in-process.
+Build the CLI:
 
-## Developer workflow
+```bash
+make build
+./dist/cleanr version
+```
 
-Local development is wired through `make` and the Go-based `cleanr-dev` helper:
+Generate an example config:
+
+```bash
+./dist/cleanr init
+```
+
+Use YAML if preferred:
+
+```bash
+./dist/cleanr init -output cleanr.yaml
+```
+
+Validate the config:
+
+```bash
+./dist/cleanr validate -config cleanr.json
+./dist/cleanr validate -config cleanr.yaml
+```
+
+Run the suites:
+
+```bash
+./dist/cleanr run -config cleanr.json
+```
+
+Emit JUnit output for CI:
+
+```bash
+./dist/cleanr run -config cleanr.json -format junit -output cleanr-junit.xml
+```
+
+You can also run the CLI directly from source:
+
+```bash
+go run ./cmd/cleanr run -config cleanr.json
+```
+
+## Configuration
+
+`cleanr` accepts both JSON and YAML configuration files. Format is selected by extension: `.json`, `.yaml`, or `.yml`.
+
+The primary config sections are:
+
+- `target`: endpoint, headers, timeout, request field mapping, and response extraction path
+- `scenarios`: representative prompts and policy boundary cases
+- `suites.prompt_injection`: adversarial refusal markers
+- `suites.security`: leak patterns, dangerous tool indicators, and PII thresholds
+- `suites.load`: concurrency settings and SLO thresholds
+- `suites.chaos`: enabled fault injections and resilience thresholds
+- `suites.drift`: repeated-run stability thresholds
+- `suites.token_optimization`: token budgets, duplication limits, and optimization hints
+- `reporting`: output format defaults
+
+Run `init` to generate a working starter file.
+
+## Documentation
+
+- [Roadmap](docs/roadmap.md): product direction, workstreams, and milestone sequencing
+- [Taskboard](docs/taskboard.md): execution-focused status of current and upcoming work
+
+As the project grows, `docs/` should remain the home for guides, examples, and operational reference material. The main README should stay focused on orientation and onboarding.
+
+## Repository Layout
+
+```text
+.
+├── .github/workflows/   CI and release automation
+├── cleanr/              Public SDK types, config, runner, engines, reporters, HTTP target adapter
+├── cmd/cleanr/          CLI entrypoint
+├── cmd/cleanr-dev/      Developer tooling entrypoint used by Make targets
+├── docs/                Roadmap and execution docs
+├── img/                 README and documentation assets
+├── internal/cli/        Command parsing and CLI behavior
+├── internal/devtools/   Format, lint, test, build, and release helpers
+├── tests/               CLI and runner tests
+├── Makefile             Common developer workflows
+└── README.md            Project entrypoint
+```
+
+## Development
+
+Common local workflows:
 
 ```bash
 make fmt
@@ -39,87 +125,48 @@ make build
 make release VERSION=v0.1.0
 ```
 
-`make check` runs the full developer gate:
+`make check` runs the main developer gate:
 
 - validates Go file layout
-- enforces that all `_test.go` files live under `tests/`
+- enforces repository file-placement rules
 - checks `gofmt`
 - runs `go vet`
 - runs `go test ./...`
 
-`make deploy` is an alias for `make release`. It packages local release artifacts into `dist/releases/<version>/`.
+`make deploy` is an alias for `make release`.
 
-## Quick start
+## CI and Releases
 
-Initialize a config:
+The repository includes:
 
-```bash
-go run ./cmd/cleanr init
-```
+- `.github/workflows/ci.yml` for pull request and `main` branch verification
+- `.github/workflows/release.yml` for tag-driven packaging and release publishing
 
-Validate it:
-
-```bash
-go run ./cmd/cleanr validate -config cleanr.json
-```
-
-Run the test suites:
-
-```bash
-go run ./cmd/cleanr run -config cleanr.json
-```
-
-Emit JUnit for CI:
-
-```bash
-go run ./cmd/cleanr run -config cleanr.json -format junit -output cleanr-junit.xml
-```
-
-## Config model
-
-The config file is JSON to keep the runtime dependency-free and deterministic in CI. Key sections:
-
-- `target`: endpoint, headers, timeout, request field mapping, and response extraction path
-- `scenarios`: representative prompts and policy boundary cases
-- `suites.prompt_injection`: adversarial refusal markers
-- `suites.security`: custom leak patterns, dangerous tool indicators, PII threshold
-- `suites.load`: concurrency and SLO thresholds
-- `suites.chaos`: enabled fault injections and resilience threshold
-- `suites.drift`: repeated-run stability thresholds
-- `suites.token_optimization`: prompt/output token budgets, duplication limits, and optimization hints
-- `reporting`: output format defaults
-
-Generate `cleanr.json` with `init` to see a working example.
-
-## CI behavior
-
-- Exit code `0`: all suites passed
-- Exit code `1`: one or more tests failed
-- Exit code `2`: invalid configuration or runtime error
-
-That makes it easy to drop into GitHub Actions, Buildkite, CircleCI, or any other pipeline.
-
-## CI and release automation
-
-The repository now includes:
-
-- `.github/workflows/ci.yml` for pull request and `main` branch QA
-- `.github/workflows/release.yml` for tag-driven release packaging and GitHub release publishing
-
-Release artifacts are built for:
+Release artifacts are currently built for:
 
 - `darwin/amd64`
 - `darwin/arm64`
 - `linux/amd64`
 - `linux/arm64`
 
-Each release run generates compressed archives plus a `SHA256SUMS` file.
+Each release generates compressed archives plus a `SHA256SUMS` file.
 
-## Next extensions
+## Exit Codes
 
-- Native OpenAI/Anthropic/Gemini target adapters with richer eval metadata
-- Provider-native token usage ingestion instead of heuristic estimation
-- Tool-call tracing assertions and policy graphs
-- Distributed load execution and percentile histograms
-- Snapshot baselines and semantic drift scoring
-- Signed attestations for compliance evidence
+- `0`: all suites passed
+- `1`: one or more tests failed
+- `2`: invalid configuration or runtime error
+
+That makes `cleanr` straightforward to wire into GitHub Actions, Buildkite, CircleCI, or other pipeline systems.
+
+## Roadmap
+
+Near-term priorities are:
+
+- native provider adapters beginning with OpenAI
+- provider-neutral response normalization
+- reusable assertions and richer config ergonomics
+- snapshot and semantic drift capabilities
+- stronger docs, examples, and CI integration
+
+Longer-term direction is tracked in [docs/roadmap.md](docs/roadmap.md).

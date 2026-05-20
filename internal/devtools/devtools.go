@@ -135,13 +135,14 @@ func (r Runner) Build(ctx context.Context, output string) error {
 	if output == "" {
 		output = filepath.Join("dist", "cleanr")
 	}
-	if err := os.MkdirAll(filepath.Dir(filepath.Join(r.WorkDir, output)), 0o755); err != nil {
+	outputPath := resolvePath(r.WorkDir, output)
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
 		return fmt.Errorf("create build output dir: %w", err)
 	}
-	if _, err := fmt.Fprintf(r.Stdout, "building %s\n", output); err != nil {
+	if _, err := fmt.Fprintf(r.Stdout, "building %s\n", outputPath); err != nil {
 		return err
 	}
-	return r.runCommand(ctx, nil, "go", "build", "-trimpath", "-o", output, "./cmd/cleanr")
+	return r.runCommand(ctx, nil, "go", "build", "-trimpath", "-o", outputPath, "./cmd/cleanr")
 }
 
 func (r Runner) Check(ctx context.Context) error {
@@ -175,7 +176,7 @@ func (r Runner) Release(ctx context.Context, opts ReleaseOptions) error {
 		outputRoot = filepath.Join("dist", "releases")
 	}
 
-	releaseDir := filepath.Join(r.WorkDir, outputRoot, version)
+	releaseDir := resolvePath(r.WorkDir, filepath.Join(outputRoot, version))
 	if err := os.MkdirAll(releaseDir, 0o755); err != nil {
 		return fmt.Errorf("create release dir: %w", err)
 	}
@@ -335,4 +336,11 @@ func archiveTarGz(outputPath, sourceDir, binaryName string) (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(hash.Sum(nil)), nil
+}
+
+func resolvePath(workDir, path string) string {
+	if filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(workDir, path)
 }
