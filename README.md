@@ -9,6 +9,7 @@
 - Load testing with concurrent virtual users and latency/error SLO assertions
 - Chaos testing with degraded request conditions such as tight deadlines and noisy context
 - Drift testing for response stability across repeated runs
+- Token optimization testing for prompt/completion budgets, duplication, and waste reduction opportunities
 - CI-friendly summaries with text, JSON, and JUnit output
 
 ## Architecture
@@ -58,6 +59,7 @@ The config file is JSON to keep the runtime dependency-free and deterministic in
 - `suites.load`: concurrency and SLO thresholds
 - `suites.chaos`: enabled fault injections and resilience threshold
 - `suites.drift`: repeated-run stability thresholds
+- `suites.token_optimization`: prompt/output token budgets, duplication limits, and optimization hints
 - `reporting`: output format defaults
 
 Generate `cleanr.json` with `init` to see a working example.
@@ -73,6 +75,7 @@ That makes it easy to drop into GitHub Actions, Buildkite, CircleCI, or any othe
 ## Next extensions
 
 - Native OpenAI/Anthropic/Gemini target adapters with richer eval metadata
+- Provider-native token usage ingestion instead of heuristic estimation
 - Tool-call tracing assertions and policy graphs
 - Distributed load execution and percentile histograms
 - Snapshot baselines and semantic drift scoring

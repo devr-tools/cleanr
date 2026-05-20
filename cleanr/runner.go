@@ -88,6 +88,9 @@ func defaultEngines(cfg Config) []Engine {
 	if cfg.Suites.Drift.Enabled {
 		engines = append(engines, DriftEngine{})
 	}
+	if cfg.Suites.TokenOptimization.Enabled {
+		engines = append(engines, TokenOptimizationEngine{})
+	}
 	return engines
 }
 
@@ -108,6 +111,8 @@ func buildRecommendations(report Report) []string {
 			recs = append(recs, "Increase resilience under degraded request conditions by validating inputs and handling duplicate or truncated context safely.")
 		case "drift":
 			recs = append(recs, "Stabilize prompts or decoding settings for deterministic paths and snapshot important regression scenarios.")
+		case "token-optimization":
+			recs = append(recs, "Reduce prompt and response token waste with tighter context windows, deduplicated instructions, and explicit output length caps.")
 		}
 	}
 	return recs

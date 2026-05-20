@@ -33,11 +33,12 @@ type Scenario struct {
 }
 
 type SuitesConfig struct {
-	PromptInjection PromptInjectionConfig `json:"prompt_injection"`
-	Security        SecurityConfig        `json:"security"`
-	Load            LoadConfig            `json:"load"`
-	Chaos           ChaosConfig           `json:"chaos"`
-	Drift           DriftConfig           `json:"drift"`
+	PromptInjection   PromptInjectionConfig   `json:"prompt_injection"`
+	Security          SecurityConfig          `json:"security"`
+	Load              LoadConfig              `json:"load"`
+	Chaos             ChaosConfig             `json:"chaos"`
+	Drift             DriftConfig             `json:"drift"`
+	TokenOptimization TokenOptimizationConfig `json:"token_optimization"`
 }
 
 type PromptInjectionConfig struct {
@@ -78,6 +79,17 @@ type DriftConfig struct {
 	MinConsistencyScore float64  `json:"min_consistency_score"`
 }
 
+type TokenOptimizationConfig struct {
+	Enabled                     bool    `json:"enabled"`
+	MaxInputTokens              int     `json:"max_input_tokens"`
+	MaxOutputTokens             int     `json:"max_output_tokens"`
+	MaxTotalTokens              int     `json:"max_total_tokens"`
+	MaxOutputInputRatio         float64 `json:"max_output_input_ratio"`
+	MaxPromptDuplicationRatio   float64 `json:"max_prompt_duplication_ratio"`
+	MaxResponseDuplicationRatio float64 `json:"max_response_duplication_ratio"`
+	SuggestedMaxOutputTokens    int     `json:"suggested_max_output_tokens"`
+}
+
 type ReportingConfig struct {
 	Format string `json:"format"`
 	Output string `json:"output"`
@@ -99,6 +111,14 @@ type Response struct {
 	Latency      time.Duration
 	Err          error
 	ExtractError error
+	Usage        TokenUsage
+}
+
+type TokenUsage struct {
+	InputTokens  int  `json:"input_tokens,omitempty"`
+	OutputTokens int  `json:"output_tokens,omitempty"`
+	TotalTokens  int  `json:"total_tokens,omitempty"`
+	Heuristic    bool `json:"heuristic,omitempty"`
 }
 
 type Finding struct {

@@ -16,12 +16,14 @@ type SecurityEngine struct{}
 type LoadEngine struct{}
 type ChaosEngine struct{}
 type DriftEngine struct{}
+type TokenOptimizationEngine struct{}
 
-func (PromptInjectionEngine) Name() string { return "prompt-injection" }
-func (SecurityEngine) Name() string        { return "security" }
-func (LoadEngine) Name() string            { return "load" }
-func (ChaosEngine) Name() string           { return "chaos" }
-func (DriftEngine) Name() string           { return "drift" }
+func (PromptInjectionEngine) Name() string   { return "prompt-injection" }
+func (SecurityEngine) Name() string          { return "security" }
+func (LoadEngine) Name() string              { return "load" }
+func (ChaosEngine) Name() string             { return "chaos" }
+func (DriftEngine) Name() string             { return "drift" }
+func (TokenOptimizationEngine) Name() string { return "token-optimization" }
 
 func (PromptInjectionEngine) Run(ctx context.Context, runCtx *RunContext) SuiteResult {
 	cfg := runCtx.Config.Suites.PromptInjection
@@ -328,6 +330,88 @@ func (DriftEngine) Run(ctx context.Context, runCtx *RunContext) SuiteResult {
 	return SuiteResult{Name: "drift", Passed: allPassed(cases), Cases: cases}
 }
 
+func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *RunContext) SuiteResult {
+	cfg := runCtx.Config.Suites.TokenOptimization
+	cases := make([]CaseResult, 0, len(runCtx.Config.Scenarios))
+	totalInput := 0
+	totalOutput := 0
+	totalSavings := 0
+
+	for _, scenario := range runCtx.Config.Scenarios {
+		start := time.Now()
+		resp := runCtx.Target.Invoke(ctx, Request{
+			Scenario: scenario,
+			System:   scenario.System,
+			Prompt:   scenario.Input,
+			Timeout:  runCtx.Config.Target.Timeout(),
+		})
+		findings := responseFindings(resp, nil)
+		usage := inferTokenUsage(scenario, resp)
+		promptRatio := duplicationRatio(strings.TrimSpace(scenario.System + "\n" + scenario.Input))
+		responseRatio := duplicationRatio(resp.Text)
+		outputInputRatio := 0.0
+		if usage.InputTokens > 0 {
+			outputInputRatio = float64(usage.OutputTokens) / float64(usage.InputTokens)
+		}
+		savings := estimatedTokenSavings(usage, promptRatio, responseRatio, cfg)
+		totalInput += usage.InputTokens
+		totalOutput += usage.OutputTokens
+		totalSavings += savings
+
+		if usage.InputTokens > cfg.MaxInputTokens {
+			findings = append(findings, Finding{Severity: "high", Message: fmt.Sprintf("estimated input tokens %d exceeded threshold %d", usage.InputTokens, cfg.MaxInputTokens)})
+		}
+		if usage.OutputTokens > cfg.MaxOutputTokens {
+			findings = append(findings, Finding{Severity: "high", Message: fmt.Sprintf("estimated output tokens %d exceeded threshold %d", usage.OutputTokens, cfg.MaxOutputTokens)})
+		}
+		if usage.TotalTokens > cfg.MaxTotalTokens {
+			findings = append(findings, Finding{Severity: "critical", Message: fmt.Sprintf("estimated total tokens %d exceeded threshold %d", usage.TotalTokens, cfg.MaxTotalTokens)})
+		}
+		if outputInputRatio > cfg.MaxOutputInputRatio {
+			findings = append(findings, Finding{Severity: "medium", Message: fmt.Sprintf("output/input token ratio %.2f exceeded threshold %.2f", outputInputRatio, cfg.MaxOutputInputRatio)})
+		}
+		if promptRatio > cfg.MaxPromptDuplicationRatio {
+			findings = append(findings, Finding{Severity: "medium", Message: fmt.Sprintf("prompt duplication ratio %.2f exceeded threshold %.2f", promptRatio, cfg.MaxPromptDuplicationRatio)})
+		}
+		if responseRatio > cfg.MaxResponseDuplicationRatio {
+			findings = append(findings, Finding{Severity: "medium", Message: fmt.Sprintf("response duplication ratio %.2f exceeded threshold %.2f", responseRatio, cfg.MaxResponseDuplicationRatio)})
+		}
+
+		cases = append(cases, CaseResult{
+			Name:     scenario.Name,
+			Passed:   len(findings) == 0,
+			Duration: time.Since(start),
+			Findings: findings,
+			Details: map[string]any{
+				"input_tokens":                usage.InputTokens,
+				"output_tokens":               usage.OutputTokens,
+				"total_tokens":                usage.TotalTokens,
+				"heuristic_usage":             usage.Heuristic,
+				"output_input_ratio":          round2(outputInputRatio),
+				"prompt_duplication_ratio":    round2(promptRatio),
+				"response_duplication_ratio":  round2(responseRatio),
+				"suggested_max_output_tokens": cfg.SuggestedMaxOutputTokens,
+				"estimated_savings_tokens":    savings,
+				"optimization_hints":          tokenOptimizationHints(usage, promptRatio, responseRatio, outputInputRatio, cfg),
+			},
+		})
+	}
+
+	passed := allPassed(cases)
+	return SuiteResult{
+		Name:   "token-optimization",
+		Passed: passed,
+		Cases:  cases,
+		Meta: map[string]any{
+			"total_input_tokens":   totalInput,
+			"total_output_tokens":  totalOutput,
+			"total_tokens":         totalInput + totalOutput,
+			"estimated_savings":    totalSavings,
+			"heuristic_estimation": true,
+		},
+	}
+}
+
 func responseFindings(resp Response, forbidden []string) []Finding {
 	findings := make([]Finding, 0)
 	if resp.Err != nil {
@@ -488,4 +572,127 @@ func max(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func inferTokenUsage(scenario Scenario, resp Response) TokenUsage {
+	if resp.Usage.TotalTokens > 0 || resp.Usage.InputTokens > 0 || resp.Usage.OutputTokens > 0 {
+		usage := resp.Usage
+		if usage.TotalTokens == 0 {
+			usage.TotalTokens = usage.InputTokens + usage.OutputTokens
+		}
+		return usage
+	}
+	inputTokens := estimateTokens(strings.TrimSpace(scenario.System + "\n" + scenario.Input))
+	outputTokens := estimateTokens(resp.Text)
+	return TokenUsage{
+		InputTokens:  inputTokens,
+		OutputTokens: outputTokens,
+		TotalTokens:  inputTokens + outputTokens,
+		Heuristic:    true,
+	}
+}
+
+func estimateTokens(text string) int {
+	text = strings.TrimSpace(text)
+	if text == "" {
+		return 0
+	}
+	parts := regexp.MustCompile(`[A-Za-z0-9_]+|[^\sA-Za-z0-9_]`).FindAllString(text, -1)
+	total := 0
+	for _, part := range parts {
+		runes := []rune(part)
+		if len(runes) == 1 && !isAlphaNumericRune(runes[0]) {
+			total++
+			continue
+		}
+		total += int(math.Ceil(float64(len(runes)) / 4.0))
+	}
+	if total == 0 {
+		return int(math.Ceil(float64(len([]rune(text))) / 4.0))
+	}
+	return total
+}
+
+func duplicationRatio(text string) float64 {
+	totalTokens := estimateTokens(text)
+	if totalTokens == 0 {
+		return 0
+	}
+	units := splitTokenUnits(text)
+	if len(units) == 0 {
+		return 0
+	}
+	seen := map[string]int{}
+	duplicatedTokens := 0
+	for _, unit := range units {
+		key := strings.ToLower(strings.TrimSpace(unit))
+		if key == "" {
+			continue
+		}
+		tokens := estimateTokens(key)
+		if tokens == 0 {
+			continue
+		}
+		if seen[key] > 0 {
+			duplicatedTokens += tokens
+		}
+		seen[key]++
+	}
+	return math.Min(float64(duplicatedTokens)/float64(totalTokens), 1)
+}
+
+func splitTokenUnits(text string) []string {
+	splitter := regexp.MustCompile(`[\n\r]+|[.!?;]+`)
+	raw := splitter.Split(text, -1)
+	units := make([]string, 0, len(raw))
+	for _, unit := range raw {
+		unit = strings.TrimSpace(unit)
+		if unit == "" {
+			continue
+		}
+		units = append(units, unit)
+	}
+	return units
+}
+
+func estimatedTokenSavings(usage TokenUsage, promptRatio, responseRatio float64, cfg TokenOptimizationConfig) int {
+	savings := 0
+	if promptRatio > cfg.MaxPromptDuplicationRatio {
+		savings += int(float64(usage.InputTokens) * (promptRatio - cfg.MaxPromptDuplicationRatio))
+	}
+	if responseRatio > cfg.MaxResponseDuplicationRatio {
+		savings += int(float64(usage.OutputTokens) * (responseRatio - cfg.MaxResponseDuplicationRatio))
+	}
+	if usage.OutputTokens > cfg.SuggestedMaxOutputTokens {
+		savings += usage.OutputTokens - cfg.SuggestedMaxOutputTokens
+	}
+	return max(savings, 0)
+}
+
+func tokenOptimizationHints(usage TokenUsage, promptRatio, responseRatio, outputInputRatio float64, cfg TokenOptimizationConfig) []string {
+	hints := make([]string, 0, 4)
+	if usage.InputTokens > cfg.MaxInputTokens || promptRatio > cfg.MaxPromptDuplicationRatio {
+		hints = append(hints, "deduplicate repeated system instructions and trim low-signal retrieved context")
+	}
+	if usage.OutputTokens > cfg.MaxOutputTokens || outputInputRatio > cfg.MaxOutputInputRatio {
+		hints = append(hints, "add explicit response length caps and require concise output formats")
+	}
+	if responseRatio > cfg.MaxResponseDuplicationRatio {
+		hints = append(hints, "enforce structured answers to reduce repeated or circular completions")
+	}
+	if usage.TotalTokens > cfg.MaxTotalTokens {
+		hints = append(hints, "split large scenarios into smaller task-specific calls or introduce retrieval chunk limits")
+	}
+	if len(hints) == 0 {
+		hints = append(hints, "token profile is within budget")
+	}
+	return hints
+}
+
+func round2(v float64) float64 {
+	return math.Round(v*100) / 100
+}
+
+func isAlphaNumericRune(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
 }

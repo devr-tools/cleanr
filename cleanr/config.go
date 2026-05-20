@@ -3,7 +3,9 @@ package cleanr
 import (
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"os"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -27,34 +29,124 @@ func LoadConfigFile(path string) (Config, error) {
 }
 
 func ValidateConfig(cfg Config) error {
-	if strings.TrimSpace(cfg.Target.URL) == "" {
-		return fmt.Errorf("target.url is required")
+	var errs ValidationErrors
+
+	requireNonEmpty(&errs, "target.url", cfg.Target.URL, "set target.url to the full API endpoint URL")
+	requireNonEmpty(&errs, "target.prompt_field", cfg.Target.PromptField, "set target.prompt_field to the request field that receives the prompt text")
+	requireNonEmpty(&errs, "target.response_field", cfg.Target.ResponseField, "set target.response_field to the JSON path that contains the model text response")
+	if rawURL := strings.TrimSpace(cfg.Target.URL); rawURL != "" {
+		parsed, err := url.Parse(rawURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			errs.Add("target.url", "must be an absolute http(s) URL", "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
+		}
 	}
-	if strings.TrimSpace(cfg.Target.PromptField) == "" {
-		return fmt.Errorf("target.prompt_field is required")
+
+	if cfg.Target.TimeoutMS < 0 {
+		errs.Add("target.timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
 	}
-	if strings.TrimSpace(cfg.Target.ResponseField) == "" {
-		return fmt.Errorf("target.response_field is required")
-	}
+
+	scenarioNames := make(map[string]int, len(cfg.Scenarios))
 	if len(cfg.Scenarios) == 0 {
-		return fmt.Errorf("at least one scenario is required")
+		errs.Add("scenarios", "at least one scenario is required", "add a scenario with both name and input so cleanr has something to execute")
 	}
 	for i, scenario := range cfg.Scenarios {
-		if strings.TrimSpace(scenario.Name) == "" {
-			return fmt.Errorf("scenario %d missing name", i)
+		prefix := fmt.Sprintf("scenarios[%d]", i)
+		requireNonEmpty(&errs, prefix+".name", scenario.Name, "set a short stable scenario name, for example \"happy-path\"")
+		requireNonEmpty(&errs, prefix+".input", scenario.Input, "set the end-user prompt or test input for this scenario")
+		if name := strings.TrimSpace(scenario.Name); name != "" {
+			if first, ok := scenarioNames[name]; ok {
+				errs.Add(prefix+".name", fmt.Sprintf("duplicates scenarios[%d].name", first), "rename duplicate scenarios so each scenario name is unique in reports")
+			} else {
+				scenarioNames[name] = i
+			}
 		}
-		if strings.TrimSpace(scenario.Input) == "" {
-			return fmt.Errorf("scenario %q missing input", scenario.Name)
+	}
+
+	if cfg.Suites.Load.Enabled {
+		requirePositiveInt(&errs, "suites.load.virtual_users", cfg.Suites.Load.VirtualUsers, "set virtual_users to at least 1 when the load suite is enabled")
+		requirePositiveInt(&errs, "suites.load.requests_per_user", cfg.Suites.Load.RequestsPerUser, "set requests_per_user to at least 1 when the load suite is enabled")
+		if cfg.Suites.Load.MaxErrorRatePct < 0 || cfg.Suites.Load.MaxErrorRatePct > 100 {
+			errs.Add("suites.load.max_error_rate_pct", "must be between 0 and 100", "use a whole-number percentage such as 5 or 25")
+		}
+		if cfg.Suites.Load.P95LatencyMS < 0 {
+			errs.Add("suites.load.p95_latency_ms", "must be >= 0", "set a positive latency budget in milliseconds")
 		}
 	}
-	if cfg.Suites.Load.Enabled && cfg.Suites.Load.VirtualUsers <= 0 {
-		return fmt.Errorf("suites.load.virtual_users must be > 0")
+
+	for i, pattern := range cfg.Suites.Security.LeakPatterns {
+		if _, err := regexp.Compile(pattern); err != nil {
+			errs.Add(fmt.Sprintf("suites.security.leak_patterns[%d]", i), "must be a valid Go regular expression", "fix the pattern syntax or remove the entry if it is no longer needed")
+		}
 	}
-	if cfg.Suites.Load.Enabled && cfg.Suites.Load.RequestsPerUser <= 0 {
-		return fmt.Errorf("suites.load.requests_per_user must be > 0")
+
+	if cfg.Suites.Chaos.Enabled {
+		allowedFaults := map[string]struct{}{
+			"tight_deadline":   {},
+			"context_overflow": {},
+			"duplicate_turn":   {},
+		}
+		for i, fault := range cfg.Suites.Chaos.Faults {
+			if _, ok := allowedFaults[fault]; !ok {
+				errs.Add(fmt.Sprintf("suites.chaos.faults[%d]", i), "must be one of tight_deadline, context_overflow, or duplicate_turn", "replace the value with a supported built-in chaos fault")
+			}
+		}
+		if cfg.Suites.Chaos.TimeoutScale <= 0 {
+			errs.Add("suites.chaos.timeout_scale", "must be > 0", "use a fractional multiplier such as 0.4 to shorten the timeout")
+		}
+		if cfg.Suites.Chaos.NoiseBytes < 0 {
+			errs.Add("suites.chaos.noise_bytes", "must be >= 0", "set a non-negative number of injected bytes")
+		}
+		if cfg.Suites.Chaos.MaxErrorRate < 0 || cfg.Suites.Chaos.MaxErrorRate > 100 {
+			errs.Add("suites.chaos.max_error_rate_pct", "must be between 0 and 100", "use a whole-number percentage such as 35")
+		}
 	}
-	if cfg.Suites.Drift.Enabled && cfg.Suites.Drift.Iterations < 2 {
-		return fmt.Errorf("suites.drift.iterations must be >= 2")
+
+	if cfg.Suites.Drift.Enabled {
+		if cfg.Suites.Drift.Iterations < 2 {
+			errs.Add("suites.drift.iterations", "must be >= 2", "set iterations to 2 or more so drift can compare repeated runs")
+		}
+		if cfg.Suites.Drift.MaxNormalizedDrift < 0 || cfg.Suites.Drift.MaxNormalizedDrift > 1 {
+			errs.Add("suites.drift.max_normalized_drift", "must be between 0 and 1", "use a decimal threshold such as 0.3")
+		}
+		if cfg.Suites.Drift.MinConsistencyScore < 0 || cfg.Suites.Drift.MinConsistencyScore > 1 {
+			errs.Add("suites.drift.min_consistency_score", "must be between 0 and 1", "use a decimal threshold such as 0.7")
+		}
+	}
+
+	if cfg.Suites.TokenOptimization.Enabled {
+		if cfg.Suites.TokenOptimization.MaxInputTokens < 0 {
+			errs.Add("suites.token_optimization.max_input_tokens", "must be >= 0", "set a non-negative token budget or omit the field to use the default")
+		}
+		if cfg.Suites.TokenOptimization.MaxOutputTokens < 0 {
+			errs.Add("suites.token_optimization.max_output_tokens", "must be >= 0", "set a non-negative token budget or omit the field to use the default")
+		}
+		if cfg.Suites.TokenOptimization.MaxTotalTokens < 0 {
+			errs.Add("suites.token_optimization.max_total_tokens", "must be >= 0", "set a non-negative token budget or omit the field to use the default")
+		}
+		if cfg.Suites.TokenOptimization.MaxOutputInputRatio <= 0 {
+			errs.Add("suites.token_optimization.max_output_input_ratio", "must be > 0", "use a positive ratio such as 1.4")
+		}
+		if cfg.Suites.TokenOptimization.MaxPromptDuplicationRatio < 0 || cfg.Suites.TokenOptimization.MaxPromptDuplicationRatio > 1 {
+			errs.Add("suites.token_optimization.max_prompt_duplication_ratio", "must be between 0 and 1", "use a decimal ratio such as 0.18")
+		}
+		if cfg.Suites.TokenOptimization.MaxResponseDuplicationRatio < 0 || cfg.Suites.TokenOptimization.MaxResponseDuplicationRatio > 1 {
+			errs.Add("suites.token_optimization.max_response_duplication_ratio", "must be between 0 and 1", "use a decimal ratio such as 0.12")
+		}
+		if cfg.Suites.TokenOptimization.SuggestedMaxOutputTokens < 0 {
+			errs.Add("suites.token_optimization.suggested_max_output_tokens", "must be >= 0", "set a non-negative suggestion or omit the field to use the default")
+		}
+	}
+
+	if format := strings.TrimSpace(cfg.Reporting.Format); format != "" {
+		switch format {
+		case "text", "json", "junit":
+		default:
+			errs.Add("reporting.format", "must be one of text, json, or junit", "use one of the built-in report formats or omit the field for text output")
+		}
+	}
+
+	if errs.HasAny() {
+		return errs
 	}
 	return nil
 }
@@ -126,6 +218,16 @@ func ExampleConfig() Config {
 				StableTags:          []string{"stable"},
 				MinConsistencyScore: 0.68,
 			},
+			TokenOptimization: TokenOptimizationConfig{
+				Enabled:                     true,
+				MaxInputTokens:              700,
+				MaxOutputTokens:             350,
+				MaxTotalTokens:              900,
+				MaxOutputInputRatio:         1.4,
+				MaxPromptDuplicationRatio:   0.18,
+				MaxResponseDuplicationRatio: 0.12,
+				SuggestedMaxOutputTokens:    180,
+			},
 		},
 		Reporting: ReportingConfig{
 			Format: "text",
@@ -189,8 +291,43 @@ func applyDefaults(cfg *Config) {
 			cfg.Suites.Drift.MinConsistencyScore = 0.7
 		}
 	}
+	if cfg.Suites.TokenOptimization.Enabled {
+		if cfg.Suites.TokenOptimization.MaxInputTokens == 0 {
+			cfg.Suites.TokenOptimization.MaxInputTokens = 700
+		}
+		if cfg.Suites.TokenOptimization.MaxOutputTokens == 0 {
+			cfg.Suites.TokenOptimization.MaxOutputTokens = 350
+		}
+		if cfg.Suites.TokenOptimization.MaxTotalTokens == 0 {
+			cfg.Suites.TokenOptimization.MaxTotalTokens = 900
+		}
+		if cfg.Suites.TokenOptimization.MaxOutputInputRatio == 0 {
+			cfg.Suites.TokenOptimization.MaxOutputInputRatio = 1.4
+		}
+		if cfg.Suites.TokenOptimization.MaxPromptDuplicationRatio == 0 {
+			cfg.Suites.TokenOptimization.MaxPromptDuplicationRatio = 0.18
+		}
+		if cfg.Suites.TokenOptimization.MaxResponseDuplicationRatio == 0 {
+			cfg.Suites.TokenOptimization.MaxResponseDuplicationRatio = 0.12
+		}
+		if cfg.Suites.TokenOptimization.SuggestedMaxOutputTokens == 0 {
+			cfg.Suites.TokenOptimization.SuggestedMaxOutputTokens = 180
+		}
+	}
 }
 
 func (c TargetConfig) Timeout() time.Duration {
 	return time.Duration(c.TimeoutMS) * time.Millisecond
+}
+
+func requireNonEmpty(errs *ValidationErrors, path, value, hint string) {
+	if strings.TrimSpace(value) == "" {
+		errs.Add(path, "is required", hint)
+	}
+}
+
+func requirePositiveInt(errs *ValidationErrors, path string, value int, hint string) {
+	if value <= 0 {
+		errs.Add(path, "must be > 0", hint)
+	}
 }
