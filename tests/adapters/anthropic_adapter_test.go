@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"strings"
 	"testing"
@@ -12,6 +11,7 @@ import (
 
 	"cleanr/cleanr"
 	"cleanr/internal/cli"
+	"cleanr/internal/testutil"
 )
 
 func TestAnthropicTargetParsesMessagesAPIUsage(t *testing.T) {
@@ -189,7 +189,7 @@ func TestRunCommandSupportsAnthropicTarget(t *testing.T) {
 	}))
 	defer restoreTransport()
 
-	configPath := writeNamedConfigFile(t, "anthropic-messages.json", marshalProviderConfig(map[string]any{
+	configPath := testutil.WriteNamedConfigFile(t, "anthropic-messages.json", marshalProviderConfig(map[string]any{
 		"version": "v1alpha1",
 		"target": map[string]any{
 			"type": "anthropic",
@@ -226,7 +226,7 @@ func TestRunCommandSupportsAnthropicTarget(t *testing.T) {
 }
 
 func TestValidateCommandAcceptsAnthropicConfig(t *testing.T) {
-	configPath := writeNamedConfigFile(t, "anthropic-validate.json", marshalProviderConfig(map[string]any{
+	configPath := testutil.WriteNamedConfigFile(t, "anthropic-validate.json", marshalProviderConfig(map[string]any{
 		"version": "v1alpha1",
 		"target": map[string]any{
 			"type": "anthropic",
@@ -260,43 +260,4 @@ func marshalProviderConfig(cfg map[string]any) string {
 		panic(err)
 	}
 	return string(data)
-}
-
-func assertAnthropicMessagesRequest(body map[string]any, wantSystem, wantPrompt string, wantMaxTokens int) error {
-	if strings.TrimSpace(stringValue(body["model"])) == "" {
-		return fmt.Errorf("request missing model")
-	}
-	if intValue(body["max_tokens"]) != wantMaxTokens {
-		return fmt.Errorf("request max_tokens=%d, want %d", intValue(body["max_tokens"]), wantMaxTokens)
-	}
-	if !containsTextFragment(body["system"], wantSystem) {
-		return fmt.Errorf("request missing system prompt %q", wantSystem)
-	}
-
-	rawMessages, ok := body["messages"].([]any)
-	if !ok || len(rawMessages) != 1 {
-		return fmt.Errorf("request missing user messages array")
-	}
-	msg, ok := rawMessages[0].(map[string]any)
-	if !ok {
-		return fmt.Errorf("request message has unexpected shape")
-	}
-	if stringValue(msg["role"]) != "user" {
-		return fmt.Errorf("request role=%q, want user", stringValue(msg["role"]))
-	}
-	if !containsTextFragment(msg["content"], wantPrompt) {
-		return fmt.Errorf("request missing user prompt %q", wantPrompt)
-	}
-	return nil
-}
-
-func intValue(v any) int {
-	switch typed := v.(type) {
-	case int:
-		return typed
-	case float64:
-		return int(typed)
-	default:
-		return 0
-	}
 }

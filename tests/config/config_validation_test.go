@@ -1,11 +1,11 @@
 package tests
 
 import (
-	"os"
 	"strings"
 	"testing"
 
 	"cleanr/cleanr"
+	"cleanr/internal/testutil"
 )
 
 func TestValidateConfigRequiredFields(t *testing.T) {
@@ -246,7 +246,7 @@ func TestLoadConfigFileValidationErrors(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			path := writeConfigFile(t, tt.payload)
+			path := testutil.WriteConfigFile(t, tt.payload)
 
 			_, err := cleanr.LoadConfigFile(path)
 			if err == nil {
@@ -265,7 +265,7 @@ func TestLoadConfigFileValidationErrors(t *testing.T) {
 func TestLoadConfigFileAppliesDefaultsBeforeValidation(t *testing.T) {
 	t.Parallel()
 
-	path := writeConfigFile(t, `{
+	path := testutil.WriteConfigFile(t, `{
 		"target": {
 			"url": "http://localhost:8080",
 			"prompt_field": "input",
@@ -315,7 +315,7 @@ func TestLoadConfigFileYAMLAppliesDefaultsBeforeValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			path := writeNamedConfigFile(t, tt.filename, `
+			path := testutil.WriteNamedConfigFile(t, tt.filename, `
 target:
   url: http://localhost:8080
   prompt_field: input
@@ -353,7 +353,7 @@ suites:
 func TestLoadConfigFileYAML(t *testing.T) {
 	t.Parallel()
 
-	path := writeNamedConfigFile(t, "cleanr.yaml", `
+	path := testutil.WriteNamedConfigFile(t, "cleanr.yaml", `
 version: v1alpha1
 target:
   name: yaml-target
@@ -398,7 +398,7 @@ reporting:
 func TestLoadConfigFileMalformedYAML(t *testing.T) {
 	t.Parallel()
 
-	path := writeNamedConfigFile(t, "cleanr.yaml", `
+	path := testutil.WriteNamedConfigFile(t, "cleanr.yaml", `
 target:
   url: http://localhost:8080/v1/chat
   prompt_field: input
@@ -415,21 +415,4 @@ scenarios:
 	if !strings.HasPrefix(err.Error(), "decode config:") {
 		t.Fatalf("expected decode config prefix, got %q", err.Error())
 	}
-}
-
-func writeConfigFile(t *testing.T, payload string) string {
-	t.Helper()
-
-	return writeNamedConfigFile(t, "config.json", payload)
-}
-
-func writeNamedConfigFile(t *testing.T, name, payload string) string {
-	t.Helper()
-
-	dir := t.TempDir()
-	path := dir + "/" + name
-	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
-		t.Fatalf("write config: %v", err)
-	}
-	return path
 }

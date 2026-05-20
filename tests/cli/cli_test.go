@@ -10,6 +10,7 @@ import (
 
 	"cleanr/cleanr"
 	"cleanr/internal/cli"
+	"cleanr/internal/testutil"
 )
 
 func TestValidateCommandPrintsActionableFieldErrors(t *testing.T) {
@@ -67,7 +68,7 @@ func TestValidateCommandAcceptsYAMLConfig(t *testing.T) {
 }
 
 func TestValidateCommandPrintsActionableFieldErrorsForYAMLConfig(t *testing.T) {
-	path := writeNamedConfigFile(t, "cleanr.yaml", `
+	path := testutil.WriteNamedConfigFile(t, "cleanr.yaml", `
 target:
   prompt_field: input
   response_field: output.text
