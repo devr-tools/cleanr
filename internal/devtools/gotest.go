@@ -12,8 +12,10 @@ import (
 )
 
 type goTestEvent struct {
-	Action string `json:"Action"`
-	Output string `json:"Output"`
+	Package string `json:"Package"`
+	Test    string `json:"Test"`
+	Action  string `json:"Action"`
+	Output  string `json:"Output"`
 }
 
 func (r Runner) runGoTestFiltered(ctx context.Context, args ...string) error {
@@ -36,6 +38,18 @@ func (r Runner) runGoTestFiltered(ctx context.Context, args ...string) error {
 		return fmt.Errorf("go %s: %w", strings.Join(cmdArgs, " "), err)
 	}
 
+	type testKey struct {
+		pkg  string
+		test string
+	}
+
+	var passCount int
+	var failCount int
+	testOutput := make(map[testKey][]string)
+	packageOutput := make(map[string][]string)
+	packageHasNamedFailure := make(map[string]bool)
+	var failureSections []string
+
 	dec := json.NewDecoder(stdout)
 	for {
 		var event goTestEvent
@@ -46,20 +60,89 @@ func (r Runner) runGoTestFiltered(ctx context.Context, args ...string) error {
 			_ = cmd.Wait()
 			return fmt.Errorf("decode go test json: %w", err)
 		}
-		if event.Action != "output" {
+		if event.Test != "" {
+			key := testKey{pkg: event.Package, test: event.Test}
+			switch event.Action {
+			case "output":
+				testOutput[key] = append(testOutput[key], event.Output)
+			case "pass":
+				passCount++
+				delete(testOutput, key)
+			case "fail":
+				failCount++
+				packageHasNamedFailure[event.Package] = true
+				var section strings.Builder
+				fmt.Fprintf(&section, "[%s] %s\n", event.Package, event.Test)
+				for _, line := range testOutput[key] {
+					_, _ = io.WriteString(&section, line)
+				}
+				failureSections = append(failureSections, section.String())
+				delete(testOutput, key)
+			case "skip":
+				delete(testOutput, key)
+			}
 			continue
 		}
-		if strings.Contains(event.Output, "[no test files]") {
-			continue
-		}
-		if _, err := io.WriteString(r.Stdout, event.Output); err != nil {
-			_ = cmd.Wait()
-			return err
+
+		switch event.Action {
+		case "output":
+			if strings.Contains(event.Output, "[no test files]") {
+				continue
+			}
+			packageOutput[event.Package] = append(packageOutput[event.Package], event.Output)
+		case "pass", "skip":
+			delete(packageOutput, event.Package)
+		case "fail":
+			lines := filterPackageFailureOutput(packageOutput[event.Package])
+			if !packageHasNamedFailure[event.Package] && len(lines) > 0 {
+				var section strings.Builder
+				fmt.Fprintf(&section, "[%s]\n", event.Package)
+				for _, line := range lines {
+					_, _ = io.WriteString(&section, line)
+				}
+				failureSections = append(failureSections, section.String())
+			}
+			delete(packageOutput, event.Package)
 		}
 	}
 
-	if err := cmd.Wait(); err != nil {
-		return fmt.Errorf("go %s: %w", strings.Join(cmdArgs, " "), err)
+	waitErr := cmd.Wait()
+	if len(failureSections) > 0 {
+		if _, err := fmt.Fprintln(r.Stdout, "failed tests:"); err != nil {
+			return err
+		}
+		for _, section := range failureSections {
+			if _, err := fmt.Fprintf(r.Stdout, "\n%s", section); err != nil {
+				return err
+			}
+		}
+	}
+	if _, err := fmt.Fprintf(r.Stdout, "test summary: %d passed, %d failed\n", passCount, failCount); err != nil {
+		return err
+	}
+	if waitErr != nil {
+		return fmt.Errorf("go %s: %w", strings.Join(cmdArgs, " "), waitErr)
 	}
 	return nil
+}
+
+func filterPackageFailureOutput(lines []string) []string {
+	filtered := make([]string, 0, len(lines))
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == "":
+			continue
+		case trimmed == "PASS":
+			continue
+		case trimmed == "FAIL":
+			continue
+		case strings.HasPrefix(line, "ok  \t"):
+			continue
+		case strings.HasPrefix(trimmed, "?"):
+			continue
+		}
+		filtered = append(filtered, line)
+	}
+	return filtered
 }

@@ -8,11 +8,9 @@
 
 ### Homebrew
 
-```bash
-brew install alxxjohn/cleanr/cleanr
-```
+`cleanr` is not in `homebrew/core` yet. This repository now generates a source-based formula intended for a future `homebrew/core` submission, but users cannot install it with `brew install cleanr` until that PR is merged.
 
-This installs from the `alxxjohn/homebrew-cleanr` tap after a tagged release publishes the formula.
+Until then, install from GitHub Releases or build from source. For submission prep details, see [docs/homebrew.md](docs/homebrew.md).
 
 ### Install with `curl`
 

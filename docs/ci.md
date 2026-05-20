@@ -26,9 +26,9 @@ It currently:
 
 - resolves the release version from the tag or manual input
 - runs `make release VERSION=<version>`
-- runs `make homebrew-formula VERSION=<version>`
+- computes the SHA256 for the tagged GitHub source tarball
+- runs `make homebrew-formula VERSION=<version> SOURCE_SHA256=<sha256>`
 - publishes the generated archives with `softprops/action-gh-release`
-- updates the `alxxjohn/homebrew-cleanr` tap when `HOMEBREW_TAP_TOKEN` is configured
 
 Release packaging currently targets:
 
@@ -39,7 +39,7 @@ Release packaging currently targets:
 
 Each release directory includes compressed archives plus a `SHA256SUMS` file.
 
-The release job also generates `dist/releases/<version>/cleanr.rb`, which is the Homebrew formula pushed to the tap repository.
+The release job also generates `dist/releases/<version>/cleanr.rb`, which is a source-build Homebrew formula intended to be used as the starting point for a future `homebrew/core` submission.
 
 ## Exit Code Contract
 
@@ -146,12 +146,17 @@ To summarize the retained window for dashboards or release notes, run:
 
 That output structure is what the repository release workflow publishes, so local release dry runs should use the same command.
 
-`make homebrew-formula VERSION=vX.Y.Z REPOSITORY=owner/name` generates the matching Homebrew formula from the release checksums.
+`make homebrew-formula VERSION=vX.Y.Z REPOSITORY=owner/name SOURCE_SHA256=<sha256>` generates the matching Homebrew formula from the tagged source archive checksum.
 
-To publish the formula automatically, configure:
+If the repository has a committed open-source license and you know the SPDX identifier, include it when generating the formula:
 
-- a tap repository, currently expected at `alxxjohn/homebrew-cleanr`
-- a `HOMEBREW_TAP_TOKEN` GitHub Actions secret with push access to that tap repository
+```bash
+make homebrew-formula VERSION=vX.Y.Z REPOSITORY=owner/name SOURCE_SHA256=<sha256> HOMEBREW_LICENSE=MIT
+```
+
+The generated formula is structured for `homebrew/core`, which means it builds `cleanr` from source instead of downloading platform-specific release binaries.
+
+This repository is not installable with `brew install cleanr` yet. That only becomes true after a formula PR is accepted into `Homebrew/homebrew-core`.
 
 ## Future CI Direction
 

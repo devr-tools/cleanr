@@ -100,17 +100,19 @@ func run(args []string) int {
 		fs := flag.NewFlagSet("homebrew-formula", flag.ContinueOnError)
 		fs.SetOutput(os.Stderr)
 		version := fs.String("version", "", "Release tag version, for example v1.2.3")
-		checksums := fs.String("checksums", "", "Path to the SHA256SUMS file for the release")
 		repository := fs.String("repository", "", "GitHub repository in owner/name form")
+		sourceSHA256 := fs.String("source-sha256", "", "SHA256 for the tagged source tarball used by Homebrew")
+		license := fs.String("license", "", "Optional SPDX license identifier for the formula")
 		output := fs.String("output", "", "Output path for the generated formula")
 		if err := fs.Parse(args[1:]); err != nil {
 			return 2
 		}
 		if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
-			Version:    *version,
-			Checksums:  *checksums,
-			Repository: *repository,
-			Output:     *output,
+			Version:      *version,
+			Repository:   *repository,
+			SourceSHA256: *sourceSHA256,
+			License:      *license,
+			Output:       *output,
 		}); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "homebrew-formula failed: %v\n", err)
 			return 1

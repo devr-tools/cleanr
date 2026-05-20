@@ -120,21 +120,15 @@ exit 0
 func TestDevtoolsHomebrewFormula(t *testing.T) {
 	repo := t.TempDir()
 	tag := "v1.2.3"
-	checksumPath := filepath.Join(repo, "dist", "releases", tag, "SHA256SUMS")
-	mustWriteFile(t, checksumPath, strings.Join([]string{
-		"aaaa1111 cleanr_v1.2.3_darwin_amd64.tar.gz",
-		"bbbb2222 cleanr_v1.2.3_darwin_arm64.tar.gz",
-		"cccc3333 cleanr_v1.2.3_linux_amd64.tar.gz",
-		"dddd4444 cleanr_v1.2.3_linux_arm64.tar.gz",
-	}, "\n")+"\n")
 
 	var stdout bytes.Buffer
 	runner := devtools.NewRunner(repo, &stdout, &stdout)
 	if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
-		Version:    tag,
-		Checksums:  "dist/releases/v1.2.3/SHA256SUMS",
-		Repository: "alxxjohn/cleanr",
-		Output:     "dist/homebrew/cleanr.rb",
+		Version:      tag,
+		Repository:   "alxxjohn/cleanr",
+		SourceSHA256: "eeee5555",
+		License:      "MIT",
+		Output:       "dist/homebrew/cleanr.rb",
 	}); err != nil {
 		t.Fatalf("homebrew formula: %v", err)
 	}
@@ -151,11 +145,20 @@ func TestDevtoolsHomebrewFormula(t *testing.T) {
 	if !strings.Contains(formula, `version "1.2.3"`) {
 		t.Fatalf("formula missing version: %s", formula)
 	}
-	if !strings.Contains(formula, `url "https://github.com/alxxjohn/cleanr/releases/download/v1.2.3/cleanr_v1.2.3_darwin_arm64.tar.gz"`) {
-		t.Fatalf("formula missing darwin arm url: %s", formula)
+	if !strings.Contains(formula, `url "https://github.com/alxxjohn/cleanr/archive/refs/tags/v1.2.3.tar.gz"`) {
+		t.Fatalf("formula missing source url: %s", formula)
 	}
-	if !strings.Contains(formula, `sha256 "dddd4444"`) {
-		t.Fatalf("formula missing linux arm checksum: %s", formula)
+	if !strings.Contains(formula, `sha256 "eeee5555"`) {
+		t.Fatalf("formula missing source checksum: %s", formula)
+	}
+	if !strings.Contains(formula, `license "MIT"`) {
+		t.Fatalf("formula missing license: %s", formula)
+	}
+	if !strings.Contains(formula, `depends_on "go" => :build`) {
+		t.Fatalf("formula missing go dependency: %s", formula)
+	}
+	if !strings.Contains(formula, `system "go", "build", *std_go_args(output: bin/"cleanr", ldflags: ldflags), "./cmd/cleanr"`) {
+		t.Fatalf("formula missing go build command: %s", formula)
 	}
 	if !strings.Contains(stdout.String(), "wrote Homebrew formula") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
@@ -163,11 +166,10 @@ func TestDevtoolsHomebrewFormula(t *testing.T) {
 
 	if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
 		Version:    tag,
-		Checksums:  "dist/releases/v1.2.3/missing.txt",
 		Repository: "alxxjohn/cleanr",
 		Output:     "dist/homebrew/missing.rb",
 	}); err == nil {
-		t.Fatalf("expected missing checksum file error")
+		t.Fatalf("expected missing source SHA error")
 	}
 }
 
@@ -188,6 +190,39 @@ func TestDevtoolsTestFiltersNoTestFilesOutput(t *testing.T) {
 	output := stdout.String()
 	if strings.Contains(output, "[no test files]") {
 		t.Fatalf("expected no-test-files output to be filtered: %s", output)
+	}
+	if strings.Contains(output, "=== RUN   TestPass") || strings.Contains(output, "--- PASS: TestPass") {
+		t.Fatalf("expected passing test output to be summarized: %s", output)
+	}
+	if !strings.Contains(output, "test summary: 1 passed, 0 failed") {
+		t.Fatalf("expected pass summary output: %s", output)
+	}
+}
+
+func TestDevtoolsTestShowsOnlyFailedTests(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("GOCACHE", filepath.Join(repo, ".gocache"))
+	mustWriteFile(t, filepath.Join(repo, "go.mod"), "module example.com/failsummary\n\ngo 1.20\n")
+	mustWriteFile(t, filepath.Join(repo, "pkg", "pkg_test.go"), "package pkg\n\nimport \"testing\"\n\nfunc TestPass(t *testing.T) {}\nfunc TestFail(t *testing.T) { t.Fatalf(\"boom\") }\n")
+
+	var stdout bytes.Buffer
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.Test(context.Background()); err == nil {
+		t.Fatal("expected test failure")
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "=== RUN   TestPass") || strings.Contains(output, "--- PASS: TestPass") {
+		t.Fatalf("expected passing test output to be suppressed: %s", output)
+	}
+	if !strings.Contains(output, "[example.com/failsummary/pkg] TestFail") {
+		t.Fatalf("expected failed test header: %s", output)
+	}
+	if !strings.Contains(output, "boom") || !strings.Contains(output, "--- FAIL: TestFail") {
+		t.Fatalf("expected failed test details: %s", output)
+	}
+	if !strings.Contains(output, "test summary: 1 passed, 1 failed") {
+		t.Fatalf("expected failure summary output: %s", output)
 	}
 }
 

@@ -17,8 +17,6 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
-    env:
-      HOMEBREW_TAP_REPOSITORY: alxxjohn/homebrew-cleanr
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -41,41 +39,20 @@ jobs:
       - name: Package release artifacts
         run: make release VERSION=${{ steps.version.outputs.value }}
 
+      - name: Compute Homebrew source tarball SHA256
+        id: homebrew
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: |
+          SOURCE_URL="https://github.com/${{ github.repository }}/archive/refs/tags/${VERSION}.tar.gz"
+          curl -fsSL "$SOURCE_URL" -o /tmp/cleanr-homebrew-source.tar.gz
+          echo "source_sha256=$(sha256sum /tmp/cleanr-homebrew-source.tar.gz | awk '{print $1}')" >> "$GITHUB_OUTPUT"
+
       - name: Generate Homebrew formula
-        run: make homebrew-formula VERSION=${{ steps.version.outputs.value }} REPOSITORY=${{ github.repository }}
+        run: make homebrew-formula VERSION=${{ steps.version.outputs.value }} REPOSITORY=${{ github.repository }} SOURCE_SHA256=${{ steps.homebrew.outputs.source_sha256 }}
 
       - name: Publish GitHub release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.value }}
           files: dist/releases/${{ steps.version.outputs.value }}/*
-
-      - name: Checkout Homebrew tap
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
-        uses: actions/checkout@v4
-        with:
-          repository: ${{ env.HOMEBREW_TAP_REPOSITORY }}
-          token: ${{ secrets.HOMEBREW_TAP_TOKEN }}
-          path: homebrew-tap
-
-      - name: Publish Homebrew formula
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN != '' }}
-        env:
-          VERSION: ${{ steps.version.outputs.value }}
-        run: |
-          mkdir -p homebrew-tap/Formula
-          cp "dist/releases/${VERSION}/cleanr.rb" homebrew-tap/Formula/cleanr.rb
-          cd homebrew-tap
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          if [ -z "$(git status --short -- Formula/cleanr.rb)" ]; then
-            echo "Homebrew formula already up to date."
-            exit 0
-          fi
-          git add Formula/cleanr.rb
-          git commit -m "Update cleanr ${VERSION}"
-          git push
-
-      - name: Skip Homebrew tap publish
-        if: ${{ secrets.HOMEBREW_TAP_TOKEN == '' }}
-        run: echo "HOMEBREW_TAP_TOKEN is not set; skipped Homebrew tap publish."

@@ -14,10 +14,11 @@ type ReleaseOptions struct {
 }
 
 type HomebrewFormulaOptions struct {
-	Version    string
-	Checksums  string
-	Repository string
-	Output     string
+	Version      string
+	Repository   string
+	SourceSHA256 string
+	License      string
+	Output       string
 }
 
 type Platform struct {

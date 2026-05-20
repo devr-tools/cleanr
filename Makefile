@@ -1,6 +1,8 @@
 GO ?= go
 VERSION ?= dev
 REPOSITORY ?= alxxjohn/cleanr
+SOURCE_SHA256 ?=
+HOMEBREW_LICENSE ?=
 GOCACHE ?= $(CURDIR)/.gocache
 REPORT_FORMAT ?= text
 REPORT_PRESET ?= fail
@@ -29,6 +31,8 @@ menu:
 	@printf "\nVariables:\n"
 	@printf "  VERSION=%s\n" "$(VERSION)"
 	@printf "  GO=%s\n" "$(GO)"
+	@printf "  SOURCE_SHA256=%s\n" "$(SOURCE_SHA256)"
+	@printf "  HOMEBREW_LICENSE=%s\n" "$(HOMEBREW_LICENSE)"
 	@printf "  REPORT_FORMAT=%s\n" "$(REPORT_FORMAT)"
 	@printf "  REPORT_PRESET=%s\n" "$(REPORT_PRESET)"
 	@printf "  REPORT_INPUT=%s\n" "$(REPORT_INPUT)"
@@ -61,7 +65,7 @@ release:
 	$(GO) run ./cmd/cleanr-dev release -version $(VERSION) -output dist/releases
 
 homebrew-formula:
-	$(GO) run ./cmd/cleanr-dev homebrew-formula -version $(VERSION) -checksums dist/releases/$(VERSION)/SHA256SUMS -repository $(REPOSITORY) -output dist/releases/$(VERSION)/cleanr.rb
+	$(GO) run ./cmd/cleanr-dev homebrew-formula -version $(VERSION) -repository $(REPOSITORY) -source-sha256 $(SOURCE_SHA256) $(if $(HOMEBREW_LICENSE),-license $(HOMEBREW_LICENSE),) -output dist/releases/$(VERSION)/cleanr.rb
 
 deploy: release
 
