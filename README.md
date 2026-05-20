@@ -46,22 +46,6 @@ For a fuller setup walkthrough, see [docs/getting-started.md](docs/getting-start
 
 As the project grows, `docs/` should remain the home for guides, examples, and operational reference material. The main README should stay focused on orientation and onboarding.
 
-## Repository Layout
-
-```text
-.
-├── .github/workflows/   CI and release automation
-├── cleanr/              Public SDK types, config, runner, engines, reporters, HTTP target adapter
-├── cmd/cleanr/          CLI entrypoint
-├── cmd/cleanr-dev/      Developer tooling entrypoint used by Make targets
-├── docs/                Guides, reference docs, roadmap, and execution notes
-├── img/                 README and documentation assets
-├── internal/cli/        Command parsing and CLI behavior
-├── internal/devtools/   Format, lint, test, build, and release helpers
-├── tests/               CLI and runner tests
-├── Makefile             Common developer workflows
-└── README.md            Project entrypoint
-```
 
 ## Development
 
@@ -98,6 +82,3 @@ The repository includes CI and release workflows under `.github/workflows/`. For
 
 That makes `cleanr` straightforward to wire into GitHub Actions, Buildkite, CircleCI, or other pipeline systems.
 
-## Roadmap
-
-Near-term priorities include provider adapters, provider-neutral response normalization, reusable assertions, and stronger docs. Longer-term direction is tracked in [docs/roadmap.md](docs/roadmap.md).
