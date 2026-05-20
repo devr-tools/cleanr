@@ -19,6 +19,7 @@
 - [x] Improve validation error quality.
 - [x] Add YAML config support.
 - [x] Add OpenAI adapter.
+- [x] Add Anthropic adapter.
 
 ## Now
 
@@ -30,9 +31,9 @@ Exit criteria: HTTP and provider adapters both map into the same assertion layer
 
 ### Config and DX
 
-- [ ] Add provider-native token usage ingestion.
+- [x] Add provider-native token usage ingestion.
 Deliverable: adapters can populate exact input/output token counts instead of relying only on heuristic estimation.
-Exit criteria: the token optimization suite prefers provider usage automatically when available.
+Exit criteria: OpenAI and Anthropic adapters populate exact usage automatically when the provider returns it.
 
 - [ ] Add reusable scenario templates.
 Deliverable: scenario inheritance or shared variables for repeated prompt setups.
@@ -82,7 +83,6 @@ Exit criteria: tagged release process documented and repeatable.
 
 ## Later
 
-- [ ] Add Anthropic adapter.
 - [ ] Add Gemini adapter.
 - [ ] Add distributed load workers.
 - [ ] Add trend reports across builds.
@@ -99,20 +99,17 @@ Exit criteria: tagged release process documented and repeatable.
 
 ## Suggested execution order
 
-1. OpenAI adapter
-2. normalized response envelope
-3. YAML config support
-4. improved validation
-5. provider-native token usage
-6. GitHub Action
-7. assertion DSL
-8. snapshots
-9. semantic drift
-10. tool-call tracing
+1. normalized response envelope
+2. assertion DSL
+3. snapshots
+4. semantic drift
+5. tool-call tracing
+6. Gemini adapter
+7. distributed load workers
 
 ## Definition of Phase 2 done
 
-- OpenAI is supported natively.
+- OpenAI and Anthropic are supported natively.
 - YAML config is supported.
 - Assertions are reusable and not hard-coded per engine.
 - Drift can compare against saved baselines.

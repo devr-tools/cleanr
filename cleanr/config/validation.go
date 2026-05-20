@@ -36,8 +36,19 @@ func ValidateConfig(cfg core.Config) error {
 				errs.Add("target.openai.base_url", "must be an absolute http(s) URL", "use a value such as https://api.openai.com/v1 or a compatible base URL for testing")
 			}
 		}
+	case "anthropic":
+		requireNonEmpty(&errs, "target.anthropic.model", cfg.Target.Anthropic.Model, "set the Anthropic model name, for example claude-sonnet-4-20250514")
+		if rawURL := strings.TrimSpace(cfg.Target.Anthropic.BaseURL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add("target.anthropic.base_url", "must be an absolute http(s) URL", "use a value such as https://api.anthropic.com/v1 or a compatible base URL for testing")
+			}
+		}
+		if cfg.Target.Anthropic.MaxTokens < 0 {
+			errs.Add("target.anthropic.max_tokens", "must be >= 0", "set a positive max_tokens budget or omit the field to use the default")
+		}
 	default:
-		errs.Add("target.type", "must be one of http or openai", "omit target.type for the default HTTP adapter, or set it to openai for the native OpenAI adapter")
+		errs.Add("target.type", "must be one of http, openai, or anthropic", "omit target.type for the default HTTP adapter, or set it to openai or anthropic for a native provider adapter")
 	}
 
 	if cfg.Target.TimeoutMS < 0 {

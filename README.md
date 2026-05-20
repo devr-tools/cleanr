@@ -6,7 +6,7 @@
 
 ## Overview
 
-`cleanr` is designed for teams that need repeatable release checks for AI systems, not just ad hoc prompt testing. The current codebase focuses on an HTTP-first target model so it can exercise chat, completion, agent, and tool-calling APIs without requiring a provider-specific integration layer.
+`cleanr` is designed for teams that need repeatable release checks for AI systems, not just ad hoc prompt testing. The current codebase keeps an HTTP-first target model for broad compatibility, and now includes native provider adapters for OpenAI and Anthropic.
 
 Core capabilities:
 
@@ -20,7 +20,7 @@ Core capabilities:
 
 ## Project Status
 
-`cleanr` is in a foundation-stage release. The core runner, config model, HTTP adapter, report formats, CI workflows, and release packaging are in place. The next major phase is focused on provider adapters, stronger assertion primitives, and richer documentation.
+`cleanr` is in a foundation-stage release. The core runner, config model, HTTP/OpenAI/Anthropic adapters, report formats, CI workflows, and release packaging are in place. The next major phase is focused on stronger assertion primitives, more provider coverage, and richer documentation.
 
 ## Quick Start
 
@@ -79,4 +79,3 @@ The repository includes CI and release workflows under `.github/workflows/`. For
 - `2`: invalid configuration or runtime error
 
 That makes `cleanr` straightforward to wire into GitHub Actions, Buildkite, CircleCI, or other pipeline systems.
-

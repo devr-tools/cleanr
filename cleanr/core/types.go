@@ -26,6 +26,7 @@ type TargetConfig struct {
 	ResponseField   string            `json:"response_field"`
 	RequestTemplate any               `json:"request_template"`
 	OpenAI          OpenAIConfig      `json:"openai"`
+	Anthropic       AnthropicConfig   `json:"anthropic"`
 }
 
 type OpenAIConfig struct {
@@ -35,6 +36,14 @@ type OpenAIConfig struct {
 	BaseURL      string `json:"base_url"`
 	Organization string `json:"organization"`
 	Project      string `json:"project"`
+}
+
+type AnthropicConfig struct {
+	Model     string `json:"model"`
+	APIKeyEnv string `json:"api_key_env"`
+	BaseURL   string `json:"base_url"`
+	Version   string `json:"version"`
+	MaxTokens int    `json:"max_tokens"`
 }
 
 type Scenario struct {
@@ -127,6 +136,7 @@ type Response struct {
 	Err          error
 	ExtractError error
 	Usage        TokenUsage
+	Normalized   ProviderResponse
 }
 
 type TokenUsage struct {
@@ -134,6 +144,29 @@ type TokenUsage struct {
 	OutputTokens int  `json:"output_tokens,omitempty"`
 	TotalTokens  int  `json:"total_tokens,omitempty"`
 	Heuristic    bool `json:"heuristic,omitempty"`
+}
+
+type ProviderResponse struct {
+	Provider     string         `json:"provider,omitempty"`
+	ID           string         `json:"id,omitempty"`
+	Model        string         `json:"model,omitempty"`
+	Role         string         `json:"role,omitempty"`
+	Status       string         `json:"status,omitempty"`
+	FinishReason string         `json:"finish_reason,omitempty"`
+	StopSequence string         `json:"stop_sequence,omitempty"`
+	ToolCalls    []ToolCall     `json:"tool_calls,omitempty"`
+	Raw          map[string]any `json:"raw,omitempty"`
+}
+
+type ToolCall struct {
+	ID        string         `json:"id,omitempty"`
+	CallID    string         `json:"call_id,omitempty"`
+	Type      string         `json:"type,omitempty"`
+	Name      string         `json:"name,omitempty"`
+	Arguments string         `json:"arguments,omitempty"`
+	Input     any            `json:"input,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Raw       map[string]any `json:"raw,omitempty"`
 }
 
 type Finding struct {
@@ -203,4 +236,18 @@ func (c OpenAIConfig) APIModeValue() string {
 		return "responses"
 	}
 	return strings.ToLower(strings.TrimSpace(c.APIMode))
+}
+
+func (c AnthropicConfig) VersionValue() string {
+	if strings.TrimSpace(c.Version) == "" {
+		return "2023-06-01"
+	}
+	return strings.TrimSpace(c.Version)
+}
+
+func (c AnthropicConfig) MaxTokensValue() int {
+	if c.MaxTokens <= 0 {
+		return 1024
+	}
+	return c.MaxTokens
 }

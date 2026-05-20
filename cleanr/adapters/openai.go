@@ -1,4 +1,4 @@
-package cleanr
+package adapters
 
 import (
 	"bytes"
@@ -10,31 +10,33 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"cleanr/cleanr/core"
 )
 
-type OpenAITarget struct {
-	cfg    TargetConfig
+type OpenAI struct {
+	cfg    core.TargetConfig
 	client *http.Client
 }
 
-func NewOpenAITarget(cfg TargetConfig, client *http.Client) *OpenAITarget {
-	return &OpenAITarget{cfg: cfg, client: client}
+func NewOpenAI(cfg core.TargetConfig, client *http.Client) *OpenAI {
+	return &OpenAI{cfg: cfg, client: client}
 }
 
-func (t *OpenAITarget) Invoke(ctx context.Context, req Request) Response {
+func (t *OpenAI) Invoke(ctx context.Context, req core.Request) core.Response {
 	apiKeyEnv := t.apiKeyEnv()
 	apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv))
 	if apiKey == "" {
-		return Response{Err: fmt.Errorf("openai api key env %q is not set", apiKeyEnv)}
+		return core.Response{Err: fmt.Errorf("openai api key env %q is not set", apiKeyEnv)}
 	}
 
 	body, err := t.buildRequestBody(req)
 	if err != nil {
-		return Response{Err: err}
+		return core.Response{Err: err}
 	}
 	data, err := json.Marshal(body)
 	if err != nil {
-		return Response{Err: err}
+		return core.Response{Err: err}
 	}
 
 	timeout := req.Timeout
@@ -46,7 +48,7 @@ func (t *OpenAITarget) Invoke(ctx context.Context, req Request) Response {
 
 	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, t.endpointURL(), bytes.NewReader(data))
 	if err != nil {
-		return Response{Err: err}
+		return core.Response{Err: err}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
 	for k, v := range t.cfg.Headers {
@@ -69,38 +71,40 @@ func (t *OpenAITarget) Invoke(ctx context.Context, req Request) Response {
 	httpResp, err := t.client.Do(httpReq)
 	latency := time.Since(start)
 	if err != nil {
-		return Response{Err: err, Latency: latency}
+		return core.Response{Err: err, Latency: latency}
 	}
 	defer httpResp.Body.Close()
 
 	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		return Response{StatusCode: httpResp.StatusCode, Latency: latency, Err: err}
+		return core.Response{StatusCode: httpResp.StatusCode, Latency: latency, Err: err}
 	}
 
-	text, usage, parseErr := t.parseResponse(respBody)
+	text, normalized, usage, parseErr := t.parseResponse(respBody)
 	if httpResp.StatusCode >= 400 {
-		return Response{
+		return core.Response{
 			StatusCode: httpResp.StatusCode,
 			Body:       respBody,
 			Text:       text,
 			Latency:    latency,
 			Usage:      usage,
+			Normalized: normalized,
 			Err:        openAIAPIError(respBody, httpResp.StatusCode),
 		}
 	}
 
-	return Response{
+	return core.Response{
 		StatusCode:   httpResp.StatusCode,
 		Body:         respBody,
 		Text:         text,
 		Latency:      latency,
 		ExtractError: parseErr,
 		Usage:        usage,
+		Normalized:   normalized,
 	}
 }
 
-func (t *OpenAITarget) buildRequestBody(req Request) (map[string]any, error) {
+func (t *OpenAI) buildRequestBody(req core.Request) (map[string]any, error) {
 	switch t.cfg.OpenAI.APIModeValue() {
 	case "responses":
 		body := map[string]any{
@@ -139,7 +143,7 @@ func (t *OpenAITarget) buildRequestBody(req Request) (map[string]any, error) {
 	}
 }
 
-func (t *OpenAITarget) endpointURL() string {
+func (t *OpenAI) endpointURL() string {
 	base := strings.TrimRight(t.cfg.OpenAI.BaseURL, "/")
 	if base == "" {
 		base = "https://api.openai.com/v1"
@@ -152,14 +156,14 @@ func (t *OpenAITarget) endpointURL() string {
 	}
 }
 
-func (t *OpenAITarget) apiKeyEnv() string {
+func (t *OpenAI) apiKeyEnv() string {
 	if strings.TrimSpace(t.cfg.OpenAI.APIKeyEnv) == "" {
 		return "OPENAI_API_KEY"
 	}
 	return strings.TrimSpace(t.cfg.OpenAI.APIKeyEnv)
 }
 
-func (t *OpenAITarget) parseResponse(body []byte) (string, TokenUsage, error) {
+func (t *OpenAI) parseResponse(body []byte) (string, core.ProviderResponse, core.TokenUsage, error) {
 	switch t.cfg.OpenAI.APIModeValue() {
 	case "chat_completions":
 		return parseOpenAIChatResponse(body)
@@ -185,8 +189,20 @@ type openAIErrorEnvelope struct {
 }
 
 type openAIResponsesEnvelope struct {
+	ID               string `json:"id"`
+	Model            string `json:"model"`
+	Status           string `json:"status"`
+	IncompleteReason struct {
+		Reason string `json:"reason"`
+	} `json:"incomplete_details"`
 	Output []struct {
+		ID      string `json:"id"`
 		Type    string `json:"type"`
+		Status  string `json:"status"`
+		Role    string `json:"role"`
+		CallID  string `json:"call_id"`
+		Name    string `json:"name"`
+		Args    string `json:"arguments"`
 		Content []struct {
 			Type string `json:"type"`
 			Text string `json:"text"`
@@ -196,56 +212,106 @@ type openAIResponsesEnvelope struct {
 }
 
 type openAIChatEnvelope struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Model   string `json:"model"`
 	Choices []struct {
+		FinishReason string `json:"finish_reason"`
 		Message struct {
-			Content any `json:"content"`
+			Role      string `json:"role"`
+			Content   any    `json:"content"`
+			ToolCalls []struct {
+				ID       string `json:"id"`
+				Type     string `json:"type"`
+				Function struct {
+					Name      string `json:"name"`
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"message"`
 	} `json:"choices"`
 	Usage openAIUsage `json:"usage"`
 }
 
-func parseOpenAIResponsesResponse(body []byte) (string, TokenUsage, error) {
+func parseOpenAIResponsesResponse(body []byte) (string, core.ProviderResponse, core.TokenUsage, error) {
 	var payload openAIResponsesEnvelope
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", TokenUsage{}, err
+		return "", core.ProviderResponse{}, core.TokenUsage{}, err
 	}
 
 	var parts []string
+	toolCalls := make([]core.ToolCall, 0)
 	for _, item := range payload.Output {
 		for _, content := range item.Content {
 			if content.Type == "output_text" && content.Text != "" {
 				parts = append(parts, content.Text)
 			}
 		}
+		if toolCall, ok := normalizeOpenAIResponsesToolCall(item); ok {
+			toolCalls = append(toolCalls, toolCall)
+		}
 	}
 
 	text := strings.TrimSpace(strings.Join(parts, "\n"))
-	if text == "" {
-		return "", tokenUsageFromOpenAI(payload.Usage), io.EOF
+	normalized := core.ProviderResponse{
+		Provider:  "openai",
+		ID:        payload.ID,
+		Model:     payload.Model,
+		Status:    payload.Status,
+		ToolCalls: toolCalls,
+		Raw: map[string]any{
+			"incomplete_reason": payload.IncompleteReason.Reason,
+		},
 	}
-	return text, tokenUsageFromOpenAI(payload.Usage), nil
+	if text == "" && len(toolCalls) == 0 {
+		return "", normalized, tokenUsageFromOpenAI(payload.Usage), io.EOF
+	}
+	return text, normalized, tokenUsageFromOpenAI(payload.Usage), nil
 }
 
-func parseOpenAIChatResponse(body []byte) (string, TokenUsage, error) {
+func parseOpenAIChatResponse(body []byte) (string, core.ProviderResponse, core.TokenUsage, error) {
 	var payload openAIChatEnvelope
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return "", TokenUsage{}, err
+		return "", core.ProviderResponse{}, core.TokenUsage{}, err
 	}
 	if len(payload.Choices) == 0 {
-		return "", tokenUsageFromOpenAI(payload.Usage), io.EOF
+		return "", core.ProviderResponse{
+			Provider: "openai",
+			ID:       payload.ID,
+			Model:    payload.Model,
+			Raw: map[string]any{
+				"object": payload.Object,
+			},
+		}, tokenUsageFromOpenAI(payload.Usage), io.EOF
 	}
 
-	text, err := parseChatMessageContent(payload.Choices[0].Message.Content)
-	if err != nil {
-		return "", tokenUsageFromOpenAI(payload.Usage), err
+	choice := payload.Choices[0]
+	toolCalls := normalizeOpenAIChatToolCalls(choice.Message.ToolCalls)
+	text, err := parseChatMessageContent(choice.Message.Content)
+	normalized := core.ProviderResponse{
+		Provider:     "openai",
+		ID:           payload.ID,
+		Model:        payload.Model,
+		Role:         choice.Message.Role,
+		FinishReason: choice.FinishReason,
+		ToolCalls:    toolCalls,
+		Raw: map[string]any{
+			"object": payload.Object,
+		},
 	}
-	if strings.TrimSpace(text) == "" {
-		return "", tokenUsageFromOpenAI(payload.Usage), io.EOF
+	if err != nil && len(toolCalls) == 0 {
+		return "", normalized, tokenUsageFromOpenAI(payload.Usage), err
 	}
-	return text, tokenUsageFromOpenAI(payload.Usage), nil
+	if strings.TrimSpace(text) == "" && len(toolCalls) == 0 {
+		return "", normalized, tokenUsageFromOpenAI(payload.Usage), io.EOF
+	}
+	return text, normalized, tokenUsageFromOpenAI(payload.Usage), nil
 }
 
 func parseChatMessageContent(content any) (string, error) {
+	if content == nil {
+		return "", nil
+	}
 	switch typed := content.(type) {
 	case string:
 		return typed, nil
@@ -266,7 +332,62 @@ func parseChatMessageContent(content any) (string, error) {
 	}
 }
 
-func tokenUsageFromOpenAI(usage openAIUsage) TokenUsage {
+func normalizeOpenAIResponsesToolCall(item struct {
+	ID      string `json:"id"`
+	Type    string `json:"type"`
+	Status  string `json:"status"`
+	Role    string `json:"role"`
+	CallID  string `json:"call_id"`
+	Name    string `json:"name"`
+	Args    string `json:"arguments"`
+	Content []struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"content"`
+}) (core.ToolCall, bool) {
+	if item.Type == "" || item.Type == "message" {
+		return core.ToolCall{}, false
+	}
+	if item.Type == "reasoning" {
+		return core.ToolCall{}, false
+	}
+	return core.ToolCall{
+		ID:        item.ID,
+		CallID:    item.CallID,
+		Type:      item.Type,
+		Name:      item.Name,
+		Arguments: item.Args,
+		Status:    item.Status,
+		Raw: map[string]any{
+			"role": item.Role,
+		},
+	}, true
+}
+
+func normalizeOpenAIChatToolCalls(items []struct {
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}) []core.ToolCall {
+	if len(items) == 0 {
+		return nil
+	}
+	toolCalls := make([]core.ToolCall, 0, len(items))
+	for _, item := range items {
+		toolCalls = append(toolCalls, core.ToolCall{
+			ID:        item.ID,
+			Type:      item.Type,
+			Name:      item.Function.Name,
+			Arguments: item.Function.Arguments,
+		})
+	}
+	return toolCalls
+}
+
+func tokenUsageFromOpenAI(usage openAIUsage) core.TokenUsage {
 	inputTokens := usage.InputTokens
 	outputTokens := usage.OutputTokens
 	totalTokens := usage.TotalTokens
@@ -281,7 +402,7 @@ func tokenUsageFromOpenAI(usage openAIUsage) TokenUsage {
 		totalTokens = inputTokens + outputTokens
 	}
 
-	return TokenUsage{
+	return core.TokenUsage{
 		InputTokens:  inputTokens,
 		OutputTokens: outputTokens,
 		TotalTokens:  totalTokens,

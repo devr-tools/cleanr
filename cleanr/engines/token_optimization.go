@@ -69,7 +69,7 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext)
 			Passed:   len(findings) == 0,
 			Duration: time.Since(start),
 			Findings: findings,
-			Details: map[string]any{
+			Details: responseDetails(resp, map[string]any{
 				"input_tokens":                usage.InputTokens,
 				"output_tokens":               usage.OutputTokens,
 				"total_tokens":                usage.TotalTokens,
@@ -80,7 +80,7 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext)
 				"suggested_max_output_tokens": cfg.SuggestedMaxOutputTokens,
 				"estimated_savings_tokens":    savings,
 				"optimization_hints":          tokenOptimizationHints(usage, promptRatio, responseRatio, outputInputRatio, cfg),
-			},
+			}),
 		})
 	}
 

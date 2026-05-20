@@ -2,10 +2,10 @@ package cleanr
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"time"
 
+	adapterspkg "cleanr/cleanr/adapters"
 	enginespkg "cleanr/cleanr/engines"
 )
 
@@ -26,7 +26,7 @@ func NewRunner(cfg Config, target Target) *Runner {
 
 func NewConfigRunner(cfg Config) *Runner {
 	client := &http.Client{Timeout: cfg.Target.Timeout()}
-	return NewRunner(cfg, newTargetFromConfig(cfg.Target, client))
+	return NewRunner(cfg, adapterspkg.NewTargetFromConfig(cfg.Target, client))
 }
 
 func NewHTTPRunner(cfg Config) *Runner {
@@ -90,23 +90,4 @@ func buildRecommendations(report Report) []string {
 		}
 	}
 	return recs
-}
-
-func newTargetFromConfig(cfg TargetConfig, client *http.Client) Target {
-	switch cfg.TargetType() {
-	case "openai":
-		return NewOpenAITarget(cfg, client)
-	case "http":
-		return NewHTTPTarget(cfg, client)
-	default:
-		return invalidTarget{err: fmt.Errorf("unsupported target type %q", cfg.Type)}
-	}
-}
-
-type invalidTarget struct {
-	err error
-}
-
-func (t invalidTarget) Invoke(context.Context, Request) Response {
-	return Response{Err: t.err}
 }

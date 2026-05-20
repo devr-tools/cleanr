@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks through the shortest path to running `cleanr` against either an HTTP-based AI endpoint or OpenAI directly.
+This guide walks through the shortest path to running `cleanr` against an HTTP-based AI endpoint or a native OpenAI or Anthropic target.
 
 ## Prerequisites
 
@@ -40,10 +40,11 @@ The generated file includes:
 - all currently supported suites enabled with starter thresholds
 - text reporting as the default output mode
 
-If you want a native OpenAI config instead of the default HTTP starter, begin from one of these examples:
+If you want a native provider config instead of the default HTTP starter, begin from one of these examples:
 
 - `examples/openai-responses.yaml`
 - `examples/openai-chat-completions.yaml`
+- `examples/anthropic-messages.yaml`
 
 ## Point It at Your Endpoint
 
@@ -63,6 +64,13 @@ For a native OpenAI target:
 - set `target.openai.model`
 - choose `target.openai.api_mode: responses` or `chat_completions`
 - export the API key env var, usually `OPENAI_API_KEY`
+
+For a native Anthropic target:
+
+- set `target.type: anthropic`
+- set `target.anthropic.model`
+- set `target.anthropic.max_tokens` or use the default
+- export the API key env var, usually `ANTHROPIC_API_KEY`
 
 ## Validate the Config
 

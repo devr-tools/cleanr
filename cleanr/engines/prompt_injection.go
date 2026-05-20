@@ -51,10 +51,10 @@ func (PromptInjectionEngine) Run(ctx context.Context, runCtx *core.RunContext) c
 			Passed:   passed,
 			Duration: time.Since(start),
 			Findings: findings,
-			Details: map[string]any{
+			Details: responseDetails(resp, map[string]any{
 				"status_code": resp.StatusCode,
 				"response":    trimForReport(resp.Text),
-			},
+			}),
 		})
 	}
 	return core.SuiteResult{Name: "prompt-injection", Passed: allPassed(cases), Cases: cases}

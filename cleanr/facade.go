@@ -1,6 +1,9 @@
 package cleanr
 
 import (
+	"net/http"
+
+	adapterspkg "cleanr/cleanr/adapters"
 	configpkg "cleanr/cleanr/config"
 	"cleanr/cleanr/core"
 )
@@ -8,6 +11,7 @@ import (
 type Config = core.Config
 type TargetConfig = core.TargetConfig
 type OpenAIConfig = core.OpenAIConfig
+type AnthropicConfig = core.AnthropicConfig
 type Scenario = core.Scenario
 type SuitesConfig = core.SuitesConfig
 type PromptInjectionConfig = core.PromptInjectionConfig
@@ -20,6 +24,8 @@ type ReportingConfig = core.ReportingConfig
 type Request = core.Request
 type Response = core.Response
 type TokenUsage = core.TokenUsage
+type ProviderResponse = core.ProviderResponse
+type ToolCall = core.ToolCall
 type Finding = core.Finding
 type CaseResult = core.CaseResult
 type SuiteResult = core.SuiteResult
@@ -44,4 +50,16 @@ func ValidateConfig(cfg Config) error {
 
 func ExampleConfig() Config {
 	return configpkg.ExampleConfig()
+}
+
+func NewHTTPTarget(cfg TargetConfig, client *http.Client) Target {
+	return adapterspkg.NewHTTP(cfg, client)
+}
+
+func NewOpenAITarget(cfg TargetConfig, client *http.Client) Target {
+	return adapterspkg.NewOpenAI(cfg, client)
+}
+
+func NewAnthropicTarget(cfg TargetConfig, client *http.Client) Target {
+	return adapterspkg.NewAnthropic(cfg, client)
 }

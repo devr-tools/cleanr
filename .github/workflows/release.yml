@@ -1,45 +1,45 @@
-name: Release
+# name: Release
 
-on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
-    inputs:
-      version:
-        description: Release version to package
-        required: true
-        default: v0.0.0-dev
+# on:
+#   push:
+#     tags:
+#       - "v*"
+#   workflow_dispatch:
+#     inputs:
+#       version:
+#         description: Release version to package
+#         required: true
+#         default: v0.0.0-dev
 
-jobs:
-  release:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+# jobs:
+#   release:
+#     runs-on: ubuntu-latest
+#     permissions:
+#       contents: write
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+#       - name: Set up Go
+#         uses: actions/setup-go@v5
+#         with:
+#           go-version-file: go.mod
+#           cache: true
 
-      - name: Resolve version
-        id: version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
-          else
-            echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
-          fi
+#       - name: Resolve version
+#         id: version
+#         run: |
+#           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+#             echo "value=${{ github.event.inputs.version }}" >> "$GITHUB_OUTPUT"
+#           else
+#             echo "value=${GITHUB_REF_NAME}" >> "$GITHUB_OUTPUT"
+#           fi
 
-      - name: Package release artifacts
-        run: make release VERSION=${{ steps.version.outputs.value }}
+#       - name: Package release artifacts
+#         run: make release VERSION=${{ steps.version.outputs.value }}
 
-      - name: Publish GitHub release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: ${{ steps.version.outputs.value }}
-          files: dist/releases/${{ steps.version.outputs.value }}/*
+#       - name: Publish GitHub release
+#         uses: softprops/action-gh-release@v2
+#         with:
+#           tag_name: ${{ steps.version.outputs.value }}
+#           files: dist/releases/${{ steps.version.outputs.value }}/*

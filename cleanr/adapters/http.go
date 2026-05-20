@@ -1,4 +1,4 @@
-package cleanr
+package adapters
 
 import (
 	"bytes"
@@ -8,22 +8,24 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"cleanr/cleanr/core"
 )
 
-type HTTPTarget struct {
-	cfg    TargetConfig
+type HTTP struct {
+	cfg    core.TargetConfig
 	client *http.Client
 }
 
-func NewHTTPTarget(cfg TargetConfig, client *http.Client) *HTTPTarget {
-	return &HTTPTarget{cfg: cfg, client: client}
+func NewHTTP(cfg core.TargetConfig, client *http.Client) *HTTP {
+	return &HTTP{cfg: cfg, client: client}
 }
 
-func (t *HTTPTarget) Invoke(ctx context.Context, req Request) Response {
+func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
 	body := buildRequestBody(req, t.cfg)
 	data, err := json.Marshal(body)
 	if err != nil {
-		return Response{Err: err}
+		return core.Response{Err: err}
 	}
 
 	timeout := req.Timeout
@@ -35,7 +37,7 @@ func (t *HTTPTarget) Invoke(ctx context.Context, req Request) Response {
 
 	httpReq, err := http.NewRequestWithContext(reqCtx, t.cfg.Method, t.cfg.URL, bytes.NewReader(data))
 	if err != nil {
-		return Response{Err: err}
+		return core.Response{Err: err}
 	}
 	for k, v := range t.cfg.Headers {
 		httpReq.Header.Set(k, v)
@@ -48,26 +50,30 @@ func (t *HTTPTarget) Invoke(ctx context.Context, req Request) Response {
 	httpResp, err := t.client.Do(httpReq)
 	latency := time.Since(start)
 	if err != nil {
-		return Response{Err: err, Latency: latency}
+		return core.Response{Err: err, Latency: latency}
 	}
 	defer httpResp.Body.Close()
 
 	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
-		return Response{StatusCode: httpResp.StatusCode, Latency: latency, Err: err}
+		return core.Response{StatusCode: httpResp.StatusCode, Latency: latency, Err: err}
 	}
 
 	text, extractErr := extractResponseField(respBody, t.cfg.ResponseField)
-	return Response{
+	return core.Response{
 		StatusCode:   httpResp.StatusCode,
 		Body:         respBody,
 		Text:         text,
 		Latency:      latency,
 		ExtractError: extractErr,
+		Normalized: core.ProviderResponse{
+			Provider: "http",
+			Status:   httpResp.Status.Status,
+		},
 	}
 }
 
-func buildRequestBody(req Request, cfg TargetConfig) any {
+func buildRequestBody(req core.Request, cfg core.TargetConfig) any {
 	template := req.Template
 	if template == nil {
 		template = cfg.RequestTemplate
@@ -96,7 +102,7 @@ func deepClone(v any) any {
 	return out
 }
 
-func interpolateValue(v any, replacements map[string]string, metadata map[string]string, cfg TargetConfig, req Request) any {
+func interpolateValue(v any, replacements map[string]string, metadata map[string]string, cfg core.TargetConfig, req core.Request) any {
 	switch typed := v.(type) {
 	case map[string]any:
 		for k, item := range typed {

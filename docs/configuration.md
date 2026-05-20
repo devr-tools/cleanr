@@ -94,6 +94,7 @@ OpenAI-native examples are available in:
 
 - `examples/openai-responses.yaml`
 - `examples/openai-chat-completions.yaml`
+- `examples/anthropic-messages.yaml`
 
 ## `target`
 
@@ -167,6 +168,40 @@ Behavior:
 - `scenario.system` is sent as top-level `instructions` for `responses`, or as a `developer` message for `chat_completions`
 - `scenario.input` is sent as the user prompt
 - provider token usage is captured from the OpenAI response when available
+
+### Anthropic target
+
+Use `target.type: anthropic` to call the Anthropic Messages API natively without a custom request template.
+
+```yaml
+target:
+  type: anthropic
+  name: anthropic-messages
+  timeout_ms: 8000
+  anthropic:
+    model: claude-sonnet-4-20250514
+    api_key_env: ANTHROPIC_API_KEY
+    version: 2023-06-01
+    max_tokens: 1024
+```
+
+Supported fields:
+
+- `type`: must be `anthropic`
+- `name`: logical target name used in reporting
+- `timeout_ms`: per-request timeout in milliseconds
+- `headers`: optional extra request headers
+- `anthropic.model`: Anthropic model name
+- `anthropic.api_key_env`: environment variable containing the API key, default `ANTHROPIC_API_KEY`
+- `anthropic.base_url`: optional API base URL, default `https://api.anthropic.com/v1`
+- `anthropic.version`: API version header value, default `2023-06-01`
+- `anthropic.max_tokens`: max output token budget sent with each Messages API request, default `1024`
+
+Behavior:
+
+- `scenario.system` is sent as the top-level `system` field
+- `scenario.input` is sent as a single `user` message
+- provider token usage is captured from the Anthropic response when available
 
 ## `scenarios`
 
@@ -263,7 +298,9 @@ The validator checks for:
 
 - missing HTTP target URL, prompt field, or response field
 - missing `target.openai.model` for OpenAI targets
+- missing `target.anthropic.model` for Anthropic targets
 - unsupported `target.type` or `target.openai.api_mode`
+- invalid `target.anthropic.max_tokens`
 - invalid absolute URLs
 - invalid load, chaos, drift, and token thresholds
 - duplicate scenario names

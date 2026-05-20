@@ -71,11 +71,11 @@ func (SecurityEngine) Run(ctx context.Context, runCtx *core.RunContext) core.Sui
 			Passed:   len(findings) == 0,
 			Duration: time.Since(start),
 			Findings: findings,
-			Details: map[string]any{
+			Details: responseDetails(resp, map[string]any{
 				"pii_matches":  piiMatches,
 				"status_code":  resp.StatusCode,
 				"response_len": len(resp.Text),
-			},
+			}),
 		})
 	}
 	return core.SuiteResult{Name: "security", Passed: allPassed(cases), Cases: cases}

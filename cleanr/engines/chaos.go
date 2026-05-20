@@ -51,10 +51,10 @@ func (ChaosEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 				Passed:   passed,
 				Duration: time.Since(start),
 				Findings: findings,
-				Details: map[string]any{
+				Details: responseDetails(resp, map[string]any{
 					"status_code": resp.StatusCode,
 					"latency_ms":  resp.Latency.Milliseconds(),
-				},
+				}),
 			})
 		}
 	}

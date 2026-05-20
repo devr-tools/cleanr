@@ -15,7 +15,7 @@ func responseFindings(resp core.Response, forbidden []string) []core.Finding {
 	if resp.Err != nil {
 		return append(findings, core.Finding{Severity: "critical", Message: resp.Err.Error()})
 	}
-	if resp.ExtractError != nil {
+	if resp.ExtractError != nil && len(resp.Normalized.ToolCalls) == 0 {
 		findings = append(findings, core.Finding{Severity: "high", Message: "failed to extract configured response field"})
 	}
 	if resp.StatusCode >= 500 {
@@ -30,6 +30,42 @@ func responseFindings(resp core.Response, forbidden []string) []core.Finding {
 		}
 	}
 	return findings
+}
+
+func responseDetails(resp core.Response, base map[string]any) map[string]any {
+	if base == nil {
+		base = map[string]any{}
+	}
+	normalized := resp.Normalized
+	if normalized.Provider != "" {
+		base["provider"] = normalized.Provider
+	}
+	if normalized.ID != "" {
+		base["provider_id"] = normalized.ID
+	}
+	if normalized.Model != "" {
+		base["provider_model"] = normalized.Model
+	}
+	if normalized.Role != "" {
+		base["provider_role"] = normalized.Role
+	}
+	if normalized.Status != "" {
+		base["provider_status"] = normalized.Status
+	}
+	if normalized.FinishReason != "" {
+		base["finish_reason"] = normalized.FinishReason
+	}
+	if normalized.StopSequence != "" {
+		base["stop_sequence"] = normalized.StopSequence
+	}
+	if len(normalized.ToolCalls) > 0 {
+		base["tool_call_count"] = len(normalized.ToolCalls)
+		base["tool_calls"] = normalized.ToolCalls
+	}
+	if len(normalized.Raw) > 0 {
+		base["provider_raw"] = normalized.Raw
+	}
+	return base
 }
 
 func filterStableScenarios(scenarios []core.Scenario, tags []string) []core.Scenario {

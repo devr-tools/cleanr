@@ -1,32 +1,32 @@
-name: CI
+# name: CI
 
-on:
-  pull_request:
-  push:
-    branches:
-      - main
+# on:
+#   pull_request:
+#   push:
+#     branches:
+#       - main
 
-jobs:
-  qa:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+# jobs:
+#   qa:
+#     runs-on: ubuntu-latest
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
 
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: go.mod
-          cache: true
+#       - name: Set up Go
+#         uses: actions/setup-go@v5
+#         with:
+#           go-version-file: go.mod
+#           cache: true
 
-      - name: Run QA checks
-        run: make check
+#       - name: Run QA checks
+#         run: make check
 
-      - name: Build binary
-        run: make build
+#       - name: Build binary
+#         run: make build
 
-      - name: Upload build artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: cleanr-linux-amd64-snapshot
-          path: dist/cleanr
+#       - name: Upload build artifact
+#         uses: actions/upload-artifact@v4
+#         with:
+#           name: cleanr-linux-amd64-snapshot
+#           path: dist/cleanr

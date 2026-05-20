@@ -110,7 +110,7 @@ The foundation release is in place:
 - Go module and CLI scaffold
 - JSON and YAML config loading and validation
 - HTTP target adapter
-- early native OpenAI target support
+- native OpenAI and Anthropic target support
 - prompt injection suite
 - security suite
 - load suite
