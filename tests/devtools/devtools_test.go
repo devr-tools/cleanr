@@ -171,6 +171,26 @@ func TestDevtoolsHomebrewFormula(t *testing.T) {
 	}
 }
 
+func TestDevtoolsTestFiltersNoTestFilesOutput(t *testing.T) {
+	repo := t.TempDir()
+	t.Setenv("GOCACHE", filepath.Join(repo, ".gocache"))
+	mustWriteFile(t, filepath.Join(repo, "go.mod"), "module example.com/filtertest\n\ngo 1.20\n")
+	mustWriteFile(t, filepath.Join(repo, "pkg", "notest.go"), "package pkg\n")
+	mustWriteFile(t, filepath.Join(repo, "pkgtest", "pkgtest.go"), "package pkgtest\n")
+	mustWriteFile(t, filepath.Join(repo, "pkgtest", "pkgtest_test.go"), "package pkgtest\n\nimport \"testing\"\n\nfunc TestPass(t *testing.T) {}\n")
+
+	var stdout bytes.Buffer
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.Test(context.Background()); err != nil {
+		t.Fatalf("test: %v", err)
+	}
+
+	output := stdout.String()
+	if strings.Contains(output, "[no test files]") {
+		t.Fatalf("expected no-test-files output to be filtered: %s", output)
+	}
+}
+
 func mustWriteFile(t *testing.T, path, contents string) {
 	t.Helper()
 

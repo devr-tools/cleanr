@@ -16,7 +16,7 @@ func (r Runner) Test(ctx context.Context) error {
 	if _, err := fmt.Fprintln(r.Stdout, "running go test"); err != nil {
 		return err
 	}
-	return r.runCommand(ctx, nil, "go", "test", "./...")
+	return r.runGoTestFiltered(ctx, "./...")
 }
 
 func (r Runner) Check(ctx context.Context) error {

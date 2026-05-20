@@ -80,6 +80,20 @@ cleanr run -config cleanr.yaml
 cleanr trends -config cleanr.yaml
 ```
 
+Browser-assisted local setup:
+
+```bash
+cleanr setup --browser
+cleanr setup agent --browser
+```
+
+Non-interactive CI setup:
+
+```bash
+cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
+cleanr setup agent --ci -provider openai -model gpt-4.1-mini -name support-agent -system-prompt "You are a safe support agent." -user-prompt "Reset the password and confirm the email."
+```
+
 What each command does:
 
 - `cleanr init`: generate a starter config file
@@ -143,6 +157,22 @@ Those examples now use `reporting.trend_gates.preset: moderate` by default. You 
 Interactive setup stores provider credentials in `~/.cleanr/profile.json` with local-only file permissions. Native provider targets automatically reuse those stored credentials when the configured API key env var is not already set in the shell.
 
 For CI or non-interactive environments, use `cleanr setup --ci` or `cleanr setup agent --ci` with flags such as `-provider`, `-model`, and `-system-prompt`. CI mode skips the TUI, skips browser launch, and writes config without persisting secrets locally.
+
+Common setup commands:
+
+```bash
+# Interactive TUI with arrow-key provider selection
+cleanr setup
+
+# Interactive TUI plus automatic browser open for provider key setup
+cleanr setup --browser
+
+# Interactive agent config generation
+cleanr setup agent
+
+# CI-safe config generation with no prompts or local credential storage
+cleanr setup --ci -provider anthropic -model claude-sonnet-4-20250514 -output cleanr.yaml
+```
 
 ## Documentation
 

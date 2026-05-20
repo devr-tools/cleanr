@@ -55,6 +55,12 @@ That flow:
 - stores the API key in `~/.cleanr/profile.json`
 - writes a starter `cleanr.yaml`
 
+If you want the same flow to open the provider key page in your browser immediately, use:
+
+```bash
+./dist/cleanr setup --browser
+```
+
 If you are testing an agent and want to seed the config with a specific system prompt, use:
 
 ```bash
@@ -62,6 +68,12 @@ If you are testing an agent and want to seed the config with a specific system p
 ```
 
 That flow reuses the saved provider profile, asks for the agent prompt and a primary user task, then writes an agent-focused YAML config such as `cleanr.agent.yaml`.
+
+If you want the agent flow to open the provider key page in your browser first, use:
+
+```bash
+./dist/cleanr setup agent --browser
+```
 
 If you need the same setup flow in CI without prompts, browser launch, or local token storage, use:
 
@@ -71,6 +83,25 @@ If you need the same setup flow in CI without prompts, browser launch, or local 
 ```
 
 CI mode generates the config only. It does not write `~/.cleanr/profile.json`, so your pipeline should provide the actual provider secret through the env var referenced by the generated config.
+
+Recommended setup command matrix:
+
+```bash
+# Local TUI
+./dist/cleanr setup
+
+# Local TUI with browser-open provider setup
+./dist/cleanr setup --browser
+
+# Local agent config generation
+./dist/cleanr setup agent
+
+# CI-safe provider config generation
+./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
+
+# CI-safe agent config generation
+./dist/cleanr setup agent --ci -provider openai -model gpt-4.1-mini -name support-agent -system-prompt "You are a safe support agent." -user-prompt "Reset the password and confirm the email."
+```
 
 ## Capture a Baseline
 
