@@ -61,7 +61,17 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 			Passed:   false,
 			Duration: 2 * time.Second,
 			Findings: []cleanr.Finding{{Severity: "high", Message: "suite issue"}},
-			Cases:    []cleanr.CaseResult{{Name: "case-1", Passed: false, Duration: 750 * time.Millisecond, Findings: []cleanr.Finding{{Severity: "critical", Message: "boom"}}}},
+			Cases: []cleanr.CaseResult{{
+				Name:     "case-1",
+				Passed:   false,
+				Duration: 750 * time.Millisecond,
+				Findings: []cleanr.Finding{{Severity: "critical", Message: "boom"}},
+				Details: map[string]any{
+					"first_unsupported_claim": "claimed tool execution with no matching invocation: lookup_policy",
+					"claimed_tools":           []string{"lookup_policy"},
+					"observed_state_actions":  []string{"none"},
+				},
+			}},
 		}},
 	}
 
@@ -84,6 +94,10 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		"Recommendations",
 		"Finding  HIGH: suite issue",
 		"Finding  CRITICAL: boom",
+		`claimed_tools`,
+		`["lookup_policy"]`,
+		`observed_state_actions`,
+		`["none"]`,
 	} {
 		if !strings.Contains(textOut, want) {
 			t.Fatalf("expected %q in text report:\n%s", want, textOut)

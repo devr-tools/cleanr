@@ -91,6 +91,8 @@ func buildRecommendations(report Report) []string {
 			recs = append(recs, "Separate trusted and untrusted context sources explicitly and require refusal or validation before untrusted context can influence privileged actions.")
 		case "claim-trace":
 			recs = append(recs, "Require the agent to ground tool, citation, approval, and mutation claims in normalized trace evidence before treating the run as releasable.")
+		case "release-policy":
+			recs = append(recs, "Encode action-level release rules for tools, approvals, trust boundaries, sinks, and state changes so CI can block unsafe workflows before merge.")
 		case "memory-safety":
 			recs = append(recs, "Partition memory by user and freshness, and block stale, revoked, poisoned, or cross-user memory from flowing into responses or tool calls.")
 		case "token-optimization":

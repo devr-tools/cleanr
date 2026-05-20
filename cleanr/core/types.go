@@ -47,16 +47,17 @@ type AnthropicConfig struct {
 }
 
 type Scenario struct {
-	Name              string             `json:"name"`
-	System            string             `json:"system"`
-	Input             string             `json:"input"`
-	Metadata          map[string]string  `json:"metadata"`
-	ContextSources    []ContextSource    `json:"context_sources,omitempty"`
-	ExpectedMutations []ExpectedMutation `json:"expected_mutations,omitempty"`
-	Tags              []string           `json:"tags"`
-	ExpectedContains  []string           `json:"expected_contains"`
-	ForbiddenContains []string           `json:"forbidden_contains"`
-	Assertions        []Assertion        `json:"assertions"`
+	Name                 string                `json:"name"`
+	System               string                `json:"system"`
+	Input                string                `json:"input"`
+	Metadata             map[string]string     `json:"metadata"`
+	ContextSources       []ContextSource       `json:"context_sources,omitempty"`
+	ExpectedMutations    []ExpectedMutation    `json:"expected_mutations,omitempty"`
+	ExpectedStateChanges []ExpectedStateChange `json:"expected_state_changes,omitempty"`
+	Tags                 []string              `json:"tags"`
+	ExpectedContains     []string              `json:"expected_contains"`
+	ForbiddenContains    []string              `json:"forbidden_contains"`
+	Assertions           []Assertion           `json:"assertions"`
 }
 
 type ContextSource struct {
@@ -71,6 +72,14 @@ type ExpectedMutation struct {
 	Path            string `json:"path"`
 	Kind            string `json:"kind"`
 	ContentContains string `json:"content_contains,omitempty"`
+}
+
+type ExpectedStateChange struct {
+	Kind            string `json:"kind,omitempty"`
+	Target          string `json:"target,omitempty"`
+	Action          string `json:"action,omitempty"`
+	Status          string `json:"status,omitempty"`
+	SummaryContains string `json:"summary_contains,omitempty"`
 }
 
 type Assertion struct {
@@ -92,6 +101,7 @@ type SuitesConfig struct {
 	ShadowState       ShadowStateConfig       `json:"shadow_state"`
 	Provenance        ProvenanceConfig        `json:"provenance"`
 	ClaimTrace        ClaimTraceConfig        `json:"claim_trace"`
+	ReleasePolicy     ReleasePolicyConfig     `json:"release_policy"`
 	MemorySafety      MemorySafetyConfig      `json:"memory_safety"`
 	TokenOptimization TokenOptimizationConfig `json:"token_optimization"`
 }
@@ -161,6 +171,29 @@ type ClaimTraceConfig struct {
 	ToolClaimIndicators   []string `json:"tool_claim_indicators"`
 	ApprovalIndicators    []string `json:"approval_indicators"`
 	StateChangeIndicators []string `json:"state_change_indicators"`
+}
+
+type ReleasePolicyConfig struct {
+	Enabled             bool         `json:"enabled"`
+	SensitiveIndicators []string     `json:"sensitive_indicators"`
+	ReadOnlyIndicators  []string     `json:"read_only_indicators"`
+	MutatingIndicators  []string     `json:"mutating_indicators"`
+	Rules               []PolicyRule `json:"rules"`
+}
+
+type PolicyRule struct {
+	Name          string   `json:"name,omitempty"`
+	Type          string   `json:"type"`
+	Mode          string   `json:"mode"`
+	Tools         []string `json:"tools,omitempty"`
+	StateKinds    []string `json:"state_kinds,omitempty"`
+	StateActions  []string `json:"state_actions,omitempty"`
+	Targets       []string `json:"targets,omitempty"`
+	Trusts        []string `json:"trusts,omitempty"`
+	ApprovedTools []string `json:"approved_tools,omitempty"`
+	Indicators    []string `json:"indicators,omitempty"`
+	Severity      string   `json:"severity,omitempty"`
+	Message       string   `json:"message,omitempty"`
 }
 
 type MemorySafetyConfig struct {

@@ -104,26 +104,54 @@ The first Phase 2 release-gate pieces are also now in place:
 - claim-vs-trace verification for unsupported citations, tool claims, approvals, and state-change claims
 - initial longitudinal memory safety coverage for stale, revoked, poisoned, and cross-user memory replay
 
-The first action-verification slices are now in place as well:
+The Phase 2 action-verification core is now in place as well:
 
 - file-based shadow-state verification for approved write locations
 - provenance-aware attacks driven by trust-tagged scenario context sources
 - expected file-mutation assertions for create, modify, and delete checks
 - provenance policy checks for approval-required tools and approved sink tools
+- HTTP trace ingestion for provider-neutral workflow evidence on generic HTTP targets
+- release-policy DSL for action-level tool, approval, trust-boundary, sink, and state-change rules
+- exact expected state-change verification for non-file workflow surfaces
+- end-to-end stateful sample project with a real workflow gate
 
-This proves the basic runner model, but the current product still focuses mostly on response inspection plus a narrow set of workflow checks. The next phase still needs to expand the abstraction from "prompt in, text out" toward "workflow in, evidence out."
+This establishes the release-gate core. The next phase is about making those workflow checks longitudinal, replayable, and useful for broader regression triage.
 
 ## Strategic direction by phase
 
+### Phase 1: Foundation runner
+
+Status: complete
+
+Objective: establish the local-first CI runner, provider adapters, baseline assertions, and reporting model that Phase 2 builds on.
+
+Primary outcomes:
+
+- Go CLI and config loader for repeatable local and CI execution
+- native HTTP, OpenAI, and Anthropic targets
+- baseline eval suites for prompt injection, security, load, chaos, drift, token efficiency, and trends
+- snapshot baselines plus text, JSON, and JUnit reporting
+- initial MCP server mode and contributor workflows
+
+Exit criteria:
+
+- developers can run `cleanr validate`, `cleanr snapshot`, `cleanr run`, and `cleanr trends` in CI without custom glue code
+- provider-native and HTTP-first targets can share the same scenario and reporting model
+- baseline regression, safety, and performance suites are usable before agent-specific policy work begins
+- repository packaging, release builds, and onboarding docs cover the main developer path
+
 ### Phase 2: Agent release-gate core
 
-Status: current focus
+Status: complete
 
 Objective: turn `cleanr` from a foundation eval runner into a credible CI gate for tool-using and stateful agents.
 
 Primary outcomes:
 
+- provider-neutral workflow evidence model
+- tool-call and trace capture as first-class inputs to assertions
 - release-policy DSL for tool permissions, trust boundaries, and side effects
+- claim-vs-trace verification suite
 - multi-surface state verification beyond file writes
 - deeper provenance-aware prompt-injection and data-exfiltration tests
 - stronger docs and sample projects for real agent stacks
@@ -136,6 +164,8 @@ Exit criteria:
 - example projects demonstrate at least one real stateful workflow end to end
 
 ### Phase 3: Longitudinal and blast-radius analysis
+
+Status: current focus
 
 Objective: make `cleanr` credible for higher-risk and longer-lived agent systems.
 

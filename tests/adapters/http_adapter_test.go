@@ -54,6 +54,25 @@ func TestHTTPTargetInvokeRendersTemplateAndExtractsResponse(t *testing.T) {
 		}
 		return jsonResponse(t, http.StatusOK, map[string]any{
 			"output": map[string]any{"text": "hello from http"},
+			"trace": map[string]any{
+				"provider":      "sample-agent",
+				"model":         "workflow-v1",
+				"finish_reason": "stop",
+				"tool_calls": []any{
+					map[string]any{"name": "lookup_customer", "arguments": `{"customer_id":"cust_123"}`},
+				},
+				"approvals": []any{
+					map[string]any{"id": "appr_1", "status": "approved", "artifact": "ticket://appr_1"},
+				},
+				"state_changes": []any{
+					map[string]any{"kind": "ticket", "action": "update", "target": "case-123", "status": "applied"},
+				},
+			},
+			"usage": map[string]any{
+				"input_tokens":  11,
+				"output_tokens": 7,
+				"total_tokens":  18,
+			},
 		}), nil
 	})}
 
@@ -89,8 +108,14 @@ func TestHTTPTargetInvokeRendersTemplateAndExtractsResponse(t *testing.T) {
 	if resp.Text != "hello from http" {
 		t.Fatalf("unexpected response text: %q", resp.Text)
 	}
-	if resp.Normalized.Provider != "http" {
+	if resp.Normalized.Provider != "sample-agent" || resp.Normalized.Model != "workflow-v1" || resp.Normalized.FinishReason != "stop" {
 		t.Fatalf("unexpected normalized payload: %+v", resp.Normalized)
+	}
+	if len(resp.Normalized.ToolCalls) != 1 || len(resp.Normalized.Approvals) != 1 || len(resp.Normalized.StateChanges) != 1 {
+		t.Fatalf("expected normalized workflow evidence, got %+v", resp.Normalized)
+	}
+	if resp.Usage.TotalTokens != 18 {
+		t.Fatalf("expected parsed usage, got %+v", resp.Usage)
 	}
 }
 

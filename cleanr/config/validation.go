@@ -76,6 +76,9 @@ func ValidateConfig(cfg core.Config) error {
 		for j, mutation := range scenario.ExpectedMutations {
 			validateExpectedMutation(&errs, fmt.Sprintf("%s.expected_mutations[%d]", prefix, j), mutation)
 		}
+		for j, change := range scenario.ExpectedStateChanges {
+			validateExpectedStateChange(&errs, fmt.Sprintf("%s.expected_state_changes[%d]", prefix, j), change)
+		}
 		for j, assertion := range scenario.Assertions {
 			validateAssertion(&errs, fmt.Sprintf("%s.assertions[%d]", prefix, j), assertion)
 		}
@@ -189,6 +192,21 @@ func ValidateConfig(cfg core.Config) error {
 		}
 		for i, indicator := range cfg.Suites.ClaimTrace.StateChangeIndicators {
 			requireNonEmpty(&errs, fmt.Sprintf("suites.claim_trace.state_change_indicators[%d]", i), indicator, "set a non-empty state-change marker")
+		}
+	}
+
+	if cfg.Suites.ReleasePolicy.Enabled {
+		for i, indicator := range cfg.Suites.ReleasePolicy.SensitiveIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.release_policy.sensitive_indicators[%d]", i), indicator, "set a non-empty sensitive-data marker")
+		}
+		for i, indicator := range cfg.Suites.ReleasePolicy.ReadOnlyIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.release_policy.read_only_indicators[%d]", i), indicator, "set a non-empty read-only marker")
+		}
+		for i, indicator := range cfg.Suites.ReleasePolicy.MutatingIndicators {
+			requireNonEmpty(&errs, fmt.Sprintf("suites.release_policy.mutating_indicators[%d]", i), indicator, "set a non-empty mutating marker")
+		}
+		for i, rule := range cfg.Suites.ReleasePolicy.Rules {
+			validatePolicyRule(&errs, fmt.Sprintf("suites.release_policy.rules[%d]", i), rule)
 		}
 	}
 
@@ -350,5 +368,69 @@ func validateExpectedMutation(errs *ValidationErrors, prefix string, mutation co
 
 	if strings.TrimSpace(mutation.Kind) == "deleted" && strings.TrimSpace(mutation.ContentContains) != "" {
 		errs.Add(prefix+".content_contains", "cannot be set when kind is deleted", "remove content_contains for deleted-file expectations")
+	}
+}
+
+func validateExpectedStateChange(errs *ValidationErrors, prefix string, change core.ExpectedStateChange) {
+	if strings.TrimSpace(change.Kind) == "" &&
+		strings.TrimSpace(change.Target) == "" &&
+		strings.TrimSpace(change.Action) == "" &&
+		strings.TrimSpace(change.Status) == "" &&
+		strings.TrimSpace(change.SummaryContains) == "" {
+		errs.Add(prefix, "must declare at least one selector", "set kind, target, action, status, or summary_contains so cleanr can match an observed state change")
+	}
+}
+
+func validatePolicyRule(errs *ValidationErrors, prefix string, rule core.PolicyRule) {
+	ruleType := strings.TrimSpace(rule.Type)
+	mode := strings.TrimSpace(rule.Mode)
+	switch ruleType {
+	case "tool":
+		switch mode {
+		case "allow", "deny", "require_approval", "read_only":
+		default:
+			errs.Add(prefix+".mode", "must be one of allow, deny, require_approval, or read_only", "pick a supported tool policy mode")
+		}
+		if len(rule.Tools) == 0 {
+			errs.Add(prefix+".tools", "must contain at least one tool name", "set the tools this policy rule should match")
+		}
+	case "state_change":
+		switch mode {
+		case "allow", "deny", "require_approval":
+		default:
+			errs.Add(prefix+".mode", "must be one of allow, deny, or require_approval", "pick a supported state-change policy mode")
+		}
+		if len(rule.StateKinds) == 0 && len(rule.StateActions) == 0 && len(rule.Targets) == 0 {
+			errs.Add(prefix, "must declare at least one state selector", "set state_kinds, state_actions, or targets so cleanr can match observed state changes")
+		}
+	case "trust":
+		switch mode {
+		case "deny", "require_approval":
+		default:
+			errs.Add(prefix+".mode", "must be one of deny or require_approval", "pick a supported trust-boundary policy mode")
+		}
+		if len(rule.Trusts) == 0 {
+			errs.Add(prefix+".trusts", "must contain at least one trust tier", "set one or more trust values such as untrusted or approved")
+		}
+		if len(rule.Tools) == 0 && len(rule.StateKinds) == 0 && len(rule.StateActions) == 0 && len(rule.Targets) == 0 {
+			errs.Add(prefix, "must declare an action selector", "set tools and/or state selectors so cleanr knows which actions the trust rule governs")
+		}
+	case "sink":
+		if mode != "approved_only" {
+			errs.Add(prefix+".mode", "must be approved_only", "use approved_only to restrict which sink tools may receive sensitive payload")
+		}
+		if len(rule.ApprovedTools) == 0 {
+			errs.Add(prefix+".approved_tools", "must contain at least one tool name", "set the sink tools that are allowed to receive sensitive payload")
+		}
+	default:
+		errs.Add(prefix+".type", "must be one of tool, state_change, trust, or sink", "pick a supported release-policy rule type")
+	}
+
+	if severity := strings.TrimSpace(rule.Severity); severity != "" {
+		switch severity {
+		case "low", "medium", "high", "critical":
+		default:
+			errs.Add(prefix+".severity", "must be one of low, medium, high, or critical", "omit severity to use the default, or pick a supported severity level")
+		}
 	}
 }

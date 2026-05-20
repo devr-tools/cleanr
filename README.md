@@ -4,6 +4,8 @@
 
 **cleanr** is a Go-based AI testing SDK and CLI for validating AI applications in CI with adversarial, security, load, chaos, drift, token-efficiency, and cross-build trend reporting.
 
+Phase 1, the foundation runner release, is complete. Phase 2, the agent release-gate core, is now complete as well. The current focus is Phase 3: longitudinal replay, blast-radius analysis, and workflow-level regression intelligence.
+
 ## Installation
 
 ### Homebrew
@@ -115,7 +117,10 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 - Chaos conditions such as tight deadlines, noisy context, and duplicate turns
 - Drift across repeated runs of the same scenario, with lexical and semantic similarity checks
 - File-system shadow-state verification for observed writes inside approved locations
+- Provider-neutral workflow evidence for HTTP targets that emit normalized `trace` payloads
+- Release-policy enforcement for allowed tools, read-only tools, approval-gated actions, trust boundaries, approved sinks, and expected state changes
 - Exact expected file-mutation checks for create, modify, and delete behavior in controlled workspaces
+- Exact expected state-change checks for provider-neutral workflow surfaces such as tickets, emails, and other action traces
 - Provenance-aware context attacks that originate from untrusted retrieved, tool, memory, or approval content
 - Approval-bypass and sink-restriction checks for tool-calling agents
 - Trend history across builds so drift and failure deltas are comparable over time
@@ -148,6 +153,8 @@ Typical production-facing ways teams use `cleanr`:
 - Validate tool-using assistants for prompt injection, unsafe instructions, and boundary failures.
 - Verify that local file-writing agents changed only approved paths in a controlled workspace.
 - Assert the exact file mutations a workflow was expected to make, including content checks for created or modified files.
+- Gate workflow actions with declarative release rules such as read-only SQL, draft-not-send email, trust-boundary tool bans, and approval-required actions.
+- Verify provider-neutral state changes such as ticket updates or email drafts even when the underlying system is not file-based.
 - Test whether untrusted retrieved or tool-provided context can cross into secret disclosure, approval-bypassed actions, or unapproved sink tools.
 
 Starter configs for common targets:
@@ -156,6 +163,11 @@ Starter configs for common targets:
 - [examples/openai-chat-completions.yaml](examples/openai-chat-completions.yaml)
 - [examples/anthropic-messages.yaml](examples/anthropic-messages.yaml)
 - [examples/openai-responses-tuned.yaml](examples/openai-responses-tuned.yaml)
+- [examples/stateful-support-agent/cleanr.yaml](examples/stateful-support-agent/cleanr.yaml)
+
+End-to-end stateful sample project:
+
+- [examples/stateful-support-agent/README.md](examples/stateful-support-agent/README.md)
 
 Those examples now use `reporting.trend_gates.preset: moderate` by default. You can switch that to `strict` or `exploratory`, or keep the preset and override one field such as `max_duration_increase_pct`.
 

@@ -52,6 +52,9 @@ func renderText(report core.Report, palette textPalette) string {
 			for _, f := range c.Findings {
 				writeFinding(&b, palette, 4, f)
 			}
+			for _, detail := range structuredDetailParts(c.Details) {
+				writeIndentedValue(&b, palette, 4, detail.Key, detail.Value)
+			}
 		}
 		for _, f := range suite.Findings {
 			writeFinding(&b, palette, 2, f)

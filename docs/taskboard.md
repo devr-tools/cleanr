@@ -29,6 +29,10 @@
 - [x] Add initial memory safety suite for stale, revoked, poisoned, and cross-user memory cases.
 - [x] Add file-based shadow-state verification for approved write locations.
 - [x] Add provenance-aware context-source attack testing for untrusted retrieved and tool-like inputs.
+- [x] Add HTTP trace ingestion for provider-neutral workflow evidence on generic HTTP targets.
+- [x] Add release-policy DSL for tools, trust boundaries, approvals, sinks, and state changes.
+- [x] Add exact expected state-change verification for non-file workflow surfaces.
+- [x] Add end-to-end stateful workflow sample project.
 
 ## Now
 
@@ -70,10 +74,6 @@ Exit criteria: assertions can inspect tool name, arguments, order, and counts.
 Deliverable: prebuilt adversarial scenarios for data exfiltration, unsafe tools, runaway loops, and instruction override.
 Exit criteria: sample policy packs exist and are documented.
 
-- [ ] Expand trace-backed state adapters beyond file mutations.
-Deliverable: provider-neutral state evidence for common action surfaces such as tickets, SQL, and outbound communications.
-Exit criteria: claim-vs-trace and policy suites can verify non-file side effects without custom target code.
-
 - [ ] Deepen longitudinal memory replay coverage.
 Deliverable: multi-session fixtures for stale-memory replay, revocation, and poisoning regressions.
 Exit criteria: nightly replay packs can reproduce cross-session memory failures with stable fixtures.
@@ -108,11 +108,21 @@ Exit criteria: tagged release process documented and repeatable.
 3. Gemini adapter
 4. distributed load workers
 
-## Definition of Phase 2 done
+## Definition of Phase 1 done
 
 - OpenAI and Anthropic are supported natively.
 - YAML config is supported.
 - Assertions are reusable and not hard-coded per engine.
 - Drift can compare against saved baselines.
 - CI integration is documented and usable.
-- At least one agent or tool-using workflow is covered by examples.
+- Release packaging and install paths are documented.
+
+## Definition of Phase 2 done
+
+- Provider-neutral workflow evidence is first-class in the target abstraction and reports.
+- Tool calls, approvals, state changes, and memory operations are usable directly in assertions and policy checks.
+- Developers can express action-level pass or fail policy without custom forks.
+- At least one real tool-using or stateful workflow is covered by examples or sample projects.
+- Reports show observed actions, claimed actions, and the first mismatch clearly enough for CI triage.
+
+Status: complete.

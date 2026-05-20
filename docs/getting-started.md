@@ -122,8 +122,11 @@ If you want a native provider config instead of the default HTTP starter, begin 
 - `examples/openai-chat-completions.yaml`
 - `examples/anthropic-messages.yaml`
 - `examples/openai-responses-tuned.yaml`
+- `examples/stateful-support-agent/cleanr.yaml`
 
 Use `examples/openai-responses-tuned.yaml` when you want a concrete example of preset-based trend gating with one tuned override instead of a fully custom threshold block.
+
+If you want a real stateful workflow instead of a minimal starter, use [examples/stateful-support-agent](../examples/stateful-support-agent/README.md). It shows an HTTP agent that emits normalized trace evidence, mutates local state, and is gated by `release_policy`, `claim_trace`, `provenance`, and `shadow_state`.
 
 ## Point It at Your Endpoint
 
@@ -136,6 +139,8 @@ For an HTTP target, update these values in the generated config:
 If your API accepts a system prompt, also set `target.system_field`.
 
 If your endpoint expects a larger payload shape, update `target.request_template` to match it. `cleanr` will inject the prompt and system fields into that template at runtime.
+
+If your HTTP endpoint can emit workflow evidence, have it return a top-level `trace` object with fields such as `tool_calls`, `approvals`, `state_changes`, and `memory_operations`. The generic HTTP adapter ingests that normalized evidence directly, so you can use `assertions`, `claim_trace`, and `release_policy` without writing a native provider adapter.
 
 For a native OpenAI target:
 

@@ -60,16 +60,15 @@ func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
 	}
 
 	text, extractErr := extractResponseField(respBody, t.cfg.ResponseField)
+	normalized, usage := extractHTTPNormalized(respBody, httpResp.Status)
 	return core.Response{
 		StatusCode:   httpResp.StatusCode,
 		Body:         respBody,
 		Text:         text,
 		Latency:      latency,
 		ExtractError: extractErr,
-		Normalized: core.ProviderResponse{
-			Provider: "http",
-			Status:   httpResp.Status,
-		},
+		Usage:        usage,
+		Normalized:   normalized,
 	}
 }
 
@@ -166,5 +165,87 @@ func extractResponseField(body []byte, path string) (string, error) {
 			return "", err
 		}
 		return string(data), nil
+	}
+}
+
+func extractHTTPNormalized(body []byte, status string) (core.ProviderResponse, core.TokenUsage) {
+	normalized := core.ProviderResponse{
+		Provider: "http",
+		Status:   status,
+	}
+	var payload map[string]any
+	if err := json.Unmarshal(body, &payload); err != nil {
+		return normalized, core.TokenUsage{}
+	}
+
+	trace := payload
+	if nested, ok := payload["trace"].(map[string]any); ok {
+		trace = nested
+	}
+
+	normalized.ID = stringValue(trace["id"])
+	normalized.Model = stringValue(trace["model"])
+	normalized.Role = stringValue(trace["role"])
+	if provider := stringValue(trace["provider"]); provider != "" {
+		normalized.Provider = provider
+	}
+	if providerStatus := stringValue(trace["status"]); providerStatus != "" {
+		normalized.Status = providerStatus
+	}
+	normalized.FinishReason = stringValue(trace["finish_reason"])
+	normalized.StopSequence = stringValue(trace["stop_sequence"])
+	normalized.ToolCalls = decodeStructuredSlice[core.ToolCall](trace["tool_calls"])
+	normalized.SourceUses = decodeStructuredSlice[core.SourceUse](trace["source_uses"])
+	normalized.Approvals = decodeStructuredSlice[core.ApprovalArtifact](trace["approvals"])
+	normalized.StateChanges = decodeStructuredSlice[core.StateChange](trace["state_changes"])
+	normalized.MemoryOperations = decodeStructuredSlice[core.MemoryOperation](trace["memory_operations"])
+	normalized.Raw = trace
+
+	usagePayload := payload
+	if nested, ok := payload["usage"].(map[string]any); ok {
+		usagePayload = nested
+	}
+	usage := core.TokenUsage{
+		InputTokens:  intValue(usagePayload["input_tokens"]),
+		OutputTokens: intValue(usagePayload["output_tokens"]),
+		TotalTokens:  intValue(usagePayload["total_tokens"]),
+	}
+	if usage.TotalTokens == 0 {
+		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
+	}
+	return normalized, usage
+}
+
+func decodeStructuredSlice[T any](value any) []T {
+	if value == nil {
+		return nil
+	}
+	data, err := json.Marshal(value)
+	if err != nil {
+		return nil
+	}
+	var out []T
+	if err := json.Unmarshal(data, &out); err != nil {
+		return nil
+	}
+	return out
+}
+
+func stringValue(value any) string {
+	typed, ok := value.(string)
+	if !ok {
+		return ""
+	}
+	return typed
+}
+
+func intValue(value any) int {
+	switch typed := value.(type) {
+	case float64:
+		return int(typed)
+	case int:
+		return typed
+	default:
+		return 0
 	}
 }

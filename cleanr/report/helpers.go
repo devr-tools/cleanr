@@ -1,6 +1,7 @@
 package report
 
 import (
+	"encoding/json"
 	"fmt"
 	"sort"
 	"strings"
@@ -127,6 +128,34 @@ func scalarDetailParts(values map[string]any) []string {
 	return parts
 }
 
+type structuredDetail struct {
+	Key   string
+	Value string
+}
+
+func structuredDetailParts(values map[string]any) []structuredDetail {
+	if len(values) == 0 {
+		return nil
+	}
+	keys := make([]string, 0, len(values))
+	for key, value := range values {
+		if isScalarReportValue(value) {
+			continue
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+
+	parts := make([]structuredDetail, 0, len(keys))
+	for _, key := range keys {
+		parts = append(parts, structuredDetail{
+			Key:   key,
+			Value: formatStructuredReportValue(values[key]),
+		})
+	}
+	return parts
+}
+
 func isScalarReportValue(value any) bool {
 	switch value.(type) {
 	case string, bool,
@@ -150,4 +179,22 @@ func formatReportValue(value any) string {
 	default:
 		return fmt.Sprint(v)
 	}
+}
+
+func formatStructuredReportValue(value any) string {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return truncateReportValue(fmt.Sprint(value), 240)
+	}
+	return truncateReportValue(string(data), 240)
+}
+
+func truncateReportValue(value string, limit int) string {
+	if limit <= 0 || len(value) <= limit {
+		return value
+	}
+	if limit <= 3 {
+		return value[:limit]
+	}
+	return value[:limit-3] + "..."
 }

@@ -92,3 +92,38 @@ func TestValidateConfigRejectsDeletedExpectedMutationWithContentAssertion(t *tes
 		t.Fatalf("expected deleted expected_mutation content validation error, got %s", err.Error())
 	}
 }
+
+func TestValidateConfigRejectsEmptyExpectedStateChange(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:                 "state",
+		Input:                "hello",
+		ExpectedStateChanges: []cleanr.ExpectedStateChange{{}},
+	}}
+
+	err := cleanr.ValidateConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "expected_state_changes[0]") {
+		t.Fatalf("expected expected_state_changes validation error, got %s", err.Error())
+	}
+}
+
+func TestValidateConfigRejectsInvalidReleasePolicyRule(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{Name: "policy", Input: "hello"}}
+	cfg.Suites.ReleasePolicy.Enabled = true
+	cfg.Suites.ReleasePolicy.Rules = []cleanr.PolicyRule{{
+		Type: "tool",
+		Mode: "approved_only",
+	}}
+
+	err := cleanr.ValidateConfig(cfg)
+	if err == nil {
+		t.Fatal("expected validation error")
+	}
+	if !strings.Contains(err.Error(), "suites.release_policy.rules[0].mode") || !strings.Contains(err.Error(), "suites.release_policy.rules[0].tools") {
+		t.Fatalf("expected release policy validation errors, got %s", err.Error())
+	}
+}

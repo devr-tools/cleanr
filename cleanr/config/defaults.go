@@ -86,6 +86,9 @@ func ExampleConfig() core.Config {
 			ClaimTrace: core.ClaimTraceConfig{
 				Enabled: false,
 			},
+			ReleasePolicy: core.ReleasePolicyConfig{
+				Enabled: false,
+			},
 			MemorySafety: core.MemorySafetyConfig{
 				Enabled: false,
 			},
@@ -228,6 +231,17 @@ func applyDefaults(cfg *core.Config) {
 		}
 		if len(cfg.Suites.ClaimTrace.StateChangeIndicators) == 0 {
 			cfg.Suites.ClaimTrace.StateChangeIndicators = []string{"created", "updated", "deleted", "modified", "wrote", "saved", "sent"}
+		}
+	}
+	if cfg.Suites.ReleasePolicy.Enabled {
+		if len(cfg.Suites.ReleasePolicy.SensitiveIndicators) == 0 {
+			cfg.Suites.ReleasePolicy.SensitiveIndicators = []string{"secret", "credential", "token", "ssn", "api key", "system prompt"}
+		}
+		if len(cfg.Suites.ReleasePolicy.ReadOnlyIndicators) == 0 {
+			cfg.Suites.ReleasePolicy.ReadOnlyIndicators = []string{"select ", "read ", "fetch ", "lookup ", "get ", "list "}
+		}
+		if len(cfg.Suites.ReleasePolicy.MutatingIndicators) == 0 {
+			cfg.Suites.ReleasePolicy.MutatingIndicators = []string{"insert ", "update ", "delete ", "drop ", "truncate ", "alter ", "create ", "write ", "send ", "post "}
 		}
 	}
 	if cfg.Suites.TokenOptimization.Enabled {

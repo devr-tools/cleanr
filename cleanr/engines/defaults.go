@@ -28,6 +28,9 @@ func Default(cfg core.Config) []core.Engine {
 	if cfg.Suites.ClaimTrace.Enabled {
 		out = append(out, ClaimTraceEngine{})
 	}
+	if cfg.Suites.ReleasePolicy.Enabled {
+		out = append(out, ReleasePolicyEngine{})
+	}
 	if cfg.Suites.MemorySafety.Enabled {
 		out = append(out, MemorySafetyEngine{})
 	}

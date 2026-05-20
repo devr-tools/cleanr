@@ -107,6 +107,7 @@ OpenAI-native examples are available in:
 - `examples/openai-chat-completions.yaml`
 - `examples/anthropic-messages.yaml`
 - `examples/openai-responses-tuned.yaml`
+- `examples/stateful-support-agent/cleanr.yaml`
 
 ## `target`
 
@@ -128,6 +129,23 @@ This is the default when `target.type` is omitted or set to `http`.
 - `request_template`: request body template rendered before dispatch
 
 If `response_field` does not resolve cleanly, extraction fails and the suite records the issue. If the response body is not valid JSON, `cleanr` falls back to treating the raw response body as text.
+
+If the HTTP response contains a top-level `trace` object, the adapter also ingests normalized workflow evidence from it. Supported trace fields include:
+
+- `provider`
+- `id`
+- `model`
+- `role`
+- `status`
+- `finish_reason`
+- `stop_sequence`
+- `tool_calls`
+- `source_uses`
+- `approvals`
+- `state_changes`
+- `memory_operations`
+
+If the response contains a top-level `usage` object, the adapter also ingests `input_tokens`, `output_tokens`, and `total_tokens`.
 
 ## Request Templating
 
@@ -225,6 +243,7 @@ Each scenario is a test input that can be reused across multiple suites.
 - `metadata`: arbitrary string metadata merged into request metadata
 - `context_sources`: optional trust-tagged retrieved, tool, memory, or approval context that should be included during testing
 - `expected_mutations`: optional exact file mutations expected during the `shadow_state` suite
+- `expected_state_changes`: optional exact provider-neutral state changes expected during the `release_policy` suite
 - `tags`: labels used to group or classify scenarios
 - `expected_contains`: strings that should appear in output
 - `forbidden_contains`: strings that must not appear in output
@@ -285,6 +304,37 @@ Supported fields:
 
 When `expected_mutations` is present, `cleanr` treats the approved file mutation set as exact for that scenario: declared mutations must occur, and extra approved mutations are reported as undeclared changes.
 
+### Expected State Changes
+
+`expected_state_changes` adds scenario-level exact action verification for normalized workflow evidence during the `release_policy` suite.
+
+Example:
+
+```yaml
+scenarios:
+  - name: password-reset-review
+    input: Reset the password and confirm the email.
+    expected_state_changes:
+      - kind: ticket
+        action: update
+        target: case-123
+        status: applied
+      - kind: email
+        action: draft
+        target: customer@example.com
+        status: applied
+```
+
+Supported fields:
+
+- `kind`: optional surface category such as `ticket`, `email`, `sql`, or `queue`
+- `target`: optional resource identifier
+- `action`: optional normalized action such as `update`, `draft`, `send`, or `delete`
+- `status`: optional normalized status such as `applied`
+- `summary_contains`: optional substring that must appear in the observed state-change summary
+
+When `expected_state_changes` is present, `cleanr` treats the observed normalized state-change set as exact for that scenario: declared state changes must occur, and extra observed changes are reported as unexpected workflow actions.
+
 ### Scenario Assertions
 
 `assertions` provides the typed assertion DSL for scenario-level correctness checks.
@@ -307,6 +357,17 @@ scenarios:
       - type: json_path
         path: response.provider_model
         value: gpt-4o-mini
+  - name: trace-backed-agent-check
+    input: Review the request and use only approved actions.
+    assertions:
+      - type: tool_call_name
+        value: lookup_policy
+      - type: json_path
+        path: response.approval_count
+        value: "1"
+      - type: json_path
+        path: response.state_changes.0.action
+        value: update
 ```
 
 Supported assertion types:
@@ -338,8 +399,18 @@ Supported paths:
 - `response.stop_sequence`
 - `response.tool_call_count`
 - `response.tool_calls.0.name`
+- `response.source_use_count`
+- `response.source_uses.0.name`
+- `response.approval_count`
+- `response.approvals.0.artifact`
+- `response.state_change_count`
+- `response.state_changes.0.action`
+- `response.memory_operation_count`
+- `response.memory_operations.0.action`
 - `response.provider_raw...`
 - `response.body...`
+
+That normalized response view is the current trace-backed assertion surface. It lets a config fail on observed workflow evidence, not just final text, and it complements the broader `release_policy` suite for reusable workflow gates.
 
 Optional fields:
 
@@ -465,6 +536,68 @@ suites:
     approval_required_tool_names: ["send_email", "delete_user"]
     approved_sink_tool_names: ["draft_email"]
 ```
+
+### `release_policy`
+
+`release_policy` is the declarative workflow gate for action-level pass or fail rules.
+
+It evaluates normalized `tool_calls`, `approvals`, `state_changes`, and scenario `context_sources` against a rule set, and it can also verify exact `expected_state_changes`.
+
+Top-level fields:
+
+- `enabled`
+- `sensitive_indicators`
+- `read_only_indicators`
+- `mutating_indicators`
+- `rules`
+
+Example:
+
+```yaml
+suites:
+  release_policy:
+    enabled: true
+    rules:
+      - type: tool
+        mode: allow
+        tools: [lookup_customer, run_sql, draft_email]
+      - type: tool
+        mode: read_only
+        tools: [run_sql]
+      - type: state_change
+        mode: allow
+        state_kinds: [ticket, email]
+        state_actions: [update, draft]
+      - type: sink
+        mode: approved_only
+        approved_tools: [draft_email]
+      - type: trust
+        mode: deny
+        trusts: [untrusted]
+        tools: [send_email]
+```
+
+Rule types and modes:
+
+- `type: tool`
+  - `mode: allow`, `deny`, `require_approval`, or `read_only`
+  - `tools`: required tool-name selector list
+- `type: state_change`
+  - `mode: allow`, `deny`, or `require_approval`
+  - selectors: one or more of `state_kinds`, `state_actions`, or `targets`
+- `type: trust`
+  - `mode: deny` or `require_approval`
+  - `trusts`: required trust-tier selector list
+  - action selectors: `tools` and/or state selectors
+- `type: sink`
+  - `mode: approved_only`
+  - `approved_tools`: tool names allowed to receive sensitive payload
+
+Optional rule fields:
+
+- `severity`
+- `message`
+- `indicators`
 
 ### `token_optimization`
 
