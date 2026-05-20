@@ -101,7 +101,7 @@ func (t *OpenAITarget) Invoke(ctx context.Context, req Request) Response {
 }
 
 func (t *OpenAITarget) buildRequestBody(req Request) (map[string]any, error) {
-	switch t.cfg.OpenAI.apiMode() {
+	switch t.cfg.OpenAI.APIModeValue() {
 	case "responses":
 		body := map[string]any{
 			"model": t.cfg.OpenAI.Model,
@@ -144,7 +144,7 @@ func (t *OpenAITarget) endpointURL() string {
 	if base == "" {
 		base = "https://api.openai.com/v1"
 	}
-	switch t.cfg.OpenAI.apiMode() {
+	switch t.cfg.OpenAI.APIModeValue() {
 	case "chat_completions":
 		return base + "/chat/completions"
 	default:
@@ -160,7 +160,7 @@ func (t *OpenAITarget) apiKeyEnv() string {
 }
 
 func (t *OpenAITarget) parseResponse(body []byte) (string, TokenUsage, error) {
-	switch t.cfg.OpenAI.apiMode() {
+	switch t.cfg.OpenAI.APIModeValue() {
 	case "chat_completions":
 		return parseOpenAIChatResponse(body)
 	default:

@@ -5,26 +5,14 @@ import (
 	"fmt"
 	"net/http"
 	"time"
-)
 
-type Target interface {
-	Invoke(context.Context, Request) Response
-}
+	enginespkg "cleanr/cleanr/engines"
+)
 
 type Runner struct {
 	config  Config
 	target  Target
 	engines []Engine
-}
-
-type Engine interface {
-	Name() string
-	Run(context.Context, *RunContext) SuiteResult
-}
-
-type RunContext struct {
-	Config Config
-	Target Target
 }
 
 func NewRunner(cfg Config, target Target) *Runner {
@@ -77,26 +65,7 @@ func (r *Runner) Run(ctx context.Context) Report {
 }
 
 func defaultEngines(cfg Config) []Engine {
-	var engines []Engine
-	if cfg.Suites.PromptInjection.Enabled {
-		engines = append(engines, PromptInjectionEngine{})
-	}
-	if cfg.Suites.Security.Enabled {
-		engines = append(engines, SecurityEngine{})
-	}
-	if cfg.Suites.Load.Enabled {
-		engines = append(engines, LoadEngine{})
-	}
-	if cfg.Suites.Chaos.Enabled {
-		engines = append(engines, ChaosEngine{})
-	}
-	if cfg.Suites.Drift.Enabled {
-		engines = append(engines, DriftEngine{})
-	}
-	if cfg.Suites.TokenOptimization.Enabled {
-		engines = append(engines, TokenOptimizationEngine{})
-	}
-	return engines
+	return enginespkg.Default(cfg)
 }
 
 func buildRecommendations(report Report) []string {
@@ -124,7 +93,7 @@ func buildRecommendations(report Report) []string {
 }
 
 func newTargetFromConfig(cfg TargetConfig, client *http.Client) Target {
-	switch cfg.targetType() {
+	switch cfg.TargetType() {
 	case "openai":
 		return NewOpenAITarget(cfg, client)
 	case "http":

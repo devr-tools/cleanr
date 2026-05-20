@@ -2,32 +2,115 @@
 
 ## Product direction
 
-`cleanr` is becoming a developer-first AI testing platform for CI pipelines, release gates, and continuous safety validation. The goal is not just to run prompts against a model, but to give engineering teams a repeatable way to measure whether an AI application is secure, stable, resilient, and production-ready.
+`cleanr` is becoming a developer-first release gate for AI systems that take actions, mutate state, and cross trust boundaries.
 
-The long-term product needs to cover:
+The product direction is intentionally narrower than "general LLM evals." The market already has strong platforms for tracing, prompt iteration, observability, dashboards, and generic scoring. `cleanr` should win by being the CI-native system that tells a team whether an agent workflow is safe to ship.
 
-- adversarial testing
-- policy and security validation
-- regression and drift detection
-- load and resilience testing
-- tool-call and agent workflow verification
-- CI-native reporting and governance artifacts
+That means `cleanr` should focus on questions such as:
+
+- did the agent take the correct action, not just produce a plausible answer
+- did untrusted input influence a privileged decision
+- did the workflow claim to use a tool, source, or approval path that never actually happened
+- did the system mutate the right state and avoid forbidden side effects
+- did memory, retrieval, or tool context create longitudinal risk across sessions
+- did a code, prompt, or model change widen the blast radius of failure
+
+## Product thesis
+
+`cleanr` should become the release gate for stateful agent systems.
+
+The core value is not another hosted eval UI. The core value is deterministic, replayable, policy-aware verification that can run in CI before production changes ship.
+
+## What we are not building
+
+`cleanr` is not trying to out-compete the market on:
+
+- hosted prompt playgrounds
+- tracing dashboards
+- generic observability
+- broad experimentation suites for every AI workflow
+- cloud-first team collaboration features as the primary product
+
+Those capabilities can matter later, but they are not the wedge.
+
+## Differentiation wedge
+
+The roadmap is now centered on five product wedges that are still under-served in the market.
+
+### 1. Shadow-state verification
+
+Verify what the agent actually changed in a simulated or controlled environment, not just what it said it changed.
+
+Examples:
+
+- verify that a ticket was updated with the correct fields
+- verify that a database mutation stayed within row and column constraints
+- verify that a draft email was created but not sent
+- verify that a file write occurred only in approved locations
+
+### 2. Provenance-aware attack testing
+
+Model inputs should not be treated as a flat blob. `cleanr` should track trust tiers across user input, system instructions, retrieved content, tool output, memory, and human approvals.
+
+Examples:
+
+- fail if untrusted retrieved text overrides system policy
+- fail if tool output is treated as authority without validation
+- fail if indirect prompt injection crosses from untrusted content into privileged actions
+
+### 3. Claim-vs-trace verification
+
+Agents frequently claim they checked a source, called a tool, obtained approval, or completed an action when the execution trace does not support that claim.
+
+`cleanr` should detect and block:
+
+- claimed citations with no trace evidence
+- claimed tool execution with no matching invocation
+- claimed approval steps with no approval artifact
+- claimed state changes that do not match observed side effects
+
+### 4. Longitudinal memory and state safety
+
+Single-turn evals miss risks that accumulate over time. `cleanr` should treat memory, saved context, and persistent state as first-class attack and regression surfaces.
+
+Examples:
+
+- stale memory replay
+- revoked fact persistence
+- cross-user memory bleed
+- memory poisoning
+- trust decay across long-running sessions
+
+### 5. Release policy as code
+
+Teams need machine-checkable rules for what an agent may and may not do before merge.
+
+Examples:
+
+- a tool may read but not mutate
+- SQL generation must remain read-only
+- an external communication tool may draft but not send
+- human approval is required before any irreversible action
+- sensitive data may cross only into approved sinks
 
 ## Guiding principles
 
 - Keep the runtime fast enough for CI by default.
 - Prefer deterministic and replayable tests over vague benchmark-style outputs.
-- Make the SDK extensible so teams can test HTTP APIs, agent runtimes, tools, and in-process adapters.
-- Treat security and prompt-safety failures as first-class release blockers.
-- Build reporting that works for both developers and compliance-minded teams.
+- Treat action-level correctness as more important than output aesthetics.
+- Model trust boundaries explicitly instead of flattening all context into plain text.
+- Make side effects inspectable, diffable, and enforceable in policy.
+- Produce artifacts that engineering, security, and compliance teams can all use.
+- Stay local-first and pipeline-first until the release-gate experience is sharp.
 
 ## Current state
 
-Phase 1 foundation is in place:
+The foundation release is in place:
 
 - Go module and CLI scaffold
-- JSON config loading and validation
+- JSON and YAML config loading and validation
 - HTTP target adapter
+- early native OpenAI target support
 - prompt injection suite
 - security suite
 - load suite
@@ -36,156 +119,173 @@ Phase 1 foundation is in place:
 - token optimization suite
 - text, JSON, and JUnit reporting
 
-This is enough to prove the shape of the product, but it is still a foundation release. The next phase needs to make the system materially more useful for real AI teams.
+This proves the basic runner model, but the current product still focuses mostly on response inspection. The next phase needs to expand the abstraction from "prompt in, text out" toward "workflow in, evidence out."
 
-## Phase 2: Production-grade core
+## Strategic direction by phase
+
+### Phase 2: Agent release-gate core
 
 Status: current focus
 
-Objective: turn the prototype into a serious SDK and CI product that teams can adopt without rewriting their stack.
+Objective: turn `cleanr` from a foundation eval runner into a credible CI gate for tool-using and stateful agents.
 
 Primary outcomes:
 
-- native provider adapters for OpenAI, Anthropic, and Gemini
-- YAML config support in addition to JSON
-- a richer scenario and assertion DSL
-- token cost governance and provider-native usage ingestion
-- semantic drift and baseline snapshot support
-- tool-call and agent trace assertions
-- first-party GitHub Actions integration
-- stronger docs and sample projects
+- provider-neutral workflow evidence model
+- tool-call and trace capture as first-class inputs to assertions
+- release-policy DSL for tool permissions, trust boundaries, and side effects
+- claim-vs-trace verification suite
+- shadow-state verification harnesses for common action surfaces
+- provenance-aware prompt-injection and data-exfiltration tests
+- stronger docs and sample projects for real agent stacks
 
 Exit criteria:
 
-- developers can onboard without customizing internal packages
-- test configs support common AI app patterns without hacks
-- CI output is stable enough for gating pull requests
-- core suites are documented with examples and expected failure modes
+- developers can express action-level pass or fail rules without custom forks
+- CI runs can fail on policy violations even when the final answer sounds plausible
+- reports show what action occurred, what was claimed, and where the mismatch happened
+- example projects demonstrate at least one real stateful workflow end to end
 
-## Phase 3: Advanced testing and scale
+### Phase 3: Longitudinal and blast-radius analysis
 
-Objective: make `cleanr` credible for larger engineering orgs and more complex agent systems.
+Objective: make `cleanr` credible for higher-risk and longer-lived agent systems.
 
 Primary outcomes:
 
-- distributed load execution
-- percentile histograms and trend reports
-- seeded replay runs for deterministic regression analysis
-- dataset-backed evaluation packs
-- red-team scenario bundles
-- failure triage with grouped root-cause summaries
-- signed test attestations and audit artifacts
+- longitudinal memory safety suite
+- stale-memory and memory-poisoning regression packs
+- seeded replay with fixed workflow metadata where supported
+- change-impact replay and blast-radius summaries
+- richer trace diffs across builds, prompts, and models
+- grouped failure triage for repeated workflow-level failure modes
 
 Exit criteria:
 
-- large test runs can execute within reasonable CI budgets
-- teams can compare behavior across builds, models, and prompt versions
-- reports can support engineering review and internal audit workflows
+- teams can compare not just pass or fail, but which workflows regressed and how broadly
+- memory and state regressions can be reproduced with stable fixtures
+- nightly runs produce actionable replay artifacts rather than generic score deltas
 
-## Phase 4: Platform and ecosystem
+### Phase 4: Governance and ecosystem
 
-Objective: move from SDK to ecosystem.
+Objective: standardize agent release policy across teams and services.
 
 Primary outcomes:
 
-- plugin system for custom suites and org-specific policies
-- remote result aggregation service
-- hosted dashboard and historical analytics
-- org-level policy packs
-- managed scenario libraries
-- IDE and PR review integrations
+- signed release-gate artifacts and attestations
+- org-level policy packs for common agent risk profiles
+- plugin system for custom suites, state adapters, and policy rules
+- remote result aggregation for multi-service governance
+- IDE and PR integrations that surface policy failures inline
 
 Exit criteria:
 
-- external teams can extend `cleanr` without forking the core
-- organizations can standardize AI release criteria across multiple services
+- external teams can extend `cleanr` without forking core behavior
+- organizations can standardize agent release criteria across multiple systems
+- governance artifacts are strong enough for internal audit and change review workflows
 
 ## Phase 2 workstreams
 
-### 1. Provider adapters
+### 1. Evidence model and target abstraction
 
-- Add OpenAI target adapter with request/response normalization.
-- Add Anthropic target adapter with message format normalization.
-- Add Gemini target adapter with content block normalization.
-- Standardize a provider-neutral response envelope for assertions and reporting.
+- Expand the target abstraction from text responses to workflow evidence.
+- Normalize tool calls, approvals, retrieval events, state mutations, and final outputs into one provider-neutral envelope.
+- Preserve support for HTTP-first targets while making richer adapters possible.
+- Keep evidence exportable in text, JSON, and JUnit-compatible forms where practical.
 
-### 2. Config and DSL
+### 2. Release-policy DSL
 
-- Add YAML parsing while preserving JSON compatibility.
-- Introduce reusable scenario templates.
-- Add assertions for output contains, not contains, regex, JSON path, tool-call count, and latency budgets.
-- Add config schema documentation and validation errors with actionable messages.
+- Add policy primitives for allowed tools, blocked tools, read-only tools, approval requirements, and sink restrictions.
+- Add trust-tier primitives for system, user, retrieved, memory, tool, and approved-human context.
+- Add assertion support for side effects, argument shape, ordering, and irreversible actions.
+- Keep the syntax readable enough for CI ownership by application teams.
 
-### 3. Drift and regression
+### 3. Claim-vs-trace verification
 
-- Add snapshot baselines checked into repo.
-- Add semantic similarity scoring instead of only string distance.
-- Allow deterministic replay inputs with fixed metadata and seeds where supported.
-- Produce diffs that show what changed, not just that something changed.
+- Add checks for claimed tool use with no invocation.
+- Add checks for claimed citations or approvals with no evidence.
+- Add checks for claimed state changes that do not match observed mutations.
+- Produce focused failure output that pinpoints the first unsupported claim.
 
-### 3a. Token efficiency and cost control
+### 4. Shadow-state verification
 
-- Upgrade from heuristic token estimation to provider-native usage capture where available.
-- Add suite-level cost budgets by model or endpoint.
-- Track prompt duplication, retrieval bloat, and verbose response patterns across builds.
-- Surface optimization guidance that teams can use to reduce spend before release.
+- Introduce pluggable state verifiers for common surfaces such as SQL, HTTP side effects, files, queues, and outbound communications.
+- Support pre-run and post-run snapshots with diffing.
+- Add allowlists and deny rules for mutation scope.
+- Report both intended and observed state changes.
 
-### 4. Agent and tool verification
+### 5. Provenance-aware adversarial testing
 
-- Support tool-call traces in the target abstraction.
-- Add assertions for allowed tools, blocked tools, argument shape, and tool ordering.
-- Add loop detection and runaway-agent protections.
-- Add jailbreak tests that target tool misuse, data exfiltration, and role confusion.
-
-### 5. CI and delivery
-
-- Ship an official GitHub Action.
-- Add machine-readable summary artifacts and stable exit semantics.
-- Add release binaries and install docs.
-- Add sample CI workflows for common stacks.
+- Add trust-tagged scenario inputs and context sources.
+- Add indirect prompt-injection attacks that originate from retrieved or tool-provided content.
+- Add exfiltration tests that target cross-boundary data flow instead of only unsafe text output.
+- Add role-confusion and approval-bypass tests for multi-step workflows.
 
 ### 6. Docs and developer adoption
 
-- Write quickstart guides for API apps, agents, and internal tools.
-- Add example configs for customer support bots, RAG apps, and tool-using agents.
-- Add a security testing guide and a drift testing guide.
-- Document recommended suite selection for fast PR checks versus deep nightly runs.
+- Write an opinionated guide for testing stateful agents in CI.
+- Add sample projects for support agents, RAG agents, and action-taking internal agents.
+- Add policy cookbook examples such as draft-not-send, read-only SQL, and approved-sink-only data flow.
+- Document recommended fast PR checks versus deeper nightly workflow replay.
+
+## Phase 3 workstreams
+
+### 1. Longitudinal memory safety
+
+- Add fixtures for persistent memory reads and writes.
+- Test stale facts, revoked facts, poisoned facts, and cross-session bleed.
+- Add expiry and freshness assertions.
+- Add replay support for multi-session scenarios.
+
+### 2. Change-impact replay
+
+- Re-run stored evidence packs against new builds.
+- Group regressions by workflow, tool, trust tier, and policy family.
+- Summarize blast radius for pull requests and release candidates.
+- Distinguish local regressions from broad systemic failures.
+
+### 3. Trace diffs and triage
+
+- Produce diffs that show changed actions, not just changed text.
+- Group repeated failures into root-cause-oriented buckets.
+- Highlight first divergence points in workflow execution.
+- Improve artifacts for engineering review and audit workflows.
 
 ## Milestone sequence
 
 ### Milestone A
 
-Foundation hardening and adoption readiness.
+Establish the release-gate core.
 
-- YAML config
-- improved validation
-- OpenAI adapter
-- example projects
-- GitHub Action draft
+- provider-neutral evidence envelope
+- first policy DSL primitives
+- claim-vs-trace verification
+- example project for a tool-using agent
+- docs that reposition `cleanr` around action verification
 
 ### Milestone B
 
-Test depth and agent-awareness.
+Make state and trust boundaries enforceable.
 
-- Anthropic and Gemini adapters
-- assertion DSL
-- tool-call trace model
-- snapshot baselines
+- shadow-state verification for at least one mutation surface
+- trust-tiered adversarial scenarios
+- policy assertions for approvals, sinks, and irreversible actions
+- indirect prompt-injection coverage for retrieved and tool-provided content
 
 ### Milestone C
 
-Advanced regression and operational maturity.
+Add longitudinal and replay intelligence.
 
-- semantic drift
-- richer CI artifacts
-- release packaging
-- nightly load and chaos workflows
+- memory safety suite
+- change-impact replay
+- workflow-level diffs
+- grouped regression summaries
 
-## Non-goals for Phase 2
+## Non-goals for the near term
 
-- hosted dashboard
-- multi-tenant control plane
-- billing or account systems
-- broad plugin marketplace
+- hosted dashboard as the primary product surface
+- generic observability platform work
+- broad benchmark marketplace
+- billing and account systems
+- multi-tenant control plane as a prerequisite for usefulness
 
-Those can come later. The immediate need is a sharp local and CI experience with strong testing primitives.
+The immediate need is a sharp local and CI experience that blocks unsafe or incorrect agent releases before they ship.

@@ -1,6 +1,10 @@
-package cleanr
+package core
 
-import "time"
+import (
+	"context"
+	"strings"
+	"time"
+)
 
 type Config struct {
 	Version   string          `json:"version"`
@@ -167,4 +171,36 @@ type Report struct {
 	FailedCases     int           `json:"failed_cases"`
 	Suites          []SuiteResult `json:"suites"`
 	Recommendations []string      `json:"recommendations,omitempty"`
+}
+
+type Target interface {
+	Invoke(context.Context, Request) Response
+}
+
+type Engine interface {
+	Name() string
+	Run(context.Context, *RunContext) SuiteResult
+}
+
+type RunContext struct {
+	Config Config
+	Target Target
+}
+
+func (c TargetConfig) Timeout() time.Duration {
+	return time.Duration(c.TimeoutMS) * time.Millisecond
+}
+
+func (c TargetConfig) TargetType() string {
+	if strings.TrimSpace(c.Type) == "" {
+		return "http"
+	}
+	return strings.ToLower(strings.TrimSpace(c.Type))
+}
+
+func (c OpenAIConfig) APIModeValue() string {
+	if strings.TrimSpace(c.APIMode) == "" {
+		return "responses"
+	}
+	return strings.ToLower(strings.TrimSpace(c.APIMode))
 }

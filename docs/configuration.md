@@ -90,11 +90,21 @@ reporting:
   format: text
 ```
 
+OpenAI-native examples are available in:
+
+- `examples/openai-responses.yaml`
+- `examples/openai-chat-completions.yaml`
+
 ## `target`
 
 `target` describes how `cleanr` calls your AI endpoint.
 
+### HTTP target
+
+This is the default when `target.type` is omitted or set to `http`.
+
 - `name`: logical target name used in reporting
+- `type`: `http` or omitted
 - `url`: absolute `http` or `https` endpoint URL
 - `method`: HTTP method, typically `POST`
 - `headers`: request headers sent on every call
@@ -123,6 +133,40 @@ Runtime behavior:
 - scenario metadata is merged into the template's `metadata` object when present
 
 This lets you keep a provider-specific request body shape while still driving tests from generic scenarios.
+
+### OpenAI target
+
+Use `target.type: openai` to call OpenAI natively without a custom request template.
+
+```yaml
+target:
+  type: openai
+  name: openai-responses
+  timeout_ms: 8000
+  openai:
+    api_mode: responses
+    model: gpt-4.1-mini
+    api_key_env: OPENAI_API_KEY
+```
+
+Supported fields:
+
+- `type`: must be `openai`
+- `name`: logical target name used in reporting
+- `timeout_ms`: per-request timeout in milliseconds
+- `headers`: optional extra request headers
+- `openai.api_mode`: `responses` or `chat_completions`
+- `openai.model`: OpenAI model name
+- `openai.api_key_env`: environment variable containing the API key, default `OPENAI_API_KEY`
+- `openai.base_url`: optional API base URL, default `https://api.openai.com/v1`
+- `openai.organization`: optional `OpenAI-Organization` header value
+- `openai.project`: optional `OpenAI-Project` header value
+
+Behavior:
+
+- `scenario.system` is sent as top-level `instructions` for `responses`, or as a `developer` message for `chat_completions`
+- `scenario.input` is sent as the user prompt
+- provider token usage is captured from the OpenAI response when available
 
 ## `scenarios`
 
@@ -217,7 +261,9 @@ If `output` is omitted, reports are written to standard output. CLI flags can ov
 
 The validator checks for:
 
-- missing target URL, prompt field, or response field
+- missing HTTP target URL, prompt field, or response field
+- missing `target.openai.model` for OpenAI targets
+- unsupported `target.type` or `target.openai.api_mode`
 - invalid absolute URLs
 - invalid load, chaos, drift, and token thresholds
 - duplicate scenario names

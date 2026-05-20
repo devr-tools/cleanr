@@ -1,6 +1,6 @@
 # Getting Started
 
-This guide walks through the shortest path to running `cleanr` against an HTTP-based AI endpoint.
+This guide walks through the shortest path to running `cleanr` against either an HTTP-based AI endpoint or OpenAI directly.
 
 ## Prerequisites
 
@@ -40,9 +40,14 @@ The generated file includes:
 - all currently supported suites enabled with starter thresholds
 - text reporting as the default output mode
 
+If you want a native OpenAI config instead of the default HTTP starter, begin from one of these examples:
+
+- `examples/openai-responses.yaml`
+- `examples/openai-chat-completions.yaml`
+
 ## Point It at Your Endpoint
 
-At minimum, update these values in the generated config:
+For an HTTP target, update these values in the generated config:
 
 - `target.url`: the full endpoint URL
 - `target.prompt_field`: the request field that should receive the end-user prompt
@@ -51,6 +56,13 @@ At minimum, update these values in the generated config:
 If your API accepts a system prompt, also set `target.system_field`.
 
 If your endpoint expects a larger payload shape, update `target.request_template` to match it. `cleanr` will inject the prompt and system fields into that template at runtime.
+
+For a native OpenAI target:
+
+- set `target.type: openai`
+- set `target.openai.model`
+- choose `target.openai.api_mode: responses` or `chat_completions`
+- export the API key env var, usually `OPENAI_API_KEY`
 
 ## Validate the Config
 

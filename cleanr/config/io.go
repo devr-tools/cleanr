@@ -1,4 +1,4 @@
-package cleanr
+package config
 
 import (
 	"encoding/json"
@@ -7,28 +7,29 @@ import (
 	"path/filepath"
 	"strings"
 
+	"cleanr/cleanr/core"
 	"gopkg.in/yaml.v3"
 )
 
-func LoadConfigFile(path string) (Config, error) {
+func LoadConfigFile(path string) (core.Config, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
-		return Config{}, err
+		return core.Config{}, err
 	}
 
 	cfg, err := decodeConfig(data, path)
 	if err != nil {
-		return Config{}, err
+		return core.Config{}, err
 	}
 	applyDefaults(&cfg)
 	if err := ValidateConfig(cfg); err != nil {
-		return Config{}, err
+		return core.Config{}, err
 	}
 
 	return cfg, nil
 }
 
-func WriteConfigFile(path string, cfg Config) error {
+func WriteConfigFile(path string, cfg core.Config) error {
 	data, err := encodeConfig(cfg, path)
 	if err != nil {
 		return err
@@ -36,19 +37,19 @@ func WriteConfigFile(path string, cfg Config) error {
 	return os.WriteFile(path, append(data, '\n'), 0o644)
 }
 
-func decodeConfig(data []byte, path string) (Config, error) {
+func decodeConfig(data []byte, path string) (core.Config, error) {
 	if isYAMLPath(path) {
 		return decodeYAMLConfig(data)
 	}
 
-	var cfg Config
+	var cfg core.Config
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		return Config{}, fmt.Errorf("decode config: %w", err)
+		return core.Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	return cfg, nil
 }
 
-func encodeConfig(cfg Config, path string) ([]byte, error) {
+func encodeConfig(cfg core.Config, path string) ([]byte, error) {
 	if isYAMLPath(path) {
 		raw, err := json.Marshal(cfg)
 		if err != nil {
@@ -74,21 +75,21 @@ func encodeConfig(cfg Config, path string) ([]byte, error) {
 	return data, nil
 }
 
-func decodeYAMLConfig(data []byte) (Config, error) {
+func decodeYAMLConfig(data []byte) (core.Config, error) {
 	var generic any
 	if err := yaml.Unmarshal(data, &generic); err != nil {
-		return Config{}, fmt.Errorf("decode config: %w", err)
+		return core.Config{}, fmt.Errorf("decode config: %w", err)
 	}
 
 	normalized := normalizeYAMLValue(generic)
 	raw, err := json.Marshal(normalized)
 	if err != nil {
-		return Config{}, fmt.Errorf("decode config: %w", err)
+		return core.Config{}, fmt.Errorf("decode config: %w", err)
 	}
 
-	var cfg Config
+	var cfg core.Config
 	if err := json.Unmarshal(raw, &cfg); err != nil {
-		return Config{}, fmt.Errorf("decode config: %w", err)
+		return core.Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	return cfg, nil
 }

@@ -1,4 +1,4 @@
-package cleanr
+package config
 
 import (
 	"fmt"

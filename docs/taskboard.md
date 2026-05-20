@@ -18,14 +18,11 @@
 - [x] Add initial README and quickstart.
 - [x] Improve validation error quality.
 - [x] Add YAML config support.
+- [x] Add OpenAI adapter.
 
 ## Now
 
 ### Provider adapters
-
-- [ ] Add OpenAI adapter.
-Deliverable: `cleanr` can run against OpenAI chat or responses-style endpoints without custom request templates.
-Exit criteria: provider config works end-to-end with example fixtures and tests.
 
 - [ ] Define provider-neutral target response envelope.
 Deliverable: normalized response model for text, tool calls, usage, finish reason, and raw provider metadata.
