@@ -117,51 +117,9 @@ The Phase 2 action-verification core is now in place as well:
 
 This establishes the release-gate core. The next phase is about making those workflow checks longitudinal, replayable, and useful for broader regression triage.
 
-## Strategic direction by phase
+## Forward roadmap
 
-### Phase 1: Foundation runner
-
-Status: complete
-
-Objective: establish the local-first CI runner, provider adapters, baseline assertions, and reporting model that Phase 2 builds on.
-
-Primary outcomes:
-
-- Go CLI and config loader for repeatable local and CI execution
-- native HTTP, OpenAI, and Anthropic targets
-- baseline eval suites for prompt injection, security, load, chaos, drift, token efficiency, and trends
-- snapshot baselines plus text, JSON, and JUnit reporting
-- initial MCP server mode and contributor workflows
-
-Exit criteria:
-
-- developers can run `cleanr validate`, `cleanr snapshot`, `cleanr run`, and `cleanr trends` in CI without custom glue code
-- provider-native and HTTP-first targets can share the same scenario and reporting model
-- baseline regression, safety, and performance suites are usable before agent-specific policy work begins
-- repository packaging, release builds, and onboarding docs cover the main developer path
-
-### Phase 2: Agent release-gate core
-
-Status: complete
-
-Objective: turn `cleanr` from a foundation eval runner into a credible CI gate for tool-using and stateful agents.
-
-Primary outcomes:
-
-- provider-neutral workflow evidence model
-- tool-call and trace capture as first-class inputs to assertions
-- release-policy DSL for tool permissions, trust boundaries, and side effects
-- claim-vs-trace verification suite
-- multi-surface state verification beyond file writes
-- deeper provenance-aware prompt-injection and data-exfiltration tests
-- stronger docs and sample projects for real agent stacks
-
-Exit criteria:
-
-- developers can express action-level pass or fail rules without custom forks
-- CI runs can fail on policy violations even when the final answer sounds plausible
-- reports show what action occurred, what was claimed, and where the mismatch happened
-- example projects demonstrate at least one real stateful workflow end to end
+Phase 1 and Phase 2 are complete. The roadmap below covers the remaining forward-looking work only.
 
 ### Phase 3: Longitudinal and blast-radius analysis
 
@@ -201,45 +159,6 @@ Exit criteria:
 - organizations can standardize agent release criteria across multiple systems
 - governance artifacts are strong enough for internal audit and change review workflows
 
-## Phase 2 workstreams
-
-### 1. Evidence model and target abstraction
-
-- Expand the target abstraction from text responses to workflow evidence.
-- Preserve support for HTTP-first targets while making richer adapters possible.
-- Keep evidence exportable in text, JSON, and JUnit-compatible forms where practical.
-
-### 2. Release-policy DSL
-
-- Add policy primitives for allowed tools, blocked tools, read-only tools, approval requirements, and sink restrictions.
-- Add trust-tier primitives for system, user, retrieved, memory, tool, and approved-human context.
-- Add assertion support for side effects, argument shape, ordering, and irreversible actions.
-- Keep the syntax readable enough for CI ownership by application teams.
-
-### 3. Claim-vs-trace verification
-
-- Produce focused failure output that pinpoints the first unsupported claim.
-
-### 4. Shadow-state verification
-
-- Introduce pluggable state verifiers for common surfaces such as SQL, HTTP side effects, files, queues, and outbound communications.
-- Extend file-state verification into reusable adapters for richer mutation surfaces.
-- Add draft-not-send and row/column-scoped mutation verification patterns.
-- Report both intended and observed state changes across multiple surface types.
-
-### 5. Provenance-aware adversarial testing
-
-- Expand indirect prompt-injection attacks beyond prompt-appended source injections.
-- Add exfiltration tests that target cross-boundary data flow instead of only unsafe text output.
-- Extend approval-bypass and sink-restriction checks into multi-step and role-confusion workflows.
-
-### 6. Docs and developer adoption
-
-- Write an opinionated guide for testing stateful agents in CI.
-- Add sample projects for support agents, RAG agents, and action-taking internal agents.
-- Add policy cookbook examples such as draft-not-send, read-only SQL, and approved-sink-only data flow.
-- Document recommended fast PR checks versus deeper nightly workflow replay.
-
 ## Phase 3 workstreams
 
 ### 1. Longitudinal memory safety
@@ -264,24 +183,6 @@ Exit criteria:
 
 ## Milestone sequence
 
-### Milestone A
-
-Establish the release-gate core.
-
-- provider-neutral evidence envelope
-- first policy DSL primitives
-- claim-vs-trace verification
-- example project for a tool-using agent
-- docs that reposition `cleanr` around action verification
-
-### Milestone B
-
-Make state and trust boundaries enforceable.
-
-- policy assertions for approvals, sinks, and irreversible actions
-- additional state verifiers beyond file writes
-- deeper multi-step provenance and indirect prompt-injection coverage
-
 ### Milestone C
 
 Add longitudinal and replay intelligence.
@@ -290,6 +191,15 @@ Add longitudinal and replay intelligence.
 - change-impact replay
 - workflow-level diffs
 - grouped regression summaries
+
+### Milestone D
+
+Standardize governance and extensibility.
+
+- signed release-gate artifacts and attestations
+- policy packs for common agent risk profiles
+- plugin and extension surfaces for custom policy and state adapters
+- PR and IDE integrations that surface workflow failures inline
 
 ## Non-goals for the near term
 

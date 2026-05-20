@@ -12,8 +12,8 @@ This directory holds the project documentation that should stay more detailed th
 
 ## Project Planning
 
-- [Roadmap](roadmap.md): long-term product direction and milestone structure
-- [Taskboard](taskboard.md): current execution state and active deliverables
+- [Roadmap](roadmap.md): forward-looking product direction for the remaining phases
+- [Taskboard](taskboard.md): current execution state, active deliverables, and completed phase definitions
 
 ## Documentation Intent
 
