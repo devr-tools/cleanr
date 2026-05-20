@@ -16,6 +16,7 @@
 - [x] Add token optimization suite for prompt/output budgets and redundancy checks.
 - [x] Add text, JSON, and JUnit report output.
 - [x] Add initial README and quickstart.
+- [x] Improve validation error quality.
 
 ## Now
 
@@ -39,19 +40,15 @@ Exit criteria: `init`, `validate`, and `run` work for YAML configs.
 Deliverable: adapters can populate exact input/output token counts instead of relying only on heuristic estimation.
 Exit criteria: the token optimization suite prefers provider usage automatically when available.
 
-- [ ] Improve validation error quality.
-Deliverable: validation errors point to the failing field and explain the fix.
-Exit criteria: malformed configs produce actionable messages for common mistakes.
-
 - [ ] Add reusable scenario templates.
 Deliverable: scenario inheritance or shared variables for repeated prompt setups.
 Exit criteria: example configs use shared defaults without duplication.
 
 ### CI
 
-- [ ] Create GitHub Action.
-Deliverable: official action that installs and runs `cleanr` in CI.
-Exit criteria: sample workflow in repo and local action metadata committed.
+- [x] Create GitHub Actions CI workflow.
+Deliverable: repository workflow that runs `cleanr` QA and build steps in CI.
+Exit criteria: workflow YAML is committed and validates the main developer path on pull requests.
 
 - [ ] Stabilize machine-readable reports.
 Deliverable: consistent JSON schema and JUnit output contract.
@@ -85,7 +82,7 @@ Exit criteria: sample policy packs exist and are documented.
 
 ### Packaging
 
-- [ ] Add release builds.
+- [x] Add release builds.
 Deliverable: versioned binaries for macOS and Linux.
 Exit criteria: tagged release process documented and repeatable.
 

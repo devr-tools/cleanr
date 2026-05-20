@@ -2,17 +2,18 @@ package cli
 
 import (
 	"context"
-	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"cleanr/cleanr"
 )
 
-const version = "0.1.0"
+var version = "0.1.0"
 
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -39,7 +40,7 @@ func Run(args []string, stdout, stderr io.Writer) int {
 func runCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("run", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "cleanr.json", "Path to cleanr config")
+	configPath := fs.String("config", "", "Path to cleanr config")
 	format := fs.String("format", "", "Report format: text, json, junit")
 	output := fs.String("output", "", "Optional output file")
 	timeout := fs.Duration("timeout", 0, "Overall execution timeout")
@@ -47,7 +48,13 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	cfg, err := cleanr.LoadConfigFile(*configPath)
+	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
+		return 2
+	}
+
+	cfg, err := cleanr.LoadConfigFile(resolvedConfigPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
 		return 2
@@ -93,11 +100,18 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 func validateCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
-	configPath := fs.String("config", "cleanr.json", "Path to cleanr config")
+	configPath := fs.String("config", "", "Path to cleanr config")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
-	cfg, err := cleanr.LoadConfigFile(*configPath)
+
+	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "invalid: %v\n", err)
+		return 2
+	}
+
+	cfg, err := cleanr.LoadConfigFile(resolvedConfigPath)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "invalid: %v\n", err)
 		return 2
@@ -114,12 +128,7 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	cfg := cleanr.ExampleConfig()
-	data, err := json.MarshalIndent(cfg, "", "  ")
-	if err != nil {
-		_, _ = fmt.Fprintf(stderr, "encode example config: %v\n", err)
-		return 2
-	}
-	if err := os.WriteFile(*path, append(data, '\n'), 0o644); err != nil {
+	if err := cleanr.WriteConfigFile(*path, cfg); err != nil {
 		_, _ = fmt.Fprintf(stderr, "write example config: %v\n", err)
 		return 2
 	}
@@ -129,4 +138,35 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 
 func usage(w io.Writer) {
 	_, _ = fmt.Fprintln(w, "usage: cleanr <run|validate|init|version> [flags]")
+}
+
+func resolveConfigPath(configPath string) (string, error) {
+	if configPath != "" {
+		return configPath, nil
+	}
+
+	candidates := []string{"cleanr.json", "cleanr.yaml", "cleanr.yml"}
+	for _, candidate := range candidates {
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, nil
+		}
+	}
+
+	return "", fmt.Errorf("no config file found; expected one of %s in %s", joinCandidates(candidates), mustGetwd())
+}
+
+func joinCandidates(paths []string) string {
+	quoted := make([]string, 0, len(paths))
+	for _, path := range paths {
+		quoted = append(quoted, filepath.Base(path))
+	}
+	return strings.Join(quoted, ", ")
+}
+
+func mustGetwd() string {
+	wd, err := os.Getwd()
+	if err != nil {
+		return "."
+	}
+	return wd
 }

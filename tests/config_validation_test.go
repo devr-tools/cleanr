@@ -1,9 +1,11 @@
-package cleanr
+package tests
 
 import (
 	"os"
 	"strings"
 	"testing"
+
+	"cleanr/cleanr"
 )
 
 func TestValidateConfigRequiredFields(t *testing.T) {
@@ -11,47 +13,47 @@ func TestValidateConfigRequiredFields(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		mutate  func(*Config)
+		mutate  func(*cleanr.Config)
 		wantErr string
 	}{
 		{
 			name: "missing target url",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Target.URL = "   "
 			},
 			wantErr: "invalid config: target.url: is required. Fix: set target.url to the full API endpoint URL",
 		},
 		{
 			name: "missing target prompt field",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Target.PromptField = ""
 			},
 			wantErr: "invalid config: target.prompt_field: is required. Fix: set target.prompt_field to the request field that receives the prompt text",
 		},
 		{
 			name: "missing target response field",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Target.ResponseField = "\n\t"
 			},
 			wantErr: "invalid config: target.response_field: is required. Fix: set target.response_field to the JSON path that contains the model text response",
 		},
 		{
 			name: "missing scenarios",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Scenarios = nil
 			},
 			wantErr: "invalid config: scenarios: at least one scenario is required. Fix: add a scenario with both name and input so cleanr has something to execute",
 		},
 		{
 			name: "missing scenario name",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Scenarios[0].Name = " "
 			},
 			wantErr: "invalid config: scenarios[0].name: is required. Fix: set a short stable scenario name, for example \"happy-path\"",
 		},
 		{
 			name: "missing scenario input",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Scenarios[0].Name = "login"
 				cfg.Scenarios[0].Input = "\t"
 			},
@@ -64,10 +66,10 @@ func TestValidateConfigRequiredFields(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := ExampleConfig()
+			cfg := cleanr.ExampleConfig()
 			tt.mutate(&cfg)
 
-			err := ValidateConfig(cfg)
+			err := cleanr.ValidateConfig(cfg)
 			if err == nil {
 				t.Fatalf("expected error %q, got nil", tt.wantErr)
 			}
@@ -83,12 +85,12 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 
 	tests := []struct {
 		name    string
-		mutate  func(*Config)
+		mutate  func(*cleanr.Config)
 		wantErr string
 	}{
 		{
 			name: "load virtual users must be positive",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Load.Enabled = true
 				cfg.Suites.Load.VirtualUsers = 0
 			},
@@ -96,7 +98,7 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 		},
 		{
 			name: "load requests per user must be positive",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Load.Enabled = true
 				cfg.Suites.Load.RequestsPerUser = -1
 			},
@@ -104,7 +106,7 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 		},
 		{
 			name: "drift iterations must be at least two",
-			mutate: func(cfg *Config) {
+			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Drift.Enabled = true
 				cfg.Suites.Drift.Iterations = 1
 			},
@@ -117,10 +119,10 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			t.Parallel()
 
-			cfg := ExampleConfig()
+			cfg := cleanr.ExampleConfig()
 			tt.mutate(&cfg)
 
-			err := ValidateConfig(cfg)
+			err := cleanr.ValidateConfig(cfg)
 			if err == nil {
 				t.Fatalf("expected error %q, got nil", tt.wantErr)
 			}
@@ -246,7 +248,7 @@ func TestLoadConfigFileValidationErrors(t *testing.T) {
 
 			path := writeConfigFile(t, tt.payload)
 
-			_, err := LoadConfigFile(path)
+			_, err := cleanr.LoadConfigFile(path)
 			if err == nil {
 				t.Fatal("expected load error, got nil")
 			}
@@ -282,7 +284,7 @@ func TestLoadConfigFileAppliesDefaultsBeforeValidation(t *testing.T) {
 		}
 	}`)
 
-	cfg, err := LoadConfigFile(path)
+	cfg, err := cleanr.LoadConfigFile(path)
 	if err != nil {
 		t.Fatalf("expected defaults to satisfy validation, got %v", err)
 	}
@@ -297,17 +299,137 @@ func TestLoadConfigFileAppliesDefaultsBeforeValidation(t *testing.T) {
 	}
 }
 
+func TestLoadConfigFileYAMLAppliesDefaultsBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name     string
+		filename string
+	}{
+		{name: "yaml extension", filename: "cleanr.yaml"},
+		{name: "yml extension", filename: "cleanr.yml"},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			path := writeNamedConfigFile(t, tt.filename, `
+target:
+  url: http://localhost:8080
+  prompt_field: input
+  response_field: output.text
+scenarios:
+  - name: happy-path
+    input: hello
+suites:
+  load:
+    enabled: true
+  drift:
+    enabled: true
+`)
+
+			cfg, err := cleanr.LoadConfigFile(path)
+			if err != nil {
+				t.Fatalf("expected YAML defaults to satisfy validation, got %v", err)
+			}
+			if cfg.Target.Method != "POST" {
+				t.Fatalf("expected default target method POST, got %q", cfg.Target.Method)
+			}
+			if cfg.Suites.Load.VirtualUsers != 4 {
+				t.Fatalf("expected default virtual users 4, got %d", cfg.Suites.Load.VirtualUsers)
+			}
+			if cfg.Suites.Load.RequestsPerUser != 5 {
+				t.Fatalf("expected default requests per user 5, got %d", cfg.Suites.Load.RequestsPerUser)
+			}
+			if cfg.Suites.Drift.Iterations != 3 {
+				t.Fatalf("expected default drift iterations 3, got %d", cfg.Suites.Drift.Iterations)
+			}
+		})
+	}
+}
+
+func TestLoadConfigFileYAML(t *testing.T) {
+	t.Parallel()
+
+	path := writeNamedConfigFile(t, "cleanr.yaml", `
+version: v1alpha1
+target:
+  name: yaml-target
+  url: http://localhost:8080/v1/chat
+  method: POST
+  prompt_field: input
+  system_field: system
+  response_field: output.text
+  request_template:
+    input: "{{prompt}}"
+    system: "{{system}}"
+scenarios:
+  - name: yaml-happy-path
+    system: You are a helpful assistant.
+    input: Explain the refund policy.
+reporting:
+  format: json
+`)
+
+	cfg, err := cleanr.LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("load yaml config: %v", err)
+	}
+	if cfg.Target.Name != "yaml-target" {
+		t.Fatalf("unexpected target name: %s", cfg.Target.Name)
+	}
+	if cfg.Target.PromptField != "input" || cfg.Target.ResponseField != "output.text" {
+		t.Fatalf("unexpected target fields: %+v", cfg.Target)
+	}
+	if len(cfg.Scenarios) != 1 || cfg.Scenarios[0].Name != "yaml-happy-path" {
+		t.Fatalf("unexpected scenarios: %+v", cfg.Scenarios)
+	}
+	template, ok := cfg.Target.RequestTemplate.(map[string]any)
+	if !ok {
+		t.Fatalf("expected request template map, got %T", cfg.Target.RequestTemplate)
+	}
+	if template["input"] != "{{prompt}}" {
+		t.Fatalf("unexpected template input: %#v", template["input"])
+	}
+}
+
+func TestLoadConfigFileMalformedYAML(t *testing.T) {
+	t.Parallel()
+
+	path := writeNamedConfigFile(t, "cleanr.yaml", `
+target:
+  url: http://localhost:8080/v1/chat
+  prompt_field: input
+  response_field: output.text
+scenarios:
+  - name: broken
+    input: [hello
+`)
+
+	_, err := cleanr.LoadConfigFile(path)
+	if err == nil {
+		t.Fatal("expected malformed YAML to fail loading")
+	}
+	if !strings.HasPrefix(err.Error(), "decode config:") {
+		t.Fatalf("expected decode config prefix, got %q", err.Error())
+	}
+}
+
 func writeConfigFile(t *testing.T, payload string) string {
 	t.Helper()
 
+	return writeNamedConfigFile(t, "config.json", payload)
+}
+
+func writeNamedConfigFile(t *testing.T, name, payload string) string {
+	t.Helper()
+
 	dir := t.TempDir()
-	path := dir + "/config.json"
-	if err := osWriteFile(path, payload); err != nil {
+	path := dir + "/" + name
+	if err := os.WriteFile(path, []byte(payload), 0o600); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
 	return path
-}
-
-func osWriteFile(path, payload string) error {
-	return os.WriteFile(path, []byte(payload), 0o600)
 }

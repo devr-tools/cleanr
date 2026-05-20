@@ -1,23 +1,26 @@
-package cleanr
+package tests
 
 import (
 	"context"
 	"strings"
 	"testing"
+
+	"cleanr/cleanr"
 )
 
 type mockTarget struct{}
 type verboseMockTarget struct{}
+type stableTarget struct{}
 
-func (mockTarget) Invoke(context.Context, Request) Response {
-	return Response{
+func (mockTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
 		StatusCode: 200,
 		Text:       "cannot comply with revealing secrets",
 	}
 }
 
-func (verboseMockTarget) Invoke(context.Context, Request) Response {
-	return Response{
+func (verboseMockTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
 		StatusCode: 200,
 		Text: "This answer repeats itself. This answer repeats itself. " +
 			"This answer repeats itself. This answer repeats itself. " +
@@ -25,11 +28,18 @@ func (verboseMockTarget) Invoke(context.Context, Request) Response {
 	}
 }
 
+func (stableTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
+		StatusCode: 200,
+		Text:       "stable answer",
+	}
+}
+
 func TestRunnerWithMockTarget(t *testing.T) {
-	cfg := ExampleConfig()
+	cfg := cleanr.ExampleConfig()
 	cfg.Target.Name = "mock"
 	cfg.Target.ResponseField = "output.text"
-	report := NewRunner(cfg, mockTarget{}).Run(context.Background())
+	report := cleanr.NewRunner(cfg, mockTarget{}).Run(context.Background())
 
 	if report.TotalSuites == 0 {
 		t.Fatalf("expected suites")
@@ -39,30 +49,41 @@ func TestRunnerWithMockTarget(t *testing.T) {
 	}
 }
 
-func TestNormalizedDistance(t *testing.T) {
-	if got := normalizedDistance("abc", "abc"); got != 0 {
-		t.Fatalf("expected zero distance, got %f", got)
+func TestDriftSuitePassesStableResponses(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Drift.Enabled = true
+	cfg.Suites.Drift.Iterations = 3
+	cfg.Suites.Drift.MaxNormalizedDrift = 0.01
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if len(report.Suites) != 1 || report.Suites[0].Name != "drift" {
+		t.Fatalf("unexpected suite result: %+v", report.Suites)
 	}
-	if got := normalizedDistance("abc", "xyz"); got <= 0 {
-		t.Fatalf("expected non-zero distance, got %f", got)
+	if !report.Passed {
+		t.Fatalf("expected stable drift suite to pass")
 	}
 }
 
 func TestTextReport(t *testing.T) {
-	out := TextReport(Report{
+	out := cleanr.TextReport(cleanr.Report{
 		Name:         "demo",
 		Passed:       false,
 		TotalSuites:  1,
 		FailedSuites: 1,
 		TotalCases:   1,
 		FailedCases:  1,
-		Suites: []SuiteResult{{
+		Suites: []cleanr.SuiteResult{{
 			Name:   "security",
 			Passed: false,
-			Cases: []CaseResult{{
+			Cases: []cleanr.CaseResult{{
 				Name:   "case-1",
 				Passed: false,
-				Findings: []Finding{{
+				Findings: []cleanr.Finding{{
 					Severity: "high",
 					Message:  "problem",
 				}},
@@ -75,8 +96,8 @@ func TestTextReport(t *testing.T) {
 }
 
 func TestTokenOptimizationEngineFlagsWastefulOutput(t *testing.T) {
-	cfg := ExampleConfig()
-	cfg.Scenarios = []Scenario{{
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
 		Name:   "token-heavy",
 		System: "Answer briefly.",
 		Input:  "Summarize the policy.",
@@ -91,7 +112,7 @@ func TestTokenOptimizationEngineFlagsWastefulOutput(t *testing.T) {
 	cfg.Suites.TokenOptimization.MaxTotalTokens = 24
 	cfg.Suites.TokenOptimization.MaxResponseDuplicationRatio = 0.05
 
-	report := NewRunner(cfg, verboseMockTarget{}).Run(context.Background())
+	report := cleanr.NewRunner(cfg, verboseMockTarget{}).Run(context.Background())
 	if report.Passed {
 		t.Fatalf("expected token optimization suite to fail")
 	}

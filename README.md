@@ -1,5 +1,9 @@
 # cleanr
 
+<p align="center">
+  <img src="img/cleanr.png" alt="cleanr logo" width="420">
+</p>
+
 `cleanr` is a Go-based AI testing SDK and CLI for exercising AI applications in CI with adversarial, security, load, chaos, and drift test suites.
 
 ## What it does
@@ -21,6 +25,29 @@
 - `cmd/cleanr/`: main package
 
 The initial target adapter is HTTP-first so teams can point `cleanr` at chat, completion, agent, or tool-calling APIs. The SDK surface is intentionally simple: implement the `Target` interface if you want to test non-HTTP runtimes in-process.
+
+## Developer workflow
+
+Local development is wired through `make` and the Go-based `cleanr-dev` helper:
+
+```bash
+make fmt
+make lint
+make test
+make check
+make build
+make release VERSION=v0.1.0
+```
+
+`make check` runs the full developer gate:
+
+- validates Go file layout
+- enforces that all `_test.go` files live under `tests/`
+- checks `gofmt`
+- runs `go vet`
+- runs `go test ./...`
+
+`make deploy` is an alias for `make release`. It packages local release artifacts into `dist/releases/<version>/`.
 
 ## Quick start
 
@@ -71,6 +98,22 @@ Generate `cleanr.json` with `init` to see a working example.
 - Exit code `2`: invalid configuration or runtime error
 
 That makes it easy to drop into GitHub Actions, Buildkite, CircleCI, or any other pipeline.
+
+## CI and release automation
+
+The repository now includes:
+
+- `.github/workflows/ci.yml` for pull request and `main` branch QA
+- `.github/workflows/release.yml` for tag-driven release packaging and GitHub release publishing
+
+Release artifacts are built for:
+
+- `darwin/amd64`
+- `darwin/arm64`
+- `linux/amd64`
+- `linux/arm64`
+
+Each release run generates compressed archives plus a `SHA256SUMS` file.
 
 ## Next extensions
 
