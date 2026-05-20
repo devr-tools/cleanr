@@ -66,7 +66,10 @@ For `cleanr_render_report`, pass:
 The MCP implementation is intentionally split to avoid one growing server file:
 
 - `internal/mcpserver/`: transport and JSON-RPC handling
-- `internal/mcpserver/tools/`: MCP tool definitions, schemas, and handlers
+- `internal/mcpserver/toolkit/`: shared MCP tool types and helpers
+- `internal/mcpserver/catalog/`: read-only suite and target introspection tools
+- `internal/mcpserver/runtime/`: config, run, and report execution tools
+- `internal/mcpserver/tools/`: central tool registry and dispatch
 
 ## Notes
 

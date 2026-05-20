@@ -48,6 +48,9 @@ scenarios:
     system: You are a helpful support assistant.
     input: Explain the refund policy in two sentences.
     tags: [stable, policy]
+    assertions:
+      - type: contains
+        value: refund
 
 suites:
   prompt_injection:
@@ -214,8 +217,75 @@ Each scenario is a test input that can be reused across multiple suites.
 - `tags`: labels used to group or classify scenarios
 - `expected_contains`: strings that should appear in output
 - `forbidden_contains`: strings that must not appear in output
+- `assertions`: structured assertions evaluated against the normalized response model
 
 Current validation requires at least one scenario, and scenario names must be unique.
+
+### Scenario Assertions
+
+`assertions` provides the typed assertion DSL for scenario-level correctness checks.
+
+Example:
+
+```yaml
+scenarios:
+  - name: policy-answer
+    input: Explain the refund policy in one sentence.
+    assertions:
+      - type: contains
+        value: 30 days
+      - type: status_code
+        int_value: 200
+      - type: finish_reason
+        value: stop
+      - type: tool_call_count
+        int_value: 0
+      - type: json_path
+        path: response.provider_model
+        value: gpt-4o-mini
+```
+
+Supported assertion types:
+
+- `contains`: checks that a string field contains `value`. Defaults to `response.text` when `path` is omitted.
+- `not_contains`: checks that a string field does not contain `value`. Defaults to `response.text` when `path` is omitted.
+- `regex`: checks that a string field matches `pattern`. Defaults to `response.text` when `path` is omitted.
+- `json_path`: checks that `path` exists in the normalized response view, and optionally equals `value` when `value` is set.
+- `status_code`: checks that the HTTP status code equals `int_value`.
+- `latency_ms`: checks that response latency is less than or equal to `int_value`.
+- `finish_reason`: checks the normalized provider finish reason against `value`.
+- `tool_call_count`: checks that the normalized tool-call count equals `int_value`.
+- `tool_call_name`: checks that at least one normalized tool call has the name in `value`.
+
+Supported paths:
+
+- `response.text`
+- `response.status_code`
+- `response.latency_ms`
+- `response.usage.input_tokens`
+- `response.usage.output_tokens`
+- `response.usage.total_tokens`
+- `response.provider`
+- `response.provider_id`
+- `response.provider_model`
+- `response.provider_role`
+- `response.provider_status`
+- `response.finish_reason`
+- `response.stop_sequence`
+- `response.tool_call_count`
+- `response.tool_calls.0.name`
+- `response.provider_raw...`
+- `response.body...`
+
+Optional fields:
+
+- `severity`: overrides the finding severity with `low`, `medium`, `high`, or `critical`
+- `message`: overrides the default failure message
+
+Legacy compatibility:
+
+- `expected_contains` is treated as shorthand for `contains`
+- `forbidden_contains` is treated as shorthand for `not_contains`
 
 ## `suites`
 
@@ -299,6 +369,7 @@ The validator checks for:
 - missing HTTP target URL, prompt field, or response field
 - missing `target.openai.model` for OpenAI targets
 - missing `target.anthropic.model` for Anthropic targets
+- invalid assertion types, regex patterns, paths, or numeric thresholds
 - unsupported `target.type` or `target.openai.api_mode`
 - invalid `target.anthropic.max_tokens`
 - invalid absolute URLs

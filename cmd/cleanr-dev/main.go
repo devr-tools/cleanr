@@ -96,6 +96,24 @@ func run(args []string) int {
 			return 1
 		}
 		return 0
+	case "report":
+		fs := flag.NewFlagSet("report", flag.ContinueOnError)
+		fs.SetOutput(os.Stderr)
+		input := fs.String("input", "", "Optional path to a JSON cleanr report to render")
+		format := fs.String("format", "text", "Report format: text, json, junit")
+		preset := fs.String("preset", "fail", "Built-in preview preset when -input is omitted: fail or pass")
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if err := runner.Report(devtools.ReportOptions{
+			Input:  *input,
+			Format: *format,
+			Preset: *preset,
+		}); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "report failed: %v\n", err)
+			return 1
+		}
+		return 0
 	default:
 		usage(os.Stderr)
 		return 2
@@ -103,5 +121,5 @@ func run(args []string) int {
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|fmt|fmt-check|lint|test|gofiles|build|release>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|fmt|fmt-check|lint|test|gofiles|build|release|report>")
 }

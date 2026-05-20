@@ -1,11 +1,13 @@
 package cleanr
 
 import (
+	"context"
 	"net/http"
 
 	adapterspkg "cleanr/cleanr/adapters"
 	configpkg "cleanr/cleanr/config"
 	"cleanr/cleanr/core"
+	snapshotspkg "cleanr/cleanr/snapshots"
 )
 
 type Config = core.Config
@@ -27,6 +29,8 @@ type Response = core.Response
 type TokenUsage = core.TokenUsage
 type ProviderResponse = core.ProviderResponse
 type ToolCall = core.ToolCall
+type SnapshotFile = snapshotspkg.File
+type ScenarioSnapshot = snapshotspkg.ScenarioSnapshot
 type Finding = core.Finding
 type CaseResult = core.CaseResult
 type SuiteResult = core.SuiteResult
@@ -59,6 +63,22 @@ func ValidateConfig(cfg Config) error {
 
 func ExampleConfig() Config {
 	return configpkg.ExampleConfig()
+}
+
+func LoadSnapshotFile(path string) (SnapshotFile, error) {
+	return snapshotspkg.LoadFile(path)
+}
+
+func WriteSnapshotFile(path string, snapshot SnapshotFile) error {
+	return snapshotspkg.WriteFile(path, snapshot)
+}
+
+func CaptureSnapshots(ctx context.Context, cfg Config, target Target) (SnapshotFile, error) {
+	return snapshotspkg.Capture(ctx, cfg, target)
+}
+
+func NewTarget(cfg TargetConfig, client *http.Client) Target {
+	return adapterspkg.NewTargetFromConfig(cfg, client)
 }
 
 func NewHTTPTarget(cfg TargetConfig, client *http.Client) Target {

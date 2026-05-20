@@ -14,6 +14,8 @@ type verboseMockTarget struct{}
 type stableTarget struct{}
 type assertionTarget struct{}
 type failingAssertionTarget struct{}
+type snapshotTarget struct{}
+type regressedSnapshotTarget struct{}
 
 func (mockTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
 	return cleanr.Response{
@@ -35,6 +37,30 @@ func (stableTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
 	return cleanr.Response{
 		StatusCode: 200,
 		Text:       "stable answer",
+	}
+}
+
+func (snapshotTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
+		StatusCode: 200,
+		Text:       "Refunds are available within 30 days of purchase.",
+		Normalized: cleanr.ProviderResponse{
+			Provider:     "openai",
+			Model:        "gpt-4o-mini",
+			FinishReason: "stop",
+		},
+	}
+}
+
+func (regressedSnapshotTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
+		StatusCode: 200,
+		Text:       "Refunds may be available after review and approval.",
+		Normalized: cleanr.ProviderResponse{
+			Provider:     "openai",
+			Model:        "gpt-4o-mini",
+			FinishReason: "stop",
+		},
 	}
 }
 
@@ -243,6 +269,106 @@ func TestSecurityEngineFailsScenarioAssertions(t *testing.T) {
 	}
 	if !strings.Contains(findings[0].Message, "assertion failed") && !strings.Contains(findings[1].Message, "assertion failed") {
 		t.Fatalf("expected assertion failure messages, got %+v", findings)
+	}
+}
+
+func TestDriftSuitePassesMatchingBaseline(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "snapshot-match",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy.",
+		Tags:   []string{"stable"},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Drift.Enabled = true
+	cfg.Suites.Drift.Iterations = 3
+	cfg.Suites.Drift.StableTags = []string{"stable"}
+	cfg.Suites.Drift.MaxNormalizedDrift = 0.01
+	cfg.Suites.Drift.MaxSnapshotDrift = 0.05
+
+	baselinePath := t.TempDir() + "/snapshots.yaml"
+	err := cleanr.WriteSnapshotFile(baselinePath, cleanr.SnapshotFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Scenarios: []cleanr.ScenarioSnapshot{{
+			Name:       "snapshot-match",
+			System:     "You are a helpful support assistant.",
+			Input:      "Explain the refund policy.",
+			StatusCode: 200,
+			Text:       "Refunds are available within 30 days of purchase.",
+			Normalized: cleanr.ProviderResponse{
+				Provider:     "openai",
+				Model:        "gpt-4o-mini",
+				FinishReason: "stop",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("write baseline: %v", err)
+	}
+	cfg.Suites.Drift.BaselineFile = baselinePath
+
+	report := cleanr.NewRunner(cfg, snapshotTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected drift suite with matching baseline to pass: %+v", report)
+	}
+	details := report.Suites[0].Cases[0].Details
+	if details["baseline_drift"] != float64(0) && details["baseline_drift"] != 0.0 {
+		t.Fatalf("expected zero baseline drift, got %+v", details)
+	}
+}
+
+func TestDriftSuiteFailsOnBaselineRegression(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "snapshot-regression",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy.",
+		Tags:   []string{"stable"},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Drift.Enabled = true
+	cfg.Suites.Drift.Iterations = 3
+	cfg.Suites.Drift.StableTags = []string{"stable"}
+	cfg.Suites.Drift.MaxNormalizedDrift = 0.01
+	cfg.Suites.Drift.MaxSnapshotDrift = 0.05
+
+	baselinePath := t.TempDir() + "/snapshots.yaml"
+	err := cleanr.WriteSnapshotFile(baselinePath, cleanr.SnapshotFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Scenarios: []cleanr.ScenarioSnapshot{{
+			Name:       "snapshot-regression",
+			StatusCode: 200,
+			Text:       "Refunds are available within 30 days of purchase.",
+			Normalized: cleanr.ProviderResponse{
+				Provider:     "openai",
+				Model:        "gpt-4o-mini",
+				FinishReason: "stop",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("write baseline: %v", err)
+	}
+	cfg.Suites.Drift.BaselineFile = baselinePath
+
+	report := cleanr.NewRunner(cfg, regressedSnapshotTarget{}).Run(context.Background())
+	if report.Passed {
+		t.Fatalf("expected drift suite with regressed baseline to fail")
+	}
+	findings := report.Suites[0].Cases[0].Findings
+	if len(findings) == 0 || !strings.Contains(findings[0].Message, "baseline drift") && (len(findings) < 2 || !strings.Contains(findings[1].Message, "baseline drift")) {
+		t.Fatalf("expected baseline drift finding, got %+v", findings)
 	}
 }
 

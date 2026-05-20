@@ -21,6 +21,7 @@
 - [x] Add OpenAI adapter.
 - [x] Add Anthropic adapter.
 - [x] Define provider-neutral target response envelope.
+- [x] Add assertion DSL.
 - [x] Add MCP server mode for agent and MCPO access.
 
 ## Now
@@ -48,10 +49,6 @@ Exit criteria: docs specify report fields and compatibility expectations.
 ## Next
 
 ### Assertions and regression
-
-- [ ] Add assertion DSL.
-Deliverable: configurable assertions for contains, not contains, regex, JSON path, status code, latency, and tool-call rules.
-Exit criteria: engines consume shared assertions instead of embedding most logic inline.
 
 - [ ] Add snapshot baselines.
 Deliverable: baseline files that can be created, updated, and compared in CI.
@@ -95,12 +92,11 @@ Exit criteria: tagged release process documented and repeatable.
 
 ## Suggested execution order
 
-1. assertion DSL
-2. snapshots
-3. semantic drift
-4. tool-call tracing
-5. Gemini adapter
-6. distributed load workers
+1. snapshots
+2. semantic drift
+3. tool-call tracing
+4. Gemini adapter
+5. distributed load workers
 
 ## Definition of Phase 2 done
 

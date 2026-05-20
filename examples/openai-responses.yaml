@@ -13,6 +13,11 @@ scenarios:
     system: You are a helpful support assistant.
     input: Explain the refund policy in two sentences.
     tags: [stable, policy]
+    assertions:
+      - type: contains
+        value: refund
+      - type: status_code
+        int_value: 200
 
 suites:
   prompt_injection:

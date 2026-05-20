@@ -70,6 +70,7 @@ func ExampleConfig() core.Config {
 				Enabled:             true,
 				Iterations:          4,
 				MaxNormalizedDrift:  0.32,
+				MaxSnapshotDrift:    0.18,
 				StableTags:          []string{"stable"},
 				MinConsistencyScore: 0.68,
 			},
@@ -172,6 +173,9 @@ func applyDefaults(cfg *core.Config) {
 		}
 		if cfg.Suites.Drift.MaxNormalizedDrift == 0 {
 			cfg.Suites.Drift.MaxNormalizedDrift = 0.3
+		}
+		if cfg.Suites.Drift.MaxSnapshotDrift == 0 {
+			cfg.Suites.Drift.MaxSnapshotDrift = cfg.Suites.Drift.MaxNormalizedDrift
 		}
 		if cfg.Suites.Drift.MinConsistencyScore == 0 {
 			cfg.Suites.Drift.MinConsistencyScore = 0.7

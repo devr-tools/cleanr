@@ -37,6 +37,7 @@ The generated file includes:
 
 - an HTTP target definition
 - example scenarios
+- a starter assertion example
 - all currently supported suites enabled with starter thresholds
 - text reporting as the default output mode
 
@@ -123,6 +124,7 @@ That makes the CLI suitable for CI gating without extra wrapper logic.
 For an initial rollout, keep the first config simple:
 
 - start with a small set of representative scenarios
+- add a few scenario assertions for output text, status code, or finish reason
 - confirm the response extraction path is correct
 - tune load, chaos, and drift thresholds after a few real runs
 - emit JUnit in CI so failures show up as native test results

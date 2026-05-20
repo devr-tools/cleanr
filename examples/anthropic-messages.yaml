@@ -14,6 +14,11 @@ scenarios:
     system: You are a concise support assistant.
     input: Summarize the refund policy in one sentence.
     tags: [stable, policy]
+    assertions:
+      - type: contains
+        value: refund
+      - type: finish_reason
+        value: end_turn
 
 suites:
   prompt_injection:

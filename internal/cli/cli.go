@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -26,6 +27,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "run":
 		return runCmd(args[1:], stdout, stderr)
+	case "snapshot":
+		return snapshotCmd(args[1:], stdout, stderr)
 	case "validate":
 		return validateCmd(args[1:], stdout, stderr)
 	case "init":
@@ -69,6 +72,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	if *output != "" {
 		cfg.Reporting.Output = *output
 	}
+	cfg.Suites.Drift.BaselineFile = resolveConfigRelativePath(resolvedConfigPath, cfg.Suites.Drift.BaselineFile)
 
 	ctx := context.Background()
 	if *timeout > 0 {
@@ -99,6 +103,59 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 0
 	}
 	return 1
+}
+
+func snapshotCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("snapshot", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "Path to cleanr config")
+	output := fs.String("output", "", "Path to write snapshot baseline")
+	timeout := fs.Duration("timeout", 0, "Overall execution timeout")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
+		return 2
+	}
+
+	cfg, err := cleanr.LoadConfigFile(resolvedConfigPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
+		return 2
+	}
+
+	outputPath := strings.TrimSpace(*output)
+	if outputPath == "" {
+		outputPath = strings.TrimSpace(cfg.Suites.Drift.BaselineFile)
+	}
+	if outputPath == "" {
+		outputPath = "cleanr.snapshots.yaml"
+	}
+	outputPath = resolveConfigRelativePath(resolvedConfigPath, outputPath)
+	cfg.Suites.Drift.BaselineFile = outputPath
+
+	ctx := context.Background()
+	if *timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *timeout)
+		defer cancel()
+	}
+
+	target := cleanr.NewTarget(cfg.Target, &http.Client{Timeout: cfg.Target.Timeout()})
+	snapshot, err := cleanr.CaptureSnapshots(ctx, cfg, target)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "snapshot error: %v\n", err)
+		return 2
+	}
+	if err := cleanr.WriteSnapshotFile(outputPath, snapshot); err != nil {
+		_, _ = fmt.Fprintf(stderr, "write snapshot: %v\n", err)
+		return 2
+	}
+	_, _ = fmt.Fprintf(stdout, "wrote %d snapshots to %s\n", len(snapshot.Scenarios), outputPath)
+	return 0
 }
 
 func validateCmd(args []string, stdout, stderr io.Writer) int {
@@ -154,7 +211,7 @@ func mcpCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|validate|init|mcp|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|snapshot|validate|init|mcp|version> [flags]")
 }
 
 func resolveConfigPath(configPath string) (string, error) {
@@ -186,4 +243,12 @@ func mustGetwd() string {
 		return "."
 	}
 	return wd
+}
+
+func resolveConfigRelativePath(configPath, path string) string {
+	path = strings.TrimSpace(path)
+	if path == "" || filepath.IsAbs(path) {
+		return path
+	}
+	return filepath.Join(filepath.Dir(configPath), path)
 }

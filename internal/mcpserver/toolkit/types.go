@@ -1,4 +1,4 @@
-package tools
+package toolkit
 
 import "cleanr/cleanr"
 
@@ -21,22 +21,22 @@ type Result struct {
 	IsError           bool      `json:"isError,omitempty"`
 }
 
-type configSource struct {
+type ConfigSource struct {
 	Config     string `json:"config"`
 	ConfigPath string `json:"config_path"`
 	Format     string `json:"format"`
 }
 
-type exampleConfigArgs struct {
+type ExampleConfigArgs struct {
 	Format string `json:"format"`
 }
 
-type renderReportArgs struct {
+type RenderReportArgs struct {
 	ReportJSON string `json:"report_json"`
 	Format     string `json:"format"`
 }
 
-type runArgs struct {
+type RunArgs struct {
 	Config     string `json:"config"`
 	ConfigPath string `json:"config_path"`
 	Format     string `json:"format"`
@@ -44,19 +44,19 @@ type runArgs struct {
 	TimeoutMS  int    `json:"timeout_ms"`
 }
 
-type exampleConfigOutput struct {
+type ExampleConfigOutput struct {
 	Format string `json:"format"`
 	Config string `json:"config"`
 }
 
-type validateConfigOutput struct {
+type ValidateConfigOutput struct {
 	Valid         bool     `json:"valid"`
 	TargetName    string   `json:"target_name,omitempty"`
 	ScenarioCount int      `json:"scenario_count,omitempty"`
 	Errors        []string `json:"errors,omitempty"`
 }
 
-type runOutput struct {
+type RunOutput struct {
 	Passed       bool          `json:"passed"`
 	ExitCode     int           `json:"exit_code"`
 	TargetName   string        `json:"target_name,omitempty"`
@@ -67,26 +67,26 @@ type runOutput struct {
 	Error        string        `json:"error,omitempty"`
 }
 
-type renderReportOutput struct {
+type RenderReportOutput struct {
 	Format   string `json:"format"`
 	Rendered string `json:"rendered"`
 }
 
-type suiteCatalogOutput struct {
-	Suites []suiteDescriptor `json:"suites"`
+type SuiteCatalogOutput struct {
+	Suites []SuiteDescriptor `json:"suites"`
 }
 
-type suiteDescriptor struct {
+type SuiteDescriptor struct {
 	Name         string   `json:"name"`
 	Description  string   `json:"description"`
 	ConfigFields []string `json:"config_fields"`
 }
 
-type targetCatalogOutput struct {
-	Targets []targetDescriptor `json:"targets"`
+type TargetCatalogOutput struct {
+	Targets []TargetDescriptor `json:"targets"`
 }
 
-type targetDescriptor struct {
+type TargetDescriptor struct {
 	Type         string   `json:"type"`
 	Description  string   `json:"description"`
 	ConfigFields []string `json:"config_fields"`
