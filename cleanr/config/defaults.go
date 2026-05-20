@@ -67,12 +67,15 @@ func ExampleConfig() core.Config {
 				MaxErrorRate: 35,
 			},
 			Drift: core.DriftConfig{
-				Enabled:             true,
-				Iterations:          4,
-				MaxNormalizedDrift:  0.32,
-				MaxSnapshotDrift:    0.18,
-				StableTags:          []string{"stable"},
-				MinConsistencyScore: 0.68,
+				Enabled:                     true,
+				Iterations:                  4,
+				MaxNormalizedDrift:          0.32,
+				MaxSemanticDrift:            0.25,
+				MaxSnapshotDrift:            0.18,
+				MaxSemanticSnapshotDrift:    0.2,
+				StableTags:                  []string{"stable"},
+				MinConsistencyScore:         0.68,
+				MinSemanticConsistencyScore: 0.75,
 			},
 			TokenOptimization: core.TokenOptimizationConfig{
 				Enabled:                     true,
@@ -174,11 +177,20 @@ func applyDefaults(cfg *core.Config) {
 		if cfg.Suites.Drift.MaxNormalizedDrift == 0 {
 			cfg.Suites.Drift.MaxNormalizedDrift = 0.3
 		}
+		if cfg.Suites.Drift.MaxSemanticDrift == 0 {
+			cfg.Suites.Drift.MaxSemanticDrift = 0.25
+		}
 		if cfg.Suites.Drift.MaxSnapshotDrift == 0 {
 			cfg.Suites.Drift.MaxSnapshotDrift = cfg.Suites.Drift.MaxNormalizedDrift
 		}
+		if cfg.Suites.Drift.MaxSemanticSnapshotDrift == 0 {
+			cfg.Suites.Drift.MaxSemanticSnapshotDrift = cfg.Suites.Drift.MaxSemanticDrift
+		}
 		if cfg.Suites.Drift.MinConsistencyScore == 0 {
 			cfg.Suites.Drift.MinConsistencyScore = 0.7
+		}
+		if cfg.Suites.Drift.MinSemanticConsistencyScore == 0 {
+			cfg.Suites.Drift.MinSemanticConsistencyScore = 0.75
 		}
 	}
 	if cfg.Suites.TokenOptimization.Enabled {

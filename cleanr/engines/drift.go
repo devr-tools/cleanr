@@ -64,15 +64,26 @@ func (DriftEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 			}
 		}
 		drift, consistency := measureDrift(responses)
-		if drift > cfg.MaxNormalizedDrift {
-			findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("normalized drift %.3f exceeded threshold %.3f", drift, cfg.MaxNormalizedDrift)})
+		semanticDrift, semanticConsistency := measureSemanticDrift(responses)
+		if semanticDrift > cfg.MaxSemanticDrift {
+			findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("semantic drift %.3f exceeded threshold %.3f", semanticDrift, cfg.MaxSemanticDrift)})
 		}
-		if consistency < cfg.MinConsistencyScore {
-			findings = append(findings, core.Finding{Severity: "medium", Message: fmt.Sprintf("consistency score %.3f fell below threshold %.3f", consistency, cfg.MinConsistencyScore)})
+		if semanticConsistency < cfg.MinSemanticConsistencyScore {
+			findings = append(findings, core.Finding{Severity: "medium", Message: fmt.Sprintf("semantic consistency score %.3f fell below threshold %.3f", semanticConsistency, cfg.MinSemanticConsistencyScore)})
 		}
 		details := map[string]any{
-			"normalized_drift": drift,
-			"samples":          len(responses),
+			"normalized_drift":            round3(drift),
+			"semantic_drift":              round3(semanticDrift),
+			"consistency_score":           round3(consistency),
+			"semantic_consistency_score":  round3(semanticConsistency),
+			"samples":                     len(responses),
+			"semantic_similarity_profile": "local_similarity_v1",
+		}
+		if drift > cfg.MaxNormalizedDrift && semanticDrift <= cfg.MaxSemanticDrift {
+			details["lexical_drift_note"] = fmt.Sprintf("normalized drift %.3f exceeded threshold %.3f, but semantic drift remained within threshold", round3(drift), cfg.MaxNormalizedDrift)
+		}
+		if consistency < cfg.MinConsistencyScore && semanticConsistency >= cfg.MinSemanticConsistencyScore {
+			details["lexical_consistency_note"] = fmt.Sprintf("consistency score %.3f fell below threshold %.3f, but semantic consistency remained within threshold", round3(consistency), cfg.MinConsistencyScore)
 		}
 		if representativeSet {
 			details = responseDetails(representative, details)
@@ -80,9 +91,11 @@ func (DriftEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 		if cfg.BaselineFile != "" && representativeSet {
 			if snapshot, ok := baseline.FindScenario(scenario.Name); ok {
 				snapshotDrift := normalizedDistance(snapshot.Text, representative.Text)
+				snapshotSemanticDrift := semanticDistance(snapshot.Text, representative.Text)
 				details["baseline_text"] = trimForReport(snapshot.Text)
 				details["current_text"] = trimForReport(representative.Text)
 				details["baseline_drift"] = round3(snapshotDrift)
+				details["baseline_semantic_drift"] = round3(snapshotSemanticDrift)
 				details["baseline_status_code"] = snapshot.StatusCode
 				if snapshot.StatusCode != representative.StatusCode {
 					findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("baseline status code %d changed to %d", snapshot.StatusCode, representative.StatusCode)})
@@ -93,8 +106,11 @@ func (DriftEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 				if len(snapshot.Normalized.ToolCalls) != len(representative.Normalized.ToolCalls) {
 					findings = append(findings, core.Finding{Severity: "medium", Message: fmt.Sprintf("baseline tool call count %d changed to %d", len(snapshot.Normalized.ToolCalls), len(representative.Normalized.ToolCalls))})
 				}
-				if snapshotDrift > cfg.MaxSnapshotDrift {
-					findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("baseline drift %.3f exceeded threshold %.3f", snapshotDrift, cfg.MaxSnapshotDrift)})
+				if snapshotSemanticDrift > cfg.MaxSemanticSnapshotDrift {
+					findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("semantic baseline drift %.3f exceeded threshold %.3f", snapshotSemanticDrift, cfg.MaxSemanticSnapshotDrift)})
+				}
+				if snapshotDrift > cfg.MaxSnapshotDrift && snapshotSemanticDrift <= cfg.MaxSemanticSnapshotDrift {
+					details["baseline_lexical_note"] = fmt.Sprintf("baseline drift %.3f exceeded threshold %.3f, but semantic baseline drift remained within threshold", round3(snapshotDrift), cfg.MaxSnapshotDrift)
 				}
 			} else {
 				findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("missing baseline snapshot for scenario %s", scenario.Name)})
@@ -106,7 +122,7 @@ func (DriftEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 			Name:     scenario.Name,
 			Passed:   len(findings) == 0,
 			Duration: time.Since(start),
-			Score:    consistency,
+			Score:    semanticConsistency,
 			Findings: findings,
 			Details:  details,
 		})

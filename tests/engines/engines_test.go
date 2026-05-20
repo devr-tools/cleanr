@@ -178,6 +178,40 @@ func TestPromptChaosDriftAndTokenOptimizationCoverage(t *testing.T) {
 			t.Fatalf("unexpected suites: %+v", report.Suites)
 		}
 	})
+
+	t.Run("drift semantic paraphrase tolerance", func(t *testing.T) {
+		t.Parallel()
+
+		target := &sequenceTarget{responses: []cleanr.Response{
+			{Text: "Refunds are available within 30 days of purchase."},
+			{Text: "A refund is available within 30 days after purchase."},
+			{Text: "Customers can get a refund within 30 days after purchase."},
+		}}
+
+		cfg := cleanr.ExampleConfig()
+		cfg.Scenarios = []cleanr.Scenario{{Name: "semantic", Input: "refund policy", Tags: []string{"stable"}}}
+		cfg.Suites.PromptInjection.Enabled = false
+		cfg.Suites.Security.Enabled = false
+		cfg.Suites.Load.Enabled = false
+		cfg.Suites.Chaos.Enabled = false
+		cfg.Suites.TokenOptimization.Enabled = false
+		cfg.Suites.Drift.Enabled = true
+		cfg.Suites.Drift.StableTags = []string{"stable"}
+		cfg.Suites.Drift.Iterations = 3
+		cfg.Suites.Drift.MaxNormalizedDrift = 0.05
+		cfg.Suites.Drift.MaxSemanticDrift = 0.25
+		cfg.Suites.Drift.MinConsistencyScore = 0.5
+		cfg.Suites.Drift.MinSemanticConsistencyScore = 0.75
+
+		report := cleanr.NewRunner(cfg, target).Run(context.Background())
+		if !report.Passed {
+			t.Fatalf("expected semantic paraphrases to pass drift: %+v", report)
+		}
+		details := report.Suites[0].Cases[0].Details
+		if _, ok := details["lexical_drift_note"]; !ok {
+			t.Fatalf("expected lexical drift note when semantic drift remains acceptable: %+v", details)
+		}
+	})
 }
 
 func TestLoadEngineCoverage(t *testing.T) {

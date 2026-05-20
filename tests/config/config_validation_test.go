@@ -120,6 +120,22 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 			},
 			wantErr: "invalid config: suites.drift.max_snapshot_drift: must be between 0 and 1. Fix: use a decimal threshold such as 0.18",
 		},
+		{
+			name: "semantic drift threshold must be between zero and one",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Suites.Drift.Enabled = true
+				cfg.Suites.Drift.MaxSemanticDrift = -0.1
+			},
+			wantErr: "invalid config: suites.drift.max_semantic_drift: must be between 0 and 1. Fix: use a decimal threshold such as 0.25",
+		},
+		{
+			name: "semantic consistency score must be between zero and one",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Suites.Drift.Enabled = true
+				cfg.Suites.Drift.MinSemanticConsistencyScore = 1.1
+			},
+			wantErr: "invalid config: suites.drift.min_semantic_consistency_score: must be between 0 and 1. Fix: use a decimal threshold such as 0.75",
+		},
 	}
 
 	for _, tt := range tests {
@@ -363,6 +379,12 @@ func TestLoadConfigFileAppliesDefaultsBeforeValidation(t *testing.T) {
 	if cfg.Suites.Drift.Iterations != 3 {
 		t.Fatalf("expected default drift iterations 3, got %d", cfg.Suites.Drift.Iterations)
 	}
+	if cfg.Suites.Drift.MaxSemanticDrift != 0.25 {
+		t.Fatalf("expected default semantic drift 0.25, got %v", cfg.Suites.Drift.MaxSemanticDrift)
+	}
+	if cfg.Suites.Drift.MinSemanticConsistencyScore != 0.75 {
+		t.Fatalf("expected default semantic consistency 0.75, got %v", cfg.Suites.Drift.MinSemanticConsistencyScore)
+	}
 }
 
 func TestLoadConfigFileYAMLAppliesDefaultsBeforeValidation(t *testing.T) {
@@ -411,6 +433,12 @@ suites:
 			}
 			if cfg.Suites.Drift.Iterations != 3 {
 				t.Fatalf("expected default drift iterations 3, got %d", cfg.Suites.Drift.Iterations)
+			}
+			if cfg.Suites.Drift.MaxSemanticDrift != 0.25 {
+				t.Fatalf("expected default semantic drift 0.25, got %v", cfg.Suites.Drift.MaxSemanticDrift)
+			}
+			if cfg.Suites.Drift.MinSemanticConsistencyScore != 0.75 {
+				t.Fatalf("expected default semantic consistency 0.75, got %v", cfg.Suites.Drift.MinSemanticConsistencyScore)
 			}
 		})
 	}

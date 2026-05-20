@@ -51,7 +51,7 @@ Exit criteria: docs specify report fields and compatibility expectations.
 
 ### Assertions and regression
 
-- [ ] Add semantic drift scoring.
+- [x] Add semantic drift scoring.
 Deliverable: similarity-based drift scoring that is more robust than raw edit distance.
 Exit criteria: drift report includes both lexical and semantic consistency metrics.
 

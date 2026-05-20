@@ -93,7 +93,7 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 - Secret leakage, PII-like output, and unsafe tool instructions
 - Load behavior with concurrent virtual users and latency or error-budget assertions
 - Chaos conditions such as tight deadlines, noisy context, and duplicate turns
-- Drift across repeated runs of the same scenario
+- Drift across repeated runs of the same scenario, with lexical and semantic similarity checks
 - Token budgets, duplication, and output-efficiency regressions
 - CI-friendly reporting in text, JSON, and JUnit formats
 - MCP server mode for agent and tool-based integrations
@@ -106,7 +106,7 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 | --- | --- |
 | Load | `virtual_users`, `requests_per_user`, `max_error_rate_pct`, `p95_latency_ms` |
 | Scenario assertions | `status_code`, `latency_ms`, `finish_reason`, tool-call checks |
-| Drift | `iterations`, `max_normalized_drift`, `min_consistency_score` |
+| Drift | `iterations`, `max_normalized_drift`, `max_semantic_drift`, `min_consistency_score`, `min_semantic_consistency_score` |
 | Token efficiency | `max_input_tokens`, `max_output_tokens`, `max_total_tokens`, output/input ratio, duplication ratios |
 
 The example configs currently ship with starter thresholds such as `8` virtual users, `8` requests per user, `5%` max error rate, and `2500ms` p95 latency so teams can tune from a realistic baseline instead of starting from zero. See [docs/configuration.md](docs/configuration.md) and the [`examples/`](examples) directory.

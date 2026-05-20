@@ -15,6 +15,7 @@ type stableTarget struct{}
 type assertionTarget struct{}
 type failingAssertionTarget struct{}
 type snapshotTarget struct{}
+type semanticSnapshotTarget struct{}
 type regressedSnapshotTarget struct{}
 
 func (mockTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
@@ -44,6 +45,18 @@ func (snapshotTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
 	return cleanr.Response{
 		StatusCode: 200,
 		Text:       "Refunds are available within 30 days of purchase.",
+		Normalized: cleanr.ProviderResponse{
+			Provider:     "openai",
+			Model:        "gpt-4o-mini",
+			FinishReason: "stop",
+		},
+	}
+}
+
+func (semanticSnapshotTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
+	return cleanr.Response{
+		StatusCode: 200,
+		Text:       "A refund is available within 30 days after purchase.",
 		Normalized: cleanr.ProviderResponse{
 			Provider:     "openai",
 			Model:        "gpt-4o-mini",
@@ -124,6 +137,10 @@ func TestDriftSuitePassesStableResponses(t *testing.T) {
 	}
 	if !report.Passed {
 		t.Fatalf("expected stable drift suite to pass")
+	}
+	details := report.Suites[0].Cases[0].Details
+	if details["semantic_drift"] != float64(0) && details["semantic_drift"] != 0.0 {
+		t.Fatalf("expected zero semantic drift for identical responses, got %+v", details)
 	}
 }
 
@@ -324,6 +341,76 @@ func TestDriftSuitePassesMatchingBaseline(t *testing.T) {
 	details := report.Suites[0].Cases[0].Details
 	if details["baseline_drift"] != float64(0) && details["baseline_drift"] != 0.0 {
 		t.Fatalf("expected zero baseline drift, got %+v", details)
+	}
+	if details["baseline_semantic_drift"] != float64(0) && details["baseline_semantic_drift"] != 0.0 {
+		t.Fatalf("expected zero semantic baseline drift, got %+v", details)
+	}
+}
+
+func TestDriftSuitePassesSemanticParaphraseBaseline(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "snapshot-semantic-match",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy.",
+		Tags:   []string{"stable"},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Drift.Enabled = true
+	cfg.Suites.Drift.Iterations = 3
+	cfg.Suites.Drift.StableTags = []string{"stable"}
+	cfg.Suites.Drift.MaxNormalizedDrift = 0.05
+	cfg.Suites.Drift.MaxSemanticDrift = 0.25
+	cfg.Suites.Drift.MaxSnapshotDrift = 0.05
+	cfg.Suites.Drift.MaxSemanticSnapshotDrift = 0.25
+	cfg.Suites.Drift.MinConsistencyScore = 0.6
+	cfg.Suites.Drift.MinSemanticConsistencyScore = 0.75
+
+	baselinePath := t.TempDir() + "/snapshots.yaml"
+	err := cleanr.WriteSnapshotFile(baselinePath, cleanr.SnapshotFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Scenarios: []cleanr.ScenarioSnapshot{{
+			Name:       "snapshot-semantic-match",
+			StatusCode: 200,
+			Text:       "Refunds are available within 30 days of purchase.",
+			Normalized: cleanr.ProviderResponse{
+				Provider:     "openai",
+				Model:        "gpt-4o-mini",
+				FinishReason: "stop",
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("write baseline: %v", err)
+	}
+	cfg.Suites.Drift.BaselineFile = baselinePath
+
+	report := cleanr.NewRunner(cfg, semanticSnapshotTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected semantic baseline match to pass: %+v", report)
+	}
+	details := report.Suites[0].Cases[0].Details
+	baselineDrift, ok := details["baseline_drift"].(float64)
+	if !ok {
+		t.Fatalf("expected numeric baseline_drift, got %+v", details["baseline_drift"])
+	}
+	if baselineDrift <= cfg.Suites.Drift.MaxSnapshotDrift {
+		t.Fatalf("expected lexical baseline drift to exceed threshold, got %+v", details)
+	}
+	baselineSemanticDrift, ok := details["baseline_semantic_drift"].(float64)
+	if !ok {
+		t.Fatalf("expected numeric baseline_semantic_drift, got %+v", details["baseline_semantic_drift"])
+	}
+	if baselineSemanticDrift >= cfg.Suites.Drift.MaxSemanticSnapshotDrift {
+		t.Fatalf("expected semantic baseline drift to remain within threshold, got %+v", details)
+	}
+	if _, ok := details["baseline_lexical_note"]; !ok {
+		t.Fatalf("expected baseline lexical note, got %+v", details)
 	}
 }
 

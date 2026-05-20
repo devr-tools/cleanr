@@ -147,6 +147,16 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "suites.drift.min_consistency_score",
 		},
 		{
+			name: "drift invalid semantic thresholds",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Suites.Drift.Enabled = true
+				cfg.Suites.Drift.MaxSemanticDrift = 2
+				cfg.Suites.Drift.MaxSemanticSnapshotDrift = -1
+				cfg.Suites.Drift.MinSemanticConsistencyScore = 2
+			},
+			wantSub: "suites.drift.max_semantic_drift",
+		},
+		{
 			name: "token optimization invalid budgets and ratios",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.TokenOptimization.Enabled = true

@@ -45,8 +45,11 @@ suites:
     enabled: true
     iterations: 4
     max_normalized_drift: 0.32
+    max_semantic_drift: 0.25
+    max_semantic_snapshot_drift: 0.2
     stable_tags: [stable]
     min_consistency_score: 0.68
+    min_semantic_consistency_score: 0.75
   token_optimization:
     enabled: true
     max_input_tokens: 700

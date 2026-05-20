@@ -121,11 +121,20 @@ func ValidateConfig(cfg core.Config) error {
 		if cfg.Suites.Drift.MaxNormalizedDrift < 0 || cfg.Suites.Drift.MaxNormalizedDrift > 1 {
 			errs.Add("suites.drift.max_normalized_drift", "must be between 0 and 1", "use a decimal threshold such as 0.3")
 		}
+		if cfg.Suites.Drift.MaxSemanticDrift < 0 || cfg.Suites.Drift.MaxSemanticDrift > 1 {
+			errs.Add("suites.drift.max_semantic_drift", "must be between 0 and 1", "use a decimal threshold such as 0.25")
+		}
 		if cfg.Suites.Drift.MaxSnapshotDrift < 0 || cfg.Suites.Drift.MaxSnapshotDrift > 1 {
 			errs.Add("suites.drift.max_snapshot_drift", "must be between 0 and 1", "use a decimal threshold such as 0.18")
 		}
+		if cfg.Suites.Drift.MaxSemanticSnapshotDrift < 0 || cfg.Suites.Drift.MaxSemanticSnapshotDrift > 1 {
+			errs.Add("suites.drift.max_semantic_snapshot_drift", "must be between 0 and 1", "use a decimal threshold such as 0.2")
+		}
 		if cfg.Suites.Drift.MinConsistencyScore < 0 || cfg.Suites.Drift.MinConsistencyScore > 1 {
 			errs.Add("suites.drift.min_consistency_score", "must be between 0 and 1", "use a decimal threshold such as 0.7")
+		}
+		if cfg.Suites.Drift.MinSemanticConsistencyScore < 0 || cfg.Suites.Drift.MinSemanticConsistencyScore > 1 {
+			errs.Add("suites.drift.min_semantic_consistency_score", "must be between 0 and 1", "use a decimal threshold such as 0.75")
 		}
 	}
 

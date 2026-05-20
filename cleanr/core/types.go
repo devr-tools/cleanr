@@ -107,13 +107,16 @@ type ChaosConfig struct {
 }
 
 type DriftConfig struct {
-	Enabled             bool     `json:"enabled"`
-	Iterations          int      `json:"iterations"`
-	MaxNormalizedDrift  float64  `json:"max_normalized_drift"`
-	MaxSnapshotDrift    float64  `json:"max_snapshot_drift"`
-	BaselineFile        string   `json:"baseline_file"`
-	StableTags          []string `json:"stable_tags"`
-	MinConsistencyScore float64  `json:"min_consistency_score"`
+	Enabled                     bool     `json:"enabled"`
+	Iterations                  int      `json:"iterations"`
+	MaxNormalizedDrift          float64  `json:"max_normalized_drift"`
+	MaxSemanticDrift            float64  `json:"max_semantic_drift"`
+	MaxSnapshotDrift            float64  `json:"max_snapshot_drift"`
+	MaxSemanticSnapshotDrift    float64  `json:"max_semantic_snapshot_drift"`
+	BaselineFile                string   `json:"baseline_file"`
+	StableTags                  []string `json:"stable_tags"`
+	MinConsistencyScore         float64  `json:"min_consistency_score"`
+	MinSemanticConsistencyScore float64  `json:"min_semantic_consistency_score"`
 }
 
 type TokenOptimizationConfig struct {

@@ -338,12 +338,17 @@ Supported built-in chaos faults:
 - `enabled`
 - `iterations`
 - `max_normalized_drift`
+- `max_semantic_drift`
 - `max_snapshot_drift`
+- `max_semantic_snapshot_drift`
 - `baseline_file`
 - `stable_tags`
 - `min_consistency_score`
+- `min_semantic_consistency_score`
 
 Used to measure stability across repeated runs.
+
+`cleanr` reports both lexical drift and semantic drift. The semantic scorer is a deterministic local similarity model based on normalized token, phrase, and numeric overlap, so it works in CI without external embedding calls.
 
 If `baseline_file` is set and points to an existing snapshot file, drift also compares the current representative response against the checked-in baseline for each stable scenario.
 
@@ -378,6 +383,8 @@ The validator checks for:
 - unsupported `target.type` or `target.openai.api_mode`
 - invalid `target.anthropic.max_tokens`
 - invalid `suites.drift.max_snapshot_drift`
+- invalid `suites.drift.max_semantic_drift`
+- invalid `suites.drift.max_semantic_snapshot_drift`
 - invalid absolute URLs
 - invalid load, chaos, drift, and token thresholds
 - duplicate scenario names

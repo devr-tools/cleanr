@@ -124,7 +124,7 @@ Set an overall execution timeout:
 
 CLI flags override `reporting.format` and `reporting.output` from the config file.
 
-If `suites.drift.baseline_file` is configured and the baseline file exists, the drift suite also compares the current response against the checked-in snapshot and fails on meaningful baseline regressions.
+If `suites.drift.baseline_file` is configured and the baseline file exists, the drift suite also compares the current response against the checked-in snapshot and fails on meaningful semantic baseline regressions while still reporting lexical drift for review.
 
 ## Exit Codes
 
