@@ -2,11 +2,13 @@ package cleanr
 
 import (
 	"context"
+	"io"
 	"net/http"
 
 	adapterspkg "cleanr/cleanr/adapters"
 	configpkg "cleanr/cleanr/config"
 	"cleanr/cleanr/core"
+	reportpkg "cleanr/cleanr/report"
 	snapshotspkg "cleanr/cleanr/snapshots"
 	trendspkg "cleanr/cleanr/trends"
 )
@@ -25,6 +27,7 @@ type ChaosConfig = core.ChaosConfig
 type DriftConfig = core.DriftConfig
 type TokenOptimizationConfig = core.TokenOptimizationConfig
 type ReportingConfig = core.ReportingConfig
+type TrendGateConfig = core.TrendGateConfig
 type Request = core.Request
 type Response = core.Response
 type TokenUsage = core.TokenUsage
@@ -34,11 +37,18 @@ type SnapshotFile = snapshotspkg.File
 type ScenarioSnapshot = snapshotspkg.ScenarioSnapshot
 type TrendHistoryFile = trendspkg.HistoryFile
 type TrendHistoryRun = trendspkg.HistoryRun
+type HistorySuite = trendspkg.HistorySuite
+type HistoryDriftMetrics = trendspkg.HistoryDriftMetrics
+type TrendAnalysis = trendspkg.Analysis
+type TrendRunSnapshot = trendspkg.RunSnapshot
+type TrendAnalysisDelta = trendspkg.AnalysisDelta
+type TrendDriftWindow = trendspkg.DriftWindow
 type Finding = core.Finding
 type CaseResult = core.CaseResult
 type SuiteResult = core.SuiteResult
 type Report = core.Report
 type TrendReport = core.TrendReport
+type TrendGateReport = core.TrendGateReport
 type TrendSummary = core.TrendSummary
 type SuiteTrend = core.SuiteTrend
 type DriftTrend = core.DriftTrend
@@ -94,6 +104,26 @@ func WriteTrendHistoryFile(path string, history TrendHistoryFile) error {
 
 func AttachTrendHistory(report *Report, path, buildID string, limit int) error {
 	return trendspkg.AttachAndPersist(report, path, buildID, limit)
+}
+
+func EvaluateTrendGates(report *Report, cfg TrendGateConfig) {
+	trendspkg.EvaluateGates(report, cfg)
+}
+
+func WriteReport(w io.Writer, report Report, format string) error {
+	return reportpkg.Write(w, report, format)
+}
+
+func TextReport(report Report) string {
+	return reportpkg.Text(report)
+}
+
+func AnalyzeTrendHistoryFile(path string, window int) (TrendAnalysis, error) {
+	return trendspkg.AnalyzeFile(path, window)
+}
+
+func WriteTrendAnalysis(w io.Writer, analysis TrendAnalysis, format string) error {
+	return trendspkg.WriteAnalysis(w, analysis, format)
 }
 
 func NewTarget(cfg TargetConfig, client *http.Client) Target {

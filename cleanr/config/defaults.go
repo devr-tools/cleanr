@@ -219,4 +219,7 @@ func applyDefaults(cfg *core.Config) {
 	if cfg.Reporting.TrendFile != "" && cfg.Reporting.TrendLimit == 0 {
 		cfg.Reporting.TrendLimit = 30
 	}
+	if cfg.Reporting.TrendGates.Enabled && cfg.Reporting.TrendGates.RequiredWindow == 0 {
+		cfg.Reporting.TrendGates.RequiredWindow = 2
+	}
 }

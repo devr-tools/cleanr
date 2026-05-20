@@ -47,6 +47,12 @@ func TestCLIRunUsageVersionAndMissingConfigPaths(t *testing.T) {
 	if code := cli.Run([]string{"run"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "no config file found; expected one of cleanr.json, cleanr.yaml, cleanr.yml") {
 		t.Fatalf("unexpected missing-config result: code=%d stderr=%q", code, stderr.String())
 	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if code := cli.Run([]string{"trends"}, &stdout, &stderr); code != 2 || !strings.Contains(stderr.String(), "no config file found; expected one of cleanr.json, cleanr.yaml, cleanr.yml") {
+		t.Fatalf("unexpected missing-trends-config result: code=%d stderr=%q", code, stderr.String())
+	}
 }
 
 func TestCLIRunSupportsOutputFileAndFailureExitCodes(t *testing.T) {

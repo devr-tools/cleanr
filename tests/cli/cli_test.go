@@ -10,6 +10,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"cleanr/cleanr"
 	"cleanr/internal/cli"
@@ -329,4 +330,210 @@ func TestRunCommandPersistsTrendHistory(t *testing.T) {
 	if history.Runs[1].BuildID != "build-2" {
 		t.Fatalf("unexpected latest trend run: %+v", history.Runs[1])
 	}
+}
+
+func TestRunCommandTrendGatesFailOnConfiguredRegression(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "trend-gate-drift",
+		System: "You are a helpful support assistant.",
+		Input:  "Explain the refund policy.",
+		Tags:   []string{"stable"},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Suites.Drift.Enabled = true
+	cfg.Suites.Drift.Iterations = 2
+	cfg.Suites.Drift.StableTags = []string{"stable"}
+	cfg.Suites.Drift.MaxNormalizedDrift = 1
+	cfg.Suites.Drift.MaxSemanticDrift = 1
+	cfg.Suites.Drift.MinConsistencyScore = 0
+	cfg.Suites.Drift.MinSemanticConsistencyScore = 0
+	cfg.Reporting.Format = "json"
+	cfg.Reporting.TrendFile = "reports/cleanr.trends.yaml"
+	cfg.Reporting.TrendGates.Enabled = true
+	cfg.Reporting.TrendGates.RequiredWindow = 2
+	cfg.Reporting.TrendGates.MaxSemanticDriftDelta = float64Ptr(0.05)
+
+	path := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+		t.Fatalf("write yaml config: %v", err)
+	}
+
+	var mu sync.Mutex
+	runNumber := 0
+	requestInRun := 0
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		if requestInRun == 0 {
+			runNumber++
+		}
+		var body string
+		switch runNumber {
+		case 1:
+			body = `{"output":{"text":"Refunds are available within 30 days of purchase."}}`
+		default:
+			if requestInRun%2 == 0 {
+				body = `{"output":{"text":"Refunds are available within 30 days of purchase."}}`
+			} else {
+				body = `{"output":{"text":"A refund is available within 30 days after purchase."}}`
+			}
+		}
+		requestInRun++
+		if requestInRun == 2 {
+			requestInRun = 0
+		}
+		return &http.Response{
+			StatusCode: 200,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(body)),
+		}, nil
+	})
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	var stdout1 bytes.Buffer
+	var stderr1 bytes.Buffer
+	exitCode := cli.Run([]string{"run", "-config", path, "-build-id", "build-1"}, &stdout1, &stderr1)
+	if exitCode != 0 {
+		t.Fatalf("expected first run exit code 0, got %d, stderr=%s", exitCode, stderr1.String())
+	}
+	var firstReport cleanr.Report
+	if err := json.Unmarshal(stdout1.Bytes(), &firstReport); err != nil {
+		t.Fatalf("decode first report: %v", err)
+	}
+	if firstReport.TrendGate == nil || firstReport.TrendGate.Evaluated {
+		t.Fatalf("expected skipped baseline trend gate, got %+v", firstReport.TrendGate)
+	}
+
+	var stdout2 bytes.Buffer
+	var stderr2 bytes.Buffer
+	exitCode = cli.Run([]string{"run", "-config", path, "-build-id", "build-2"}, &stdout2, &stderr2)
+	if exitCode != 1 {
+		t.Fatalf("expected second run exit code 1 from trend gate, got %d, stderr=%s", exitCode, stderr2.String())
+	}
+	var secondReport cleanr.Report
+	if err := json.Unmarshal(stdout2.Bytes(), &secondReport); err != nil {
+		t.Fatalf("decode second report: %v", err)
+	}
+	if secondReport.TrendGate == nil || !secondReport.TrendGate.Evaluated || secondReport.TrendGate.Passed {
+		t.Fatalf("expected failed evaluated trend gate, got %+v", secondReport.TrendGate)
+	}
+	if len(secondReport.TrendGate.Findings) == 0 || !strings.Contains(secondReport.TrendGate.Findings[0].Message, "semantic drift delta") {
+		t.Fatalf("expected semantic drift gate finding, got %+v", secondReport.TrendGate)
+	}
+}
+
+func TestTrendsCommandSummarizesHistoryFromConfig(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Reporting.TrendFile = "reports/cleanr.trends.yaml"
+	path := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	historyPath := filepath.Join(filepath.Dir(path), "reports", "cleanr.trends.yaml")
+	err := cleanr.WriteTrendHistoryFile(historyPath, cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Runs: []cleanr.TrendHistoryRun{
+			{
+				BuildID:      "build-1",
+				GeneratedAt:  testTrendTime(1),
+				Passed:       true,
+				Duration:     2 * time.Second,
+				FailedSuites: 0,
+				FailedCases:  0,
+				Suites: []cleanr.HistorySuite{
+					{Name: "drift", Passed: true, Drift: &cleanr.HistoryDriftMetrics{NormalizedDrift: 0.02, SemanticDrift: 0.01, ConsistencyScore: 0.98, SemanticConsistencyScore: 0.99}},
+				},
+			},
+			{
+				BuildID:      "build-2",
+				GeneratedAt:  testTrendTime(2),
+				Passed:       false,
+				Duration:     3 * time.Second,
+				FailedSuites: 1,
+				FailedCases:  2,
+				Suites: []cleanr.HistorySuite{
+					{Name: "drift", Passed: false, FailedCases: 1, AverageScore: 0.7, Drift: &cleanr.HistoryDriftMetrics{NormalizedDrift: 0.3, SemanticDrift: 0.18, ConsistencyScore: 0.7, SemanticConsistencyScore: 0.82, BaselineSemanticDrift: 0.15}},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("write history: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"trends", "-config", path, "-window", "2"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	output := stdout.String()
+	for _, want := range []string{
+		"Trend Summary",
+		"Target        assistant-api",
+		"Regressions",
+		"build-2",
+		"semantic_drift_delta=+0.170",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected %q in trends output:\n%s", want, output)
+		}
+	}
+}
+
+func TestTrendsCommandWritesCompactJSONSummary(t *testing.T) {
+	historyPath := filepath.Join(t.TempDir(), "cleanr.trends.json")
+	err := cleanr.WriteTrendHistoryFile(historyPath, cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Runs: []cleanr.TrendHistoryRun{
+			{BuildID: "build-1", GeneratedAt: testTrendTime(1), Passed: true, Duration: time.Second, Suites: []cleanr.HistorySuite{{Name: "drift", Passed: true, Drift: &cleanr.HistoryDriftMetrics{NormalizedDrift: 0.05, SemanticDrift: 0.02}}}},
+			{BuildID: "build-2", GeneratedAt: testTrendTime(2), Passed: false, FailedSuites: 1, FailedCases: 1, Duration: 2 * time.Second, Suites: []cleanr.HistorySuite{{Name: "drift", Passed: false, FailedCases: 1, Drift: &cleanr.HistoryDriftMetrics{NormalizedDrift: 0.2, SemanticDrift: 0.14}}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("write history: %v", err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "trend-summary.json")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"trends", "-trend-file", historyPath, "-format", "json", "-output", outputPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "wrote json trends to") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	var analysis cleanr.TrendAnalysis
+	if err := json.Unmarshal(data, &analysis); err != nil {
+		t.Fatalf("decode analysis: %v\n%s", err, string(data))
+	}
+	if analysis.Target != "assistant-api" || analysis.WindowSize != 2 {
+		t.Fatalf("unexpected analysis: %+v", analysis)
+	}
+	if analysis.Delta == nil || analysis.Delta.FailedSuitesDelta != 1 {
+		t.Fatalf("expected trend delta in analysis: %+v", analysis)
+	}
+}
+
+func testTrendTime(day int) time.Time {
+	return time.Date(2026, 5, day, 12, 0, 0, 0, time.UTC)
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }

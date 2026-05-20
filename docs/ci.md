@@ -103,6 +103,14 @@ A practical rollout path is:
 
 Trend history is orthogonal to the main report format. If `reporting.trend_file` or `-trend-file` is set, `cleanr` also writes a compact JSON or YAML history file that can be persisted as a CI artifact and compared by later runs.
 
+If you want CI to fail only on meaningful regressions instead of every informational delta, enable `reporting.trend_gates` in the config. That lets you gate on metrics like additional failed cases, semantic drift delta, or duration growth between builds.
+
+To summarize the retained window for dashboards or release notes, run:
+
+```bash
+./dist/cleanr trends -trend-file reports/cleanr.trends.yaml -format json > cleanr-trends-summary.json
+```
+
 ## Release Workflow Notes
 
 `make release VERSION=vX.Y.Z` writes artifacts to `dist/releases/<version>/`.

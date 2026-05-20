@@ -23,7 +23,11 @@ func AttachAndPersist(report *core.Report, path, buildID string, limit int) erro
 	}
 	previous := LatestRun(history)
 	current := BuildRun(*report, buildID)
-	report.Trend = Compare(current, previous, len(history.Runs)+1)
+	historyLength := len(history.Runs) + 1
+	if limit > 0 && historyLength > limit {
+		historyLength = limit
+	}
+	report.Trend = Compare(current, previous, historyLength)
 	updated := AppendRun(history, current, limit)
 	return WriteFile(path, updated)
 }

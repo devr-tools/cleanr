@@ -47,6 +47,54 @@ type PersistOptions struct {
 	TrendLimit int
 }
 
+type Analysis struct {
+	Version           string            `json:"version"`
+	Target            string            `json:"target"`
+	TotalRetainedRuns int               `json:"total_retained_runs"`
+	WindowSize        int               `json:"window_size"`
+	PassRate          float64           `json:"pass_rate"`
+	FailedRuns        int               `json:"failed_runs"`
+	AverageDuration   time.Duration     `json:"average_duration"`
+	OldestAt          time.Time         `json:"oldest_at,omitempty"`
+	Latest            RunSnapshot       `json:"latest"`
+	Previous          *RunSnapshot      `json:"previous,omitempty"`
+	Delta             *AnalysisDelta    `json:"delta,omitempty"`
+	Regressions       []core.SuiteTrend `json:"regressions,omitempty"`
+	Improvements      []core.SuiteTrend `json:"improvements,omitempty"`
+	Drift             *DriftWindow      `json:"drift,omitempty"`
+	RecentRuns        []RunSnapshot     `json:"recent_runs,omitempty"`
+}
+
+type RunSnapshot struct {
+	BuildID      string        `json:"build_id,omitempty"`
+	GeneratedAt  time.Time     `json:"generated_at"`
+	Passed       bool          `json:"passed"`
+	FailedSuites int           `json:"failed_suites"`
+	FailedCases  int           `json:"failed_cases"`
+	Duration     time.Duration `json:"duration"`
+}
+
+type AnalysisDelta struct {
+	FailedSuitesDelta int           `json:"failed_suites_delta"`
+	FailedCasesDelta  int           `json:"failed_cases_delta"`
+	DurationDelta     time.Duration `json:"duration_delta"`
+	RegressedSuites   int           `json:"regressed_suites"`
+	ImprovedSuites    int           `json:"improved_suites"`
+}
+
+type DriftWindow struct {
+	AverageNormalizedDrift      float64 `json:"average_normalized_drift,omitempty"`
+	AverageSemanticDrift        float64 `json:"average_semantic_drift,omitempty"`
+	AverageConsistencyScore     float64 `json:"average_consistency_score,omitempty"`
+	AverageSemanticConsistency  float64 `json:"average_semantic_consistency_score,omitempty"`
+	MaxNormalizedDrift          float64 `json:"max_normalized_drift,omitempty"`
+	MaxSemanticDrift            float64 `json:"max_semantic_drift,omitempty"`
+	LatestNormalizedDrift       float64 `json:"latest_normalized_drift,omitempty"`
+	LatestSemanticDrift         float64 `json:"latest_semantic_drift,omitempty"`
+	LatestBaselineDrift         float64 `json:"latest_baseline_drift,omitempty"`
+	LatestBaselineSemanticDrift float64 `json:"latest_baseline_semantic_drift,omitempty"`
+}
+
 func NewHistory(target string) HistoryFile {
 	return HistoryFile{
 		Version: "v1alpha1",

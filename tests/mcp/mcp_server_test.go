@@ -221,7 +221,7 @@ func TestMCPServerRenderReportToolRendersText(t *testing.T) {
 	result := resp["result"].(map[string]any)
 	structured := result["structuredContent"].(map[string]any)
 	rendered := structured["rendered"].(string)
-	if !strings.Contains(rendered, "cleanr PASS") {
+	if !strings.Contains(rendered, "Status      PASS") {
 		t.Fatalf("expected rendered text report, got %s", rendered)
 	}
 }

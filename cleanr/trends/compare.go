@@ -18,6 +18,7 @@ func Compare(current HistoryRun, previous *HistoryRun, historyLength int) *core.
 
 	trend.PreviousBuildID = previous.BuildID
 	trend.PreviousAt = previous.GeneratedAt
+	trend.PreviousDuration = previous.Duration
 	trend.Summary = core.TrendSummary{
 		FailedSuitesDelta: current.FailedSuites - previous.FailedSuites,
 		FailedCasesDelta:  current.FailedCases - previous.FailedCases,

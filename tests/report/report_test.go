@@ -45,6 +45,17 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 				},
 			}},
 		},
+		TrendGate: &cleanr.TrendGateReport{
+			Enabled:         true,
+			Evaluated:       true,
+			Passed:          false,
+			RequiredWindow:  2,
+			AvailableWindow: 2,
+			Findings: []cleanr.Finding{{
+				Severity: "high",
+				Message:  "semantic drift delta 0.180 exceeded gate 0.050",
+			}},
+		},
 		Suites: []cleanr.SuiteResult{{
 			Name:     "security",
 			Passed:   false,
@@ -65,6 +76,8 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		"Overview",
 		"Details",
 		"Trends",
+		"Trend Gates",
+		"semantic drift delta 0.180 exceeded gate 0.050",
 		"Compared",
 		"drift",
 		"semantic_drift_delta=+0.180",

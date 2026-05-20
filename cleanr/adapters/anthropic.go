@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"cleanr/cleanr/core"
+	profilepkg "cleanr/cleanr/profile"
 )
 
 type Anthropic struct {
@@ -25,7 +26,10 @@ func NewAnthropic(cfg core.TargetConfig, client *http.Client) *Anthropic {
 
 func (t *Anthropic) Invoke(ctx context.Context, req core.Request) core.Response {
 	apiKeyEnv := t.apiKeyEnv()
-	apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv))
+	apiKey, err := t.apiKey(apiKeyEnv)
+	if err != nil {
+		return core.Response{Err: err}
+	}
 	if apiKey == "" {
 		return core.Response{Err: fmt.Errorf("anthropic api key env %q is not set", apiKeyEnv)}
 	}
@@ -124,6 +128,17 @@ func (t *Anthropic) apiKeyEnv() string {
 		return "ANTHROPIC_API_KEY"
 	}
 	return strings.TrimSpace(t.cfg.Anthropic.APIKeyEnv)
+}
+
+func (t *Anthropic) apiKey(apiKeyEnv string) (string, error) {
+	if apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv)); apiKey != "" {
+		return apiKey, nil
+	}
+	apiKey, err := profilepkg.LookupAPIKey("anthropic", apiKeyEnv)
+	if err != nil {
+		return "", fmt.Errorf("load stored anthropic api key: %w", err)
+	}
+	return apiKey, nil
 }
 
 type anthropicUsage struct {

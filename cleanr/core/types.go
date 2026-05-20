@@ -131,11 +131,23 @@ type TokenOptimizationConfig struct {
 }
 
 type ReportingConfig struct {
-	Format     string `json:"format"`
-	Output     string `json:"output"`
-	TrendFile  string `json:"trend_file"`
-	TrendLimit int    `json:"trend_limit"`
-	BuildID    string `json:"build_id"`
+	Format     string          `json:"format"`
+	Output     string          `json:"output"`
+	TrendFile  string          `json:"trend_file"`
+	TrendLimit int             `json:"trend_limit"`
+	BuildID    string          `json:"build_id"`
+	TrendGates TrendGateConfig `json:"trend_gates"`
+}
+
+type TrendGateConfig struct {
+	Enabled                       bool     `json:"enabled"`
+	RequiredWindow                int      `json:"required_window"`
+	MaxFailedSuitesDelta          *int     `json:"max_failed_suites_delta,omitempty"`
+	MaxFailedCasesDelta           *int     `json:"max_failed_cases_delta,omitempty"`
+	MaxDurationIncreasePct        *float64 `json:"max_duration_increase_pct,omitempty"`
+	MaxSemanticDriftDelta         *float64 `json:"max_semantic_drift_delta,omitempty"`
+	MaxBaselineSemanticDriftDelta *float64 `json:"max_baseline_semantic_drift_delta,omitempty"`
+	FailOnRegressedSuites         bool     `json:"fail_on_regressed_suites,omitempty"`
 }
 
 type Request struct {
@@ -213,27 +225,39 @@ type SuiteResult struct {
 }
 
 type Report struct {
-	Name            string        `json:"name"`
-	Passed          bool          `json:"passed"`
-	GeneratedAt     time.Time     `json:"generated_at"`
-	Duration        time.Duration `json:"duration"`
-	TotalSuites     int           `json:"total_suites"`
-	FailedSuites    int           `json:"failed_suites"`
-	TotalCases      int           `json:"total_cases"`
-	FailedCases     int           `json:"failed_cases"`
-	Suites          []SuiteResult `json:"suites"`
-	Trend           *TrendReport  `json:"trend,omitempty"`
-	Recommendations []string      `json:"recommendations,omitempty"`
+	Name            string           `json:"name"`
+	Passed          bool             `json:"passed"`
+	GeneratedAt     time.Time        `json:"generated_at"`
+	Duration        time.Duration    `json:"duration"`
+	TotalSuites     int              `json:"total_suites"`
+	FailedSuites    int              `json:"failed_suites"`
+	TotalCases      int              `json:"total_cases"`
+	FailedCases     int              `json:"failed_cases"`
+	Suites          []SuiteResult    `json:"suites"`
+	Trend           *TrendReport     `json:"trend,omitempty"`
+	TrendGate       *TrendGateReport `json:"trend_gate,omitempty"`
+	Recommendations []string         `json:"recommendations,omitempty"`
 }
 
 type TrendReport struct {
-	Baseline        bool         `json:"baseline"`
-	HistoryLength   int          `json:"history_length"`
-	CurrentBuildID  string       `json:"current_build_id,omitempty"`
-	PreviousBuildID string       `json:"previous_build_id,omitempty"`
-	PreviousAt      time.Time    `json:"previous_at,omitempty"`
-	Summary         TrendSummary `json:"summary"`
-	Suites          []SuiteTrend `json:"suites,omitempty"`
+	Baseline         bool          `json:"baseline"`
+	HistoryLength    int           `json:"history_length"`
+	CurrentBuildID   string        `json:"current_build_id,omitempty"`
+	PreviousBuildID  string        `json:"previous_build_id,omitempty"`
+	PreviousAt       time.Time     `json:"previous_at,omitempty"`
+	PreviousDuration time.Duration `json:"previous_duration,omitempty"`
+	Summary          TrendSummary  `json:"summary"`
+	Suites           []SuiteTrend  `json:"suites,omitempty"`
+}
+
+type TrendGateReport struct {
+	Enabled         bool      `json:"enabled"`
+	Evaluated       bool      `json:"evaluated"`
+	Passed          bool      `json:"passed"`
+	RequiredWindow  int       `json:"required_window,omitempty"`
+	AvailableWindow int       `json:"available_window,omitempty"`
+	GeneratedAt     time.Time `json:"generated_at,omitempty"`
+	Findings        []Finding `json:"findings,omitempty"`
 }
 
 type TrendSummary struct {

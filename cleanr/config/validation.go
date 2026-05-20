@@ -172,6 +172,29 @@ func ValidateConfig(cfg core.Config) error {
 	if cfg.Reporting.TrendLimit < 0 {
 		errs.Add("reporting.trend_limit", "must be >= 0", "use 0 to disable history trimming or set a positive run-retention count such as 30")
 	}
+	if cfg.Reporting.TrendGates.Enabled {
+		if strings.TrimSpace(cfg.Reporting.TrendFile) == "" {
+			errs.Add("reporting.trend_file", "is required when trend gates are enabled", "set reporting.trend_file so cleanr can compare the current run to prior retained runs")
+		}
+		if cfg.Reporting.TrendGates.RequiredWindow < 2 {
+			errs.Add("reporting.trend_gates.required_window", "must be >= 2", "use at least 2 retained runs so cleanr can compare the current build against a previous one")
+		}
+		if cfg.Reporting.TrendGates.MaxFailedSuitesDelta != nil && *cfg.Reporting.TrendGates.MaxFailedSuitesDelta < 0 {
+			errs.Add("reporting.trend_gates.max_failed_suites_delta", "must be >= 0", "use a non-negative number of additional failed suites allowed between builds")
+		}
+		if cfg.Reporting.TrendGates.MaxFailedCasesDelta != nil && *cfg.Reporting.TrendGates.MaxFailedCasesDelta < 0 {
+			errs.Add("reporting.trend_gates.max_failed_cases_delta", "must be >= 0", "use a non-negative number of additional failed cases allowed between builds")
+		}
+		if cfg.Reporting.TrendGates.MaxDurationIncreasePct != nil && *cfg.Reporting.TrendGates.MaxDurationIncreasePct < 0 {
+			errs.Add("reporting.trend_gates.max_duration_increase_pct", "must be >= 0", "use a non-negative percentage such as 20 for a 20 percent duration increase budget")
+		}
+		if cfg.Reporting.TrendGates.MaxSemanticDriftDelta != nil && (*cfg.Reporting.TrendGates.MaxSemanticDriftDelta < 0 || *cfg.Reporting.TrendGates.MaxSemanticDriftDelta > 1) {
+			errs.Add("reporting.trend_gates.max_semantic_drift_delta", "must be between 0 and 1", "use a decimal drift delta such as 0.08")
+		}
+		if cfg.Reporting.TrendGates.MaxBaselineSemanticDriftDelta != nil && (*cfg.Reporting.TrendGates.MaxBaselineSemanticDriftDelta < 0 || *cfg.Reporting.TrendGates.MaxBaselineSemanticDriftDelta > 1) {
+			errs.Add("reporting.trend_gates.max_baseline_semantic_drift_delta", "must be between 0 and 1", "use a decimal drift delta such as 0.05")
+		}
+	}
 
 	if errs.HasAny() {
 		return errs

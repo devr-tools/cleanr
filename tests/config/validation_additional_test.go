@@ -199,6 +199,25 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			},
 			wantSub: "reporting.trend_limit",
 		},
+		{
+			name: "trend gates require trend file",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Reporting.TrendFile = ""
+				cfg.Reporting.TrendGates.Enabled = true
+				cfg.Reporting.TrendGates.RequiredWindow = 2
+			},
+			wantSub: "reporting.trend_file",
+		},
+		{
+			name: "trend gates validate thresholds",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Reporting.TrendFile = "reports/history.yaml"
+				cfg.Reporting.TrendGates.Enabled = true
+				cfg.Reporting.TrendGates.RequiredWindow = 1
+				cfg.Reporting.TrendGates.MaxFailedCasesDelta = assertionIntPtr(-1)
+			},
+			wantSub: "reporting.trend_gates.required_window",
+		},
 	}
 
 	for _, tt := range tests {

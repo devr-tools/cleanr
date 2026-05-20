@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"cleanr/cleanr/core"
+	profilepkg "cleanr/cleanr/profile"
 )
 
 type OpenAI struct {
@@ -25,7 +26,10 @@ func NewOpenAI(cfg core.TargetConfig, client *http.Client) *OpenAI {
 
 func (t *OpenAI) Invoke(ctx context.Context, req core.Request) core.Response {
 	apiKeyEnv := t.apiKeyEnv()
-	apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv))
+	apiKey, err := t.apiKey(apiKeyEnv)
+	if err != nil {
+		return core.Response{Err: err}
+	}
 	if apiKey == "" {
 		return core.Response{Err: fmt.Errorf("openai api key env %q is not set", apiKeyEnv)}
 	}
@@ -161,6 +165,17 @@ func (t *OpenAI) apiKeyEnv() string {
 		return "OPENAI_API_KEY"
 	}
 	return strings.TrimSpace(t.cfg.OpenAI.APIKeyEnv)
+}
+
+func (t *OpenAI) apiKey(apiKeyEnv string) (string, error) {
+	if apiKey := strings.TrimSpace(os.Getenv(apiKeyEnv)); apiKey != "" {
+		return apiKey, nil
+	}
+	apiKey, err := profilepkg.LookupAPIKey("openai", apiKeyEnv)
+	if err != nil {
+		return "", fmt.Errorf("load stored openai api key: %w", err)
+	}
+	return apiKey, nil
 }
 
 func (t *OpenAI) parseResponse(body []byte) (string, core.ProviderResponse, core.TokenUsage, error) {

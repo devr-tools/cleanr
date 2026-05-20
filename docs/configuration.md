@@ -377,8 +377,24 @@ Used to catch excessive prompt size, verbose output, and repeated content.
 - `trend_file`: optional JSON or YAML history file updated on each `run`
 - `trend_limit`: optional number of runs to retain in `trend_file`
 - `build_id`: optional build identifier recorded in the trend history and current report
+- `trend_gates`: optional build-to-build regression gates evaluated after trend comparison
 
 If `output` is omitted, reports are written to standard output. If `trend_file` is set, `cleanr run` compares the current report to the previous retained run, attaches deltas to the current report, and appends the new run to the history file. CLI flags can override these values at runtime.
+
+The `cleanr trends` command reads that retained history file and emits a compact build-to-build summary in `text` or `json` format.
+
+`trend_gates` supports:
+
+- `enabled`
+- `required_window`
+- `max_failed_suites_delta`
+- `max_failed_cases_delta`
+- `max_duration_increase_pct`
+- `max_semantic_drift_delta`
+- `max_baseline_semantic_drift_delta`
+- `fail_on_regressed_suites`
+
+Trend gates are opt-in. When enabled, `cleanr run` still writes the full report, but it returns exit code `1` if a configured build-over-build regression threshold is breached.
 
 ## Validation Rules
 
@@ -396,6 +412,7 @@ The validator checks for:
 - invalid absolute URLs
 - invalid load, chaos, drift, and token thresholds
 - invalid `reporting.trend_limit`
+- invalid `reporting.trend_gates.*`
 - duplicate scenario names
 - invalid regular expressions in `suites.security.leak_patterns`
 - unsupported report formats

@@ -27,12 +27,16 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "run":
 		return runCmd(args[1:], stdout, stderr)
+	case "trends":
+		return trendsCmd(args[1:], stdout, stderr)
 	case "snapshot":
 		return snapshotCmd(args[1:], stdout, stderr)
 	case "validate":
 		return validateCmd(args[1:], stdout, stderr)
 	case "init":
 		return initCmd(args[1:], stdout, stderr)
+	case "setup":
+		return setupCmd(args[1:], stdout, stderr)
 	case "mcp":
 		return mcpCmd(args[1:], stdout, stderr)
 	case "version":
@@ -98,6 +102,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "trend history error: %v\n", err)
 		return 2
 	}
+	cleanr.EvaluateTrendGates(&report, cfg.Reporting.TrendGates)
 
 	dest := stdout
 	if cfg.Reporting.Output != "" {
@@ -175,6 +180,54 @@ func snapshotCmd(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func trendsCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("trends", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "Path to cleanr config")
+	trendFile := fs.String("trend-file", "", "Path to trend history file")
+	format := fs.String("format", "text", "Output format: text or json")
+	output := fs.String("output", "", "Optional output file")
+	window := fs.Int("window", 0, "Number of recent retained runs to summarize")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if *window < 0 {
+		_, _ = fmt.Fprintln(stderr, "trends error: window must be >= 0")
+		return 2
+	}
+
+	trendPath, err := resolveTrendPath(*configPath, *trendFile)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "trends error: %v\n", err)
+		return 2
+	}
+
+	analysis, err := cleanr.AnalyzeTrendHistoryFile(trendPath, *window)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "trends error: %v\n", err)
+		return 2
+	}
+
+	dest := stdout
+	if strings.TrimSpace(*output) != "" {
+		f, err := os.Create(*output)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "open trends output: %v\n", err)
+			return 2
+		}
+		defer f.Close()
+		dest = f
+	}
+	if err := cleanr.WriteTrendAnalysis(dest, analysis, *format); err != nil {
+		_, _ = fmt.Fprintf(stderr, "write trends: %v\n", err)
+		return 2
+	}
+	if strings.TrimSpace(*output) != "" && strings.ToLower(strings.TrimSpace(*format)) != "text" {
+		_, _ = fmt.Fprintf(stdout, "wrote %s trends to %s\n", *format, *output)
+	}
+	return 0
+}
+
 func validateCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -228,7 +281,7 @@ func mcpCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|snapshot|validate|init|mcp|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|trends|snapshot|validate|init|setup|mcp|version> [flags]")
 }
 
 func resolveConfigPath(configPath string) (string, error) {
@@ -268,4 +321,23 @@ func resolveConfigRelativePath(configPath, path string) string {
 		return path
 	}
 	return filepath.Join(filepath.Dir(configPath), path)
+}
+
+func resolveTrendPath(configPath, explicitTrendPath string) (string, error) {
+	if strings.TrimSpace(explicitTrendPath) != "" {
+		return explicitTrendPath, nil
+	}
+	resolvedConfigPath, err := resolveConfigPath(configPath)
+	if err != nil {
+		return "", err
+	}
+	cfg, err := cleanr.LoadConfigFile(resolvedConfigPath)
+	if err != nil {
+		return "", err
+	}
+	trendPath := resolveConfigRelativePath(resolvedConfigPath, cfg.Reporting.TrendFile)
+	if strings.TrimSpace(trendPath) == "" {
+		return "", fmt.Errorf("no trend file configured; set reporting.trend_file or pass -trend-file")
+	}
+	return trendPath, nil
 }

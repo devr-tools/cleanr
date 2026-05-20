@@ -41,6 +41,27 @@ The generated file includes:
 - all currently supported suites enabled with starter thresholds
 - text reporting as the default output mode
 
+If you want `cleanr` to set up a native provider for you instead of editing the starter manually, use:
+
+```bash
+./dist/cleanr setup
+```
+
+That flow:
+
+- prompts for `openai` or `anthropic`
+- prompts for the model, API key env var name, and API key
+- stores the API key in `~/.cleanr/profile.json`
+- writes a starter `cleanr.yaml`
+
+If you are testing an agent and want to seed the config with a specific system prompt, use:
+
+```bash
+./dist/cleanr setup agent
+```
+
+That flow reuses the saved provider profile, asks for the agent prompt and a primary user task, then writes an agent-focused YAML config such as `cleanr.agent.yaml`.
+
 ## Capture a Baseline
 
 Before using drift as a regression gate, write a baseline snapshot file from a known-good build:
@@ -120,6 +141,13 @@ Track trend history across builds:
 
 ```bash
 ./dist/cleanr run -config cleanr.json -trend-file reports/cleanr.trends.yaml -build-id "$GITHUB_SHA"
+```
+
+Summarize the retained history window:
+
+```bash
+./dist/cleanr trends -config cleanr.json
+./dist/cleanr trends -config cleanr.json -format json
 ```
 
 Set an overall execution timeout:

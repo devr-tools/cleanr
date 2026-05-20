@@ -16,6 +16,7 @@ func TestDevtoolsGoFileLayoutAndFormatting(t *testing.T) {
 	mustWriteFile(t, filepath.Join(repo, "cleanr", "main.go"), "package cleanr\n")
 	mustWriteFile(t, filepath.Join(repo, "internal", "thing.go"), "package internal\n")
 	mustWriteFile(t, filepath.Join(repo, "cmd", "app", "main.go"), "package main\n")
+	mustWriteFile(t, filepath.Join(repo, "img", "banner.go"), "package img\n")
 	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n")
 	mustWriteFile(t, filepath.Join(repo, ".git", "ignored.go"), "package ignored\n")
 	mustWriteFile(t, filepath.Join(repo, "dist", "ignored.go"), "package ignored\n")
@@ -28,7 +29,7 @@ func TestDevtoolsGoFileLayoutAndFormatting(t *testing.T) {
 	if err := runner.ListGoFiles(); err != nil {
 		t.Fatalf("list go files: %v", err)
 	}
-	if !strings.Contains(stdout.String(), "cleanr/main.go") || strings.Contains(stdout.String(), "ignored.go") {
+	if !strings.Contains(stdout.String(), "cleanr/main.go") || !strings.Contains(stdout.String(), "img/banner.go") || strings.Contains(stdout.String(), "ignored.go") {
 		t.Fatalf("unexpected gofiles output: %s", stdout.String())
 	}
 

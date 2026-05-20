@@ -60,9 +60,12 @@ The core `cleanr` commands are:
 
 ```bash
 cleanr init
-cleanr snapshot -config cleanr.json
-cleanr validate -config cleanr.json
-cleanr run -config cleanr.json
+cleanr setup
+cleanr setup agent
+cleanr snapshot -config cleanr.yaml
+cleanr validate -config cleanr.yaml
+cleanr run -config cleanr.yaml
+cleanr trends -config cleanr.yaml
 cleanr version
 cleanr mcp
 ```
@@ -70,19 +73,23 @@ cleanr mcp
 Typical first run:
 
 ```bash
-cleanr init
-cleanr snapshot -config cleanr.json
-cleanr validate -config cleanr.json
-cleanr run -config cleanr.json
+cleanr setup
+cleanr snapshot -config cleanr.yaml
+cleanr validate -config cleanr.yaml
+cleanr run -config cleanr.yaml
+cleanr trends -config cleanr.yaml
 ```
 
 What each command does:
 
 - `cleanr init`: generate a starter config file
+- `cleanr setup`: interactively connect an OpenAI or Anthropic provider, store the API token locally, and write a starter YAML config
+- `cleanr setup agent`: interactively inject an agent prompt and generate an agent-focused YAML config
 - `cleanr snapshot -config <file>`: capture or refresh baseline snapshots for drift regression checks
 - `cleanr validate -config <file>`: check config shape and required fields before execution
 - `cleanr run -config <file>`: execute enabled suites and emit a report
 - `cleanr run -config <file> -trend-file <file> -build-id <id>`: compare the current run to prior builds and append trend history
+- `cleanr trends -config <file>`: summarize the retained trend history window
 - `cleanr version`: print the installed CLI version
 - `cleanr mcp`: start the MCP server for agent and tool integrations
 
@@ -109,7 +116,7 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 | Load | `virtual_users`, `requests_per_user`, `max_error_rate_pct`, `p95_latency_ms` |
 | Scenario assertions | `status_code`, `latency_ms`, `finish_reason`, tool-call checks |
 | Drift | `iterations`, `max_normalized_drift`, `max_semantic_drift`, `min_consistency_score`, `min_semantic_consistency_score` |
-| Trend reporting | `reporting.trend_file`, `reporting.trend_limit`, `reporting.build_id` |
+| Trend reporting | `reporting.trend_file`, `reporting.trend_limit`, `reporting.build_id`, `reporting.trend_gates.*` |
 | Token efficiency | `max_input_tokens`, `max_output_tokens`, `max_total_tokens`, output/input ratio, duplication ratios |
 
 The example configs currently ship with starter thresholds such as `8` virtual users, `8` requests per user, `5%` max error rate, and `2500ms` p95 latency so teams can tune from a realistic baseline instead of starting from zero. See [docs/configuration.md](docs/configuration.md) and the [`examples/`](examples) directory.
@@ -129,6 +136,8 @@ Starter configs for common targets:
 - [examples/openai-responses.yaml](examples/openai-responses.yaml)
 - [examples/openai-chat-completions.yaml](examples/openai-chat-completions.yaml)
 - [examples/anthropic-messages.yaml](examples/anthropic-messages.yaml)
+
+Interactive setup stores provider credentials in `~/.cleanr/profile.json` with local-only file permissions. Native provider targets automatically reuse those stored credentials when the configured API key env var is not already set in the shell.
 
 ## Documentation
 
