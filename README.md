@@ -137,6 +137,13 @@ Starter configs for common targets:
 - [examples/openai-chat-completions.yaml](examples/openai-chat-completions.yaml)
 - [examples/anthropic-messages.yaml](examples/anthropic-messages.yaml)
 
+Those examples now include a starter `reporting.trend_gates` policy for CI:
+- no new failed suites
+- no new failed cases
+- no more than `25%` duration growth
+- no more than `0.08` semantic drift delta
+- no more than `0.05` baseline semantic drift delta
+
 Interactive setup stores provider credentials in `~/.cleanr/profile.json` with local-only file permissions. Native provider targets automatically reuse those stored credentials when the configured API key env var is not already set in the shell.
 
 ## Documentation

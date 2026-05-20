@@ -97,6 +97,15 @@ reporting:
   format: text
   trend_file: reports/cleanr.trends.yaml
   trend_limit: 30
+  trend_gates:
+    enabled: true
+    required_window: 2
+    max_failed_suites_delta: 0
+    max_failed_cases_delta: 0
+    max_duration_increase_pct: 25
+    max_semantic_drift_delta: 0.08
+    max_baseline_semantic_drift_delta: 0.05
+    fail_on_regressed_suites: true
 ```
 
 OpenAI-native examples are available in:

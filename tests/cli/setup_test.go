@@ -95,6 +95,15 @@ func TestSetupAgentCommandUsesStoredProviderAndInjectsPrompt(t *testing.T) {
 	if cfg.Reporting.TrendFile != filepath.Join("reports", "support-agent.trends.yaml") {
 		t.Fatalf("unexpected trend file: %s", cfg.Reporting.TrendFile)
 	}
+	if !cfg.Reporting.TrendGates.Enabled {
+		t.Fatalf("expected trend gates to be enabled in generated agent config")
+	}
+	if cfg.Reporting.TrendGates.RequiredWindow != 2 {
+		t.Fatalf("unexpected trend gate required window: %d", cfg.Reporting.TrendGates.RequiredWindow)
+	}
+	if cfg.Reporting.TrendGates.MaxSemanticDriftDelta == nil || *cfg.Reporting.TrendGates.MaxSemanticDriftDelta != 0.08 {
+		t.Fatalf("unexpected semantic drift gate: %+v", cfg.Reporting.TrendGates)
+	}
 }
 
 func swapStdin(t *testing.T, input string) func() {

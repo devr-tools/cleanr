@@ -291,6 +291,19 @@ func starterConfigForProvider(provider profilepkg.Provider) cleanr.Config {
 		}
 	}
 
+	cfg.Reporting.TrendFile = filepath.Join("reports", cfg.Target.Name+".trends.yaml")
+	cfg.Reporting.TrendLimit = 30
+	cfg.Reporting.TrendGates = cleanr.TrendGateConfig{
+		Enabled:                       true,
+		RequiredWindow:                2,
+		MaxFailedSuitesDelta:          intPtr(0),
+		MaxFailedCasesDelta:           intPtr(0),
+		MaxDurationIncreasePct:        float64Ptr(25),
+		MaxSemanticDriftDelta:         float64Ptr(0.08),
+		MaxBaselineSemanticDriftDelta: float64Ptr(0.05),
+		FailOnRegressedSuites:         true,
+	}
+
 	return cfg
 }
 
@@ -430,4 +443,12 @@ func maxInt(value, floor int) int {
 		return value
 	}
 	return floor
+}
+
+func intPtr(v int) *int {
+	return &v
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }

@@ -105,6 +105,23 @@ Trend history is orthogonal to the main report format. If `reporting.trend_file`
 
 If you want CI to fail only on meaningful regressions instead of every informational delta, enable `reporting.trend_gates` in the config. That lets you gate on metrics like additional failed cases, semantic drift delta, or duration growth between builds.
 
+A sane starter policy is:
+
+```yaml
+reporting:
+  trend_file: reports/cleanr.trends.yaml
+  trend_limit: 30
+  trend_gates:
+    enabled: true
+    required_window: 2
+    max_failed_suites_delta: 0
+    max_failed_cases_delta: 0
+    max_duration_increase_pct: 25
+    max_semantic_drift_delta: 0.08
+    max_baseline_semantic_drift_delta: 0.05
+    fail_on_regressed_suites: true
+```
+
 To summarize the retained window for dashboards or release notes, run:
 
 ```bash
