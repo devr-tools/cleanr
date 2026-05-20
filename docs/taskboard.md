@@ -20,14 +20,10 @@
 - [x] Add YAML config support.
 - [x] Add OpenAI adapter.
 - [x] Add Anthropic adapter.
+- [x] Define provider-neutral target response envelope.
+- [x] Add MCP server mode for agent and MCPO access.
 
 ## Now
-
-### Provider adapters
-
-- [ ] Define provider-neutral target response envelope.
-Deliverable: normalized response model for text, tool calls, usage, finish reason, and raw provider metadata.
-Exit criteria: HTTP and provider adapters both map into the same assertion layer.
 
 ### Config and DX
 
@@ -99,13 +95,12 @@ Exit criteria: tagged release process documented and repeatable.
 
 ## Suggested execution order
 
-1. normalized response envelope
-2. assertion DSL
-3. snapshots
-4. semantic drift
-5. tool-call tracing
-6. Gemini adapter
-7. distributed load workers
+1. assertion DSL
+2. snapshots
+3. semantic drift
+4. tool-call tracing
+5. Gemini adapter
+6. distributed load workers
 
 ## Definition of Phase 2 done
 

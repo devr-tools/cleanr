@@ -217,7 +217,7 @@ type openAIChatEnvelope struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		FinishReason string `json:"finish_reason"`
-		Message struct {
+		Message      struct {
 			Role      string `json:"role"`
 			Content   any    `json:"content"`
 			ToolCalls []struct {
@@ -259,9 +259,11 @@ func parseOpenAIResponsesResponse(body []byte) (string, core.ProviderResponse, c
 		Model:     payload.Model,
 		Status:    payload.Status,
 		ToolCalls: toolCalls,
-		Raw: map[string]any{
+	}
+	if payload.IncompleteReason.Reason != "" {
+		normalized.Raw = map[string]any{
 			"incomplete_reason": payload.IncompleteReason.Reason,
-		},
+		}
 	}
 	if text == "" && len(toolCalls) == 0 {
 		return "", normalized, tokenUsageFromOpenAI(payload.Usage), io.EOF
@@ -275,14 +277,15 @@ func parseOpenAIChatResponse(body []byte) (string, core.ProviderResponse, core.T
 		return "", core.ProviderResponse{}, core.TokenUsage{}, err
 	}
 	if len(payload.Choices) == 0 {
-		return "", core.ProviderResponse{
+		normalized := core.ProviderResponse{
 			Provider: "openai",
 			ID:       payload.ID,
 			Model:    payload.Model,
-			Raw: map[string]any{
-				"object": payload.Object,
-			},
-		}, tokenUsageFromOpenAI(payload.Usage), io.EOF
+		}
+		if payload.Object != "" {
+			normalized.Raw = map[string]any{"object": payload.Object}
+		}
+		return "", normalized, tokenUsageFromOpenAI(payload.Usage), io.EOF
 	}
 
 	choice := payload.Choices[0]
@@ -295,9 +298,9 @@ func parseOpenAIChatResponse(body []byte) (string, core.ProviderResponse, core.T
 		Role:         choice.Message.Role,
 		FinishReason: choice.FinishReason,
 		ToolCalls:    toolCalls,
-		Raw: map[string]any{
-			"object": payload.Object,
-		},
+	}
+	if payload.Object != "" {
+		normalized.Raw = map[string]any{"object": payload.Object}
 	}
 	if err != nil && len(toolCalls) == 0 {
 		return "", normalized, tokenUsageFromOpenAI(payload.Usage), err

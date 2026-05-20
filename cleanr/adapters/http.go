@@ -68,7 +68,7 @@ func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
 		ExtractError: extractErr,
 		Normalized: core.ProviderResponse{
 			Provider: "http",
-			Status:   httpResp.Status.Status,
+			Status:   httpResp.Status,
 		},
 	}
 }

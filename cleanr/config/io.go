@@ -29,12 +29,32 @@ func LoadConfigFile(path string) (core.Config, error) {
 	return cfg, nil
 }
 
+func LoadConfigData(data []byte, format string) (core.Config, error) {
+	cfg, err := decodeConfig(data, syntheticPath(format))
+	if err != nil {
+		return core.Config{}, err
+	}
+	applyDefaults(&cfg)
+	if err := ValidateConfig(cfg); err != nil {
+		return core.Config{}, err
+	}
+	return cfg, nil
+}
+
 func WriteConfigFile(path string, cfg core.Config) error {
 	data, err := encodeConfig(cfg, path)
 	if err != nil {
 		return err
 	}
 	return os.WriteFile(path, append(data, '\n'), 0o644)
+}
+
+func MarshalConfig(cfg core.Config, format string) ([]byte, error) {
+	data, err := encodeConfig(cfg, syntheticPath(format))
+	if err != nil {
+		return nil, err
+	}
+	return append(data, '\n'), nil
 }
 
 func decodeConfig(data []byte, path string) (core.Config, error) {
@@ -125,5 +145,14 @@ func isYAMLPath(path string) bool {
 		return true
 	default:
 		return false
+	}
+}
+
+func syntheticPath(format string) string {
+	switch strings.ToLower(strings.TrimSpace(format)) {
+	case "yaml", "yml":
+		return "inline.yaml"
+	default:
+		return "inline.json"
 	}
 }

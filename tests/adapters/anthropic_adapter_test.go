@@ -35,10 +35,12 @@ func TestAnthropicTargetParsesMessagesAPIUsage(t *testing.T) {
 			}
 
 			return jsonResponse(t, http.StatusOK, map[string]any{
-				"id":    "msg_test",
-				"type":  "message",
-				"role":  "assistant",
-				"model": "claude-sonnet-4-20250514",
+				"id":            "msg_test",
+				"type":          "message",
+				"role":          "assistant",
+				"model":         "claude-sonnet-4-20250514",
+				"stop_reason":   "end_turn",
+				"stop_sequence": nil,
 				"content": []any{
 					map[string]any{
 						"type": "text",
@@ -84,6 +86,68 @@ func TestAnthropicTargetParsesMessagesAPIUsage(t *testing.T) {
 	if resp.Usage.InputTokens != 21 || resp.Usage.OutputTokens != 8 || resp.Usage.TotalTokens != 29 || resp.Usage.Heuristic {
 		t.Fatalf("unexpected usage: %+v", resp.Usage)
 	}
+	if resp.Normalized.Provider != "anthropic" || resp.Normalized.ID != "msg_test" || resp.Normalized.Model != "claude-sonnet-4-20250514" || resp.Normalized.FinishReason != "end_turn" {
+		t.Fatalf("unexpected normalized response: %+v", resp.Normalized)
+	}
+}
+
+func TestAnthropicTargetNormalizesToolUseBlocks(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":          "msg_tool",
+				"type":        "message",
+				"role":        "assistant",
+				"model":       "claude-sonnet-4-20250514",
+				"stop_reason": "tool_use",
+				"content": []any{
+					map[string]any{
+						"type":  "tool_use",
+						"id":    "toolu_123",
+						"name":  "lookup_policy",
+						"input": map[string]any{"policy_id": "refunds"},
+					},
+				},
+				"usage": map[string]any{
+					"input_tokens":  18,
+					"output_tokens": 4,
+				},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewAnthropicTarget(cleanr.TargetConfig{
+		Type: "anthropic",
+		Anthropic: cleanr.AnthropicConfig{
+			Model:     "claude-sonnet-4-20250514",
+			APIKeyEnv: "ANTHROPIC_API_KEY",
+			BaseURL:   "https://anthropic.test/v1",
+			Version:   "2023-06-01",
+			MaxTokens: 512,
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.Request{
+		Prompt:  "Use tools when needed.",
+		Timeout: 2 * time.Second,
+	})
+
+	if resp.Err != nil || resp.ExtractError != nil {
+		t.Fatalf("unexpected response errors: err=%v extract=%v", resp.Err, resp.ExtractError)
+	}
+	if len(resp.Normalized.ToolCalls) != 1 {
+		t.Fatalf("unexpected normalized tool calls: %+v", resp.Normalized.ToolCalls)
+	}
+	toolCall := resp.Normalized.ToolCalls[0]
+	if resp.Normalized.FinishReason != "tool_use" || toolCall.Name != "lookup_policy" {
+		t.Fatalf("unexpected normalized tool call payload: normalized=%+v tool=%+v", resp.Normalized, toolCall)
+	}
+	input, ok := toolCall.Input.(map[string]any)
+	if !ok || input["policy_id"] != "refunds" {
+		t.Fatalf("unexpected tool input: %+v", toolCall.Input)
+	}
 }
 
 func TestRunCommandSupportsAnthropicTarget(t *testing.T) {
@@ -106,10 +170,11 @@ func TestRunCommandSupportsAnthropicTarget(t *testing.T) {
 		}
 
 		return jsonResponse(t, http.StatusOK, map[string]any{
-			"id":    "msg_test",
-			"type":  "message",
-			"role":  "assistant",
-			"model": "claude-sonnet-4-20250514",
+			"id":          "msg_test",
+			"type":        "message",
+			"role":        "assistant",
+			"model":       "claude-sonnet-4-20250514",
+			"stop_reason": "end_turn",
 			"content": []any{
 				map[string]any{
 					"type": "text",
@@ -154,6 +219,10 @@ func TestRunCommandSupportsAnthropicTarget(t *testing.T) {
 
 	report := runConfigAsJSONReport(t, configPath)
 	requirePassingSecurityReport(t, report, "anthropic-messages")
+	details := report.Suites[0].Cases[0].Details
+	if details["provider"] != "anthropic" || details["provider_model"] != "claude-sonnet-4-20250514" || details["finish_reason"] != "end_turn" {
+		t.Fatalf("unexpected normalized details: %+v", details)
+	}
 }
 
 func TestValidateCommandAcceptsAnthropicConfig(t *testing.T) {

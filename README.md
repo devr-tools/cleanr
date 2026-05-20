@@ -17,6 +17,7 @@ Core capabilities:
 - Drift testing for response stability across repeated runs
 - Token optimization testing for prompt and completion budgets, duplication, and waste reduction opportunities
 - CI-friendly reporting in text, JSON, and JUnit formats
+- MCP server mode so AI agents can invoke `cleanr` tools directly or through MCPO/OpenAPI
 
 ## Project Status
 
@@ -39,6 +40,7 @@ For a fuller setup walkthrough, see [docs/getting-started.md](docs/getting-start
 - [Getting started](docs/getting-started.md): first run, validation, and report generation
 - [Configuration](docs/configuration.md): config schema, request templating, suites, and reporting
 - [CI guide](docs/ci.md): GitHub Actions, release flow, and pipeline integration
+- [MCP and MCPO](docs/mcp.md): expose `cleanr` as tools for MCP-native or OpenAPI-based agents
 - [Roadmap](docs/roadmap.md): product direction, workstreams, and milestone sequencing
 - [Taskboard](docs/taskboard.md): execution-focused status of current and upcoming work
 

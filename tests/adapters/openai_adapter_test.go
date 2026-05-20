@@ -258,14 +258,14 @@ func TestRunCommandSupportsOpenAIResponsesTarget(t *testing.T) {
 			t.Fatalf("unexpected request: %v", err)
 		}
 
-			return jsonResponse(t, http.StatusOK, map[string]any{
-				"id":     "resp_test",
-				"object": "response",
-				"model":  "gpt-4.1-mini",
-				"status": "completed",
-				"output": []any{
-					map[string]any{
-						"type": "message",
+		return jsonResponse(t, http.StatusOK, map[string]any{
+			"id":     "resp_test",
+			"object": "response",
+			"model":  "gpt-4.1-mini",
+			"status": "completed",
+			"output": []any{
+				map[string]any{
+					"type": "message",
 					"role": "assistant",
 					"content": []any{
 						map[string]any{

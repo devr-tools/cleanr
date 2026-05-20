@@ -7,6 +7,7 @@ This directory holds the project documentation that should stay more detailed th
 - [Getting started](getting-started.md): build the CLI, generate a config, validate it, and run your first suite
 - [Configuration](configuration.md): understand the config model, request templating, suites, and report options
 - [CI guide](ci.md): wire `cleanr` into GitHub Actions or another CI system
+- [MCP and MCPO](mcp.md): expose `cleanr` as an MCP server and bridge it to OpenAPI for agents
 
 ## Project Planning
 

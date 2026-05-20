@@ -144,7 +144,7 @@ type anthropicMessageEnvelope struct {
 	Role         string `json:"role"`
 	StopReason   string `json:"stop_reason"`
 	StopSequence string `json:"stop_sequence"`
-	Content []struct {
+	Content      []struct {
 		Type  string `json:"type"`
 		Text  string `json:"text"`
 		ID    string `json:"id"`

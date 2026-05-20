@@ -11,9 +11,11 @@ import (
 	"time"
 
 	"cleanr/cleanr"
+	"cleanr/internal/mcpserver"
+	versionpkg "cleanr/internal/version"
 )
 
-var version = "0.1.0"
+var version = versionpkg.Number
 
 func Run(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 {
@@ -28,6 +30,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return validateCmd(args[1:], stdout, stderr)
 	case "init":
 		return initCmd(args[1:], stdout, stderr)
+	case "mcp":
+		return mcpCmd(args[1:], stdout, stderr)
 	case "version":
 		_, _ = fmt.Fprintf(stdout, "cleanr %s\n", version)
 		return 0
@@ -136,8 +140,21 @@ func initCmd(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func mcpCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("mcp", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if err := mcpserver.New().Serve(context.Background(), os.Stdin, stdout); err != nil {
+		_, _ = fmt.Fprintf(stderr, "mcp server error: %v\n", err)
+		return 2
+	}
+	return 0
+}
+
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|validate|init|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|validate|init|mcp|version> [flags]")
 }
 
 func resolveConfigPath(configPath string) (string, error) {

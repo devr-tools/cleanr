@@ -44,6 +44,14 @@ func WriteConfigFile(path string, cfg Config) error {
 	return configpkg.WriteConfigFile(path, cfg)
 }
 
+func LoadConfigData(data []byte, format string) (Config, error) {
+	return configpkg.LoadConfigData(data, format)
+}
+
+func MarshalConfig(cfg Config, format string) ([]byte, error) {
+	return configpkg.MarshalConfig(cfg, format)
+}
+
 func ValidateConfig(cfg Config) error {
 	return configpkg.ValidateConfig(cfg)
 }
