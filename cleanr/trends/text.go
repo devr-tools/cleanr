@@ -63,11 +63,32 @@ func RenderAnalysisText(analysis Analysis) string {
 			fmt.Fprintf(&b, "- %s\n", suiteLine(suite))
 		}
 	}
+	if len(analysis.CaseRegressions) > 0 {
+		fmt.Fprintf(&b, "\nCase Regressions\n")
+		fmt.Fprintf(&b, "----------------\n")
+		for _, c := range analysis.CaseRegressions {
+			fmt.Fprintf(&b, "- %s\n", caseLine(c))
+		}
+	}
 	if len(analysis.Improvements) > 0 {
 		fmt.Fprintf(&b, "\nImprovements\n")
 		fmt.Fprintf(&b, "------------\n")
 		for _, suite := range analysis.Improvements {
 			fmt.Fprintf(&b, "- %s\n", suiteLine(suite))
+		}
+	}
+	if len(analysis.CaseImprovements) > 0 {
+		fmt.Fprintf(&b, "\nCase Improvements\n")
+		fmt.Fprintf(&b, "-----------------\n")
+		for _, c := range analysis.CaseImprovements {
+			fmt.Fprintf(&b, "- %s\n", caseLine(c))
+		}
+	}
+	if len(analysis.FailureBuckets) > 0 {
+		fmt.Fprintf(&b, "\nFailure Buckets\n")
+		fmt.Fprintf(&b, "---------------\n")
+		for _, bucket := range analysis.FailureBuckets {
+			fmt.Fprintf(&b, "- %s\n", failureBucketLine(bucket))
 		}
 	}
 
@@ -113,4 +134,47 @@ func suiteLine(suite core.SuiteTrend) string {
 		}
 	}
 	return strings.Join(parts, " | ")
+}
+
+func caseLine(trend core.CaseTrend) string {
+	parts := []string{trend.Suite + "/" + trend.Name, trend.Status}
+	if len(trend.NewFindingSignatures) > 0 {
+		parts = append(parts, "new_findings="+compactItems(trend.NewFindingSignatures, 3))
+	} else if len(trend.FindingSignatures) > 0 {
+		parts = append(parts, "findings="+compactItems(trend.FindingSignatures, 3))
+	}
+	if trend.FirstUnsupportedClaim != "" {
+		parts = append(parts, "first_unsupported_claim="+trend.FirstUnsupportedClaim)
+	}
+	if len(trend.ToolCalls) > 0 {
+		parts = append(parts, "tools="+compactItems(trend.ToolCalls, 3))
+	}
+	if len(trend.StateChanges) > 0 {
+		parts = append(parts, "state_changes="+compactItems(trend.StateChanges, 2))
+	}
+	if len(trend.FileChanges) > 0 {
+		parts = append(parts, "file_changes="+compactItems(trend.FileChanges, 2))
+	}
+	if len(trend.MemoryMarkers) > 0 {
+		parts = append(parts, "memory="+compactItems(trend.MemoryMarkers, 2))
+	}
+	return strings.Join(parts, " | ")
+}
+
+func failureBucketLine(bucket core.FailureBucket) string {
+	parts := []string{bucket.Signature, fmt.Sprintf("cases=%d", bucket.Count)}
+	if len(bucket.Cases) > 0 {
+		parts = append(parts, "impacted="+compactItems(bucket.Cases, 3))
+	}
+	return strings.Join(parts, " | ")
+}
+
+func compactItems(items []string, limit int) string {
+	if len(items) == 0 {
+		return ""
+	}
+	if limit <= 0 || len(items) <= limit {
+		return strings.Join(items, ", ")
+	}
+	return fmt.Sprintf("%s (+%d more)", strings.Join(items[:limit], ", "), len(items)-limit)
 }

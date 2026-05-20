@@ -150,7 +150,6 @@ Primary outcomes:
 - signed release-gate artifacts and attestations
 - org-level policy packs for common agent risk profiles
 - plugin system for custom suites, state adapters, and policy rules
-- remote result aggregation for multi-service governance
 - IDE and PR integrations that surface policy failures inline
 
 Exit criteria:
@@ -158,6 +157,24 @@ Exit criteria:
 - external teams can extend `cleanr` without forking core behavior
 - organizations can standardize agent release criteria across multiple systems
 - governance artifacts are strong enough for internal audit and change review workflows
+
+### Phase 5: External eval and data integrations
+
+Objective: make `cleanr` interoperate cleanly with existing eval, tracing, and dataset systems without turning `cleanr` into a hosted observability product.
+
+Primary outcomes:
+
+- result sink integrations for external systems such as Braintrust so CI runs can publish machine-readable reports, regressions, and release-gate metadata remotely
+- remote baseline and trend-source integrations for comparing the current run against approved prior experiments or retained histories
+- dataset import and export flows that convert reviewed failures, production traces, or curated eval rows into replayable `cleanr` scenarios
+- pull request and release summaries that link local gate failures to remote experiment views for deeper triage
+- explicit contracts for what stays local and blocking versus what is best-effort and asynchronous in remote systems
+
+Exit criteria:
+
+- teams can push `cleanr` CI results into external systems without changing the local pass or fail contract
+- reviewed failures in external systems can be promoted back into durable `cleanr` regression fixtures
+- integrations strengthen governance and review workflows without making a hosted dashboard the primary product surface
 
 ## Phase 3 workstreams
 
@@ -200,6 +217,15 @@ Standardize governance and extensibility.
 - policy packs for common agent risk profiles
 - plugin and extension surfaces for custom policy and state adapters
 - PR and IDE integrations that surface workflow failures inline
+
+### Milestone E
+
+Integrate with external eval and dataset systems.
+
+- Braintrust-style result publishing for CI runs
+- remote experiment and trend comparison sources
+- dataset import and export for reviewed failures and production traces
+- contracts that keep `cleanr` local-first while allowing optional remote aggregation
 
 ## Non-goals for the near term
 

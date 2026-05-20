@@ -73,6 +73,21 @@ func ValidateConfig(cfg core.Config) error {
 		for j, source := range scenario.ContextSources {
 			validateContextSource(&errs, fmt.Sprintf("%s.context_sources[%d]", prefix, j), source)
 		}
+		if len(scenario.MemoryReplay) == 1 {
+			errs.Add(prefix+".memory_replay", "must contain at least two sessions", "add a second ordered session so memory replay can be evaluated across a session boundary")
+		}
+		replaySessionIDs := make(map[string]int, len(scenario.MemoryReplay))
+		for j, session := range scenario.MemoryReplay {
+			sessionPrefix := fmt.Sprintf("%s.memory_replay[%d]", prefix, j)
+			validateMemoryReplaySession(&errs, sessionPrefix, session)
+			if sessionID := strings.TrimSpace(session.SessionID); sessionID != "" {
+				if first, ok := replaySessionIDs[sessionID]; ok {
+					errs.Add(sessionPrefix+".session_id", fmt.Sprintf("duplicates %s.memory_replay[%d].session_id", prefix, first), "set a unique traced session_id for each replay step")
+				} else {
+					replaySessionIDs[sessionID] = j
+				}
+			}
+		}
 		for j, mutation := range scenario.ExpectedMutations {
 			validateExpectedMutation(&errs, fmt.Sprintf("%s.expected_mutations[%d]", prefix, j), mutation)
 		}
@@ -352,6 +367,22 @@ func validateContextSource(errs *ValidationErrors, prefix string, source core.Co
 	case "":
 	default:
 		errs.Add(prefix+".trust", "must be one of trusted, untrusted, or approved", "pick a supported trust tier")
+	}
+}
+
+func validateMemoryReplaySession(errs *ValidationErrors, prefix string, session core.MemoryReplaySession) {
+	requireNonEmpty(errs, prefix+".session_id", session.SessionID, "set the traced session identifier for this ordered replay step")
+	if rawSessionID, ok := session.Metadata["session_id"]; ok {
+		metadataSessionID := strings.TrimSpace(rawSessionID)
+		switch {
+		case metadataSessionID == "":
+			errs.Add(prefix+".metadata.session_id", "cannot be empty when set", "remove metadata.session_id or set it to the same fixed value as session_id")
+		case !strings.EqualFold(metadataSessionID, strings.TrimSpace(session.SessionID)):
+			errs.Add(prefix+".metadata.session_id", "must match "+prefix+".session_id", "use one stable traced session_id value for the replay step")
+		}
+	}
+	for i, source := range session.ContextSources {
+		validateContextSource(errs, fmt.Sprintf("%s.context_sources[%d]", prefix, i), source)
 	}
 }
 

@@ -33,6 +33,7 @@ func Analyze(history HistoryFile, window int) Analysis {
 		WindowSize:        len(selected),
 		OldestAt:          selected[0].GeneratedAt,
 		Latest:            buildSnapshot(latest),
+		FailureBuckets:    buildFailureBuckets(latest),
 		RecentRuns:        buildRecentSnapshots(selected),
 	}
 
@@ -50,6 +51,9 @@ func Analyze(history HistoryFile, window int) Analysis {
 		}
 		analysis.Regressions = filterSuiteTrends(comparison.Suites, "regressed")
 		analysis.Improvements = filterSuiteTrends(comparison.Suites, "improved")
+		analysis.CaseRegressions = comparison.CaseRegressions
+		analysis.CaseImprovements = comparison.CaseImprovements
+		analysis.FailureBuckets = comparison.FailureBuckets
 	}
 
 	totalDuration := int64(0)

@@ -13,6 +13,7 @@ func Compare(current HistoryRun, previous *HistoryRun, historyLength int) *core.
 		CurrentBuildID: current.BuildID,
 	}
 	if previous == nil {
+		trend.FailureBuckets = buildFailureBuckets(current)
 		return trend
 	}
 
@@ -58,6 +59,9 @@ func Compare(current HistoryRun, previous *HistoryRun, historyLength int) *core.
 			Drift:            compareDrift(prevSuite.Drift, suite.Drift),
 		})
 	}
+
+	trend.CaseRegressions, trend.CaseImprovements = compareCases(current, previous)
+	trend.FailureBuckets = buildFailureBuckets(current)
 
 	return trend
 }

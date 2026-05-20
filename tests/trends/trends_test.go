@@ -118,6 +118,157 @@ func TestAnalyzeTrendHistoryBuildsWindowSummary(t *testing.T) {
 	}
 }
 
+func TestAnalyzeTrendHistoryTracksCaseRegressionsAndFailureBuckets(t *testing.T) {
+	history := cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Runs: []cleanr.TrendHistoryRun{
+			{
+				BuildID:      "build-1",
+				GeneratedAt:  time.Date(2026, 5, 3, 12, 0, 0, 0, time.UTC),
+				Passed:       true,
+				Duration:     2 * time.Second,
+				FailedSuites: 0,
+				FailedCases:  0,
+				Suites: []cleanr.HistorySuite{
+					{
+						Name:   "claim-trace",
+						Passed: true,
+						Cases: []cleanr.HistoryCase{
+							{Name: "workflow-a", Passed: true},
+							{Name: "workflow-b", Passed: false, FindingSignatures: []string{"claimed tool execution with no matching invocation"}},
+						},
+					},
+				},
+			},
+			{
+				BuildID:      "build-2",
+				GeneratedAt:  time.Date(2026, 5, 4, 12, 0, 0, 0, time.UTC),
+				Passed:       false,
+				Duration:     3 * time.Second,
+				FailedSuites: 1,
+				FailedCases:  2,
+				Suites: []cleanr.HistorySuite{
+					{
+						Name:        "claim-trace",
+						Passed:      false,
+						FailedCases: 2,
+						Cases: []cleanr.HistoryCase{
+							{
+								Name:                  "workflow-a",
+								Passed:                false,
+								FindingSignatures:     []string{"claimed tool execution with no matching invocation"},
+								FirstUnsupportedClaim: "called lookup_policy",
+								ToolCalls:             []string{"lookup_policy"},
+							},
+							{
+								Name:      "workflow-b",
+								Passed:    true,
+								ToolCalls: []string{"lookup_policy"},
+							},
+							{
+								Name:              "workflow-c",
+								Passed:            false,
+								FindingSignatures: []string{"claimed tool execution with no matching invocation"},
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+	path := t.TempDir() + "/trends.yaml"
+	if err := cleanr.WriteTrendHistoryFile(path, history); err != nil {
+		t.Fatalf("write trend history: %v", err)
+	}
+
+	analysis, err := cleanr.AnalyzeTrendHistoryFile(path, 2)
+	if err != nil {
+		t.Fatalf("analyze trend history: %v", err)
+	}
+	if len(analysis.CaseRegressions) != 2 {
+		t.Fatalf("expected 2 case regressions, got %+v", analysis.CaseRegressions)
+	}
+	if analysis.CaseRegressions[0].Suite != "claim-trace" || analysis.CaseRegressions[0].Name != "workflow-a" {
+		t.Fatalf("unexpected first case regression: %+v", analysis.CaseRegressions[0])
+	}
+	if analysis.CaseRegressions[0].Status != "regressed" {
+		t.Fatalf("expected workflow-a to regress, got %+v", analysis.CaseRegressions[0])
+	}
+	if analysis.CaseRegressions[1].Status != "new" || analysis.CaseRegressions[1].Name != "workflow-c" {
+		t.Fatalf("expected workflow-c to be a new failing workflow, got %+v", analysis.CaseRegressions[1])
+	}
+	if len(analysis.CaseImprovements) != 1 || analysis.CaseImprovements[0].Name != "workflow-b" {
+		t.Fatalf("expected workflow-b improvement, got %+v", analysis.CaseImprovements)
+	}
+	if len(analysis.FailureBuckets) != 1 {
+		t.Fatalf("expected 1 grouped failure bucket, got %+v", analysis.FailureBuckets)
+	}
+	if analysis.FailureBuckets[0].Signature != "claimed tool execution with no matching invocation" || analysis.FailureBuckets[0].Count != 2 {
+		t.Fatalf("unexpected leading failure bucket: %+v", analysis.FailureBuckets[0])
+	}
+
+	var text bytes.Buffer
+	if err := cleanr.WriteTrendAnalysis(&text, analysis, "text"); err != nil {
+		t.Fatalf("write text analysis: %v", err)
+	}
+	for _, want := range []string{
+		"Case Regressions",
+		"workflow-a | regressed",
+		"Case Improvements",
+		"workflow-b | improved",
+		"Failure Buckets",
+		"cases=2",
+	} {
+		if !strings.Contains(text.String(), want) {
+			t.Fatalf("expected %q in text analysis, got %s", want, text.String())
+		}
+	}
+}
+
+func TestTrendHistoryRetainsFailedWorkflowCasesWithoutEvidence(t *testing.T) {
+	report := cleanr.Report{
+		Name:         "workflow-history",
+		GeneratedAt:  time.Date(2026, 5, 6, 12, 0, 0, 0, time.UTC),
+		Passed:       false,
+		Duration:     time.Second,
+		TotalSuites:  1,
+		FailedSuites: 1,
+		TotalCases:   2,
+		FailedCases:  1,
+		Suites: []cleanr.SuiteResult{
+			{
+				Name:   "claim-trace",
+				Passed: false,
+				Cases: []cleanr.CaseResult{
+					{Name: "failed-without-evidence", Passed: false},
+					{Name: "passed-without-evidence", Passed: true},
+				},
+			},
+		},
+	}
+	path := t.TempDir() + "/workflow-trends.json"
+
+	if err := cleanr.AttachTrendHistory(&report, path, "build-1", 5); err != nil {
+		t.Fatalf("attach trend history: %v", err)
+	}
+
+	history, err := cleanr.LoadTrendHistoryFile(path)
+	if err != nil {
+		t.Fatalf("load trend history: %v", err)
+	}
+	if len(history.Runs) != 1 || len(history.Runs[0].Suites) != 1 {
+		t.Fatalf("unexpected history layout: %+v", history)
+	}
+	cases := history.Runs[0].Suites[0].Cases
+	if len(cases) != 1 {
+		t.Fatalf("expected only retained failed workflow case, got %+v", cases)
+	}
+	if cases[0].Name != "failed-without-evidence" || cases[0].Passed {
+		t.Fatalf("unexpected retained case: %+v", cases[0])
+	}
+}
+
 func cleanTrendConfig() cleanr.Config {
 	cfg := cleanr.ExampleConfig()
 	cfg.Suites.PromptInjection.Enabled = false

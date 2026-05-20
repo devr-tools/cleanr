@@ -76,6 +76,25 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "duplicates scenarios[0].name",
 		},
 		{
+			name: "memory replay requires two sessions",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].MemoryReplay = []cleanr.MemoryReplaySession{{
+					SessionID: "session-1",
+				}}
+			},
+			wantSub: "scenarios[0].memory_replay",
+		},
+		{
+			name: "memory replay session ids must be unique",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].MemoryReplay = []cleanr.MemoryReplaySession{
+					{SessionID: "session-1"},
+					{SessionID: "session-1"},
+				}
+			},
+			wantSub: "duplicates scenarios[0].memory_replay[0].session_id",
+		},
+		{
 			name: "load max error rate range",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Load.Enabled = true

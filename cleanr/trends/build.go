@@ -12,6 +12,15 @@ func buildSuite(suite core.SuiteResult) HistorySuite {
 		Passed:      suite.Passed,
 		FailedCases: countFailedCases(suite.Cases),
 	}
+	if shouldRetainCaseEvidence(suite.Name) {
+		historySuite.Cases = make([]HistoryCase, 0, len(suite.Cases))
+		for _, c := range suite.Cases {
+			evidence := buildCaseEvidence(suite.Name, c)
+			if evidence != nil {
+				historySuite.Cases = append(historySuite.Cases, *evidence)
+			}
+		}
+	}
 
 	scoreTotal := 0.0
 	scoreCount := 0

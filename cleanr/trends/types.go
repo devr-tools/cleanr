@@ -29,6 +29,18 @@ type HistorySuite struct {
 	FailedCases  int                  `json:"failed_cases"`
 	AverageScore float64              `json:"average_score,omitempty"`
 	Drift        *HistoryDriftMetrics `json:"drift,omitempty"`
+	Cases        []HistoryCase        `json:"cases,omitempty"`
+}
+
+type HistoryCase struct {
+	Name                  string   `json:"name"`
+	Passed                bool     `json:"passed"`
+	FindingSignatures     []string `json:"finding_signatures,omitempty"`
+	FirstUnsupportedClaim string   `json:"first_unsupported_claim,omitempty"`
+	ToolCalls             []string `json:"tool_calls,omitempty"`
+	StateChanges          []string `json:"state_changes,omitempty"`
+	FileChanges           []string `json:"file_changes,omitempty"`
+	MemoryMarkers         []string `json:"memory_markers,omitempty"`
 }
 
 type HistoryDriftMetrics struct {
@@ -61,6 +73,9 @@ type Analysis struct {
 	Delta             *AnalysisDelta    `json:"delta,omitempty"`
 	Regressions       []core.SuiteTrend `json:"regressions,omitempty"`
 	Improvements      []core.SuiteTrend `json:"improvements,omitempty"`
+	CaseRegressions   []core.CaseTrend  `json:"case_regressions,omitempty"`
+	CaseImprovements  []core.CaseTrend  `json:"case_improvements,omitempty"`
+	FailureBuckets    []core.FailureBucket `json:"failure_buckets,omitempty"`
 	Drift             *DriftWindow      `json:"drift,omitempty"`
 	RecentRuns        []RunSnapshot     `json:"recent_runs,omitempty"`
 }

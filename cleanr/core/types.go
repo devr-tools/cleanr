@@ -52,6 +52,7 @@ type Scenario struct {
 	Input                string                `json:"input"`
 	Metadata             map[string]string     `json:"metadata"`
 	ContextSources       []ContextSource       `json:"context_sources,omitempty"`
+	MemoryReplay         []MemoryReplaySession `json:"memory_replay,omitempty"`
 	ExpectedMutations    []ExpectedMutation    `json:"expected_mutations,omitempty"`
 	ExpectedStateChanges []ExpectedStateChange `json:"expected_state_changes,omitempty"`
 	Tags                 []string              `json:"tags"`
@@ -66,6 +67,14 @@ type ContextSource struct {
 	Trust    string            `json:"trust"`
 	Content  string            `json:"content"`
 	Metadata map[string]string `json:"metadata,omitempty"`
+}
+
+type MemoryReplaySession struct {
+	Name           string            `json:"name,omitempty"`
+	SessionID      string            `json:"session_id,omitempty"`
+	Input          string            `json:"input,omitempty"`
+	Metadata       map[string]string `json:"metadata,omitempty"`
+	ContextSources []ContextSource   `json:"context_sources,omitempty"`
 }
 
 type ExpectedMutation struct {
@@ -372,6 +381,9 @@ type TrendReport struct {
 	PreviousDuration time.Duration `json:"previous_duration,omitempty"`
 	Summary          TrendSummary  `json:"summary"`
 	Suites           []SuiteTrend  `json:"suites,omitempty"`
+	CaseRegressions  []CaseTrend   `json:"case_regressions,omitempty"`
+	CaseImprovements []CaseTrend   `json:"case_improvements,omitempty"`
+	FailureBuckets   []FailureBucket `json:"failure_buckets,omitempty"`
 }
 
 type TrendGateReport struct {
@@ -398,6 +410,27 @@ type SuiteTrend struct {
 	FailedCasesDelta int         `json:"failed_cases_delta"`
 	ScoreDelta       float64     `json:"score_delta,omitempty"`
 	Drift            *DriftTrend `json:"drift,omitempty"`
+}
+
+type CaseTrend struct {
+	Suite                   string   `json:"suite"`
+	Name                    string   `json:"name"`
+	Status                  string   `json:"status"`
+	Passed                  bool     `json:"passed"`
+	FindingSignatures       []string `json:"finding_signatures,omitempty"`
+	NewFindingSignatures    []string `json:"new_finding_signatures,omitempty"`
+	ClearedFindingSignatures []string `json:"cleared_finding_signatures,omitempty"`
+	FirstUnsupportedClaim   string   `json:"first_unsupported_claim,omitempty"`
+	ToolCalls               []string `json:"tool_calls,omitempty"`
+	StateChanges            []string `json:"state_changes,omitempty"`
+	FileChanges             []string `json:"file_changes,omitempty"`
+	MemoryMarkers           []string `json:"memory_markers,omitempty"`
+}
+
+type FailureBucket struct {
+	Signature string   `json:"signature"`
+	Count     int      `json:"count"`
+	Cases     []string `json:"cases,omitempty"`
 }
 
 type DriftTrend struct {
