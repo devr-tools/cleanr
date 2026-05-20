@@ -26,70 +26,21 @@ Core capabilities:
 
 ## Quick Start
 
-Build the CLI:
-
 ```bash
 make build
-./dist/cleanr version
-```
-
-Generate an example config:
-
-```bash
 ./dist/cleanr init
-```
-
-Use YAML if preferred:
-
-```bash
-./dist/cleanr init -output cleanr.yaml
-```
-
-Validate the config:
-
-```bash
 ./dist/cleanr validate -config cleanr.json
-./dist/cleanr validate -config cleanr.yaml
-```
-
-Run the suites:
-
-```bash
 ./dist/cleanr run -config cleanr.json
 ```
 
-Emit JUnit output for CI:
-
-```bash
-./dist/cleanr run -config cleanr.json -format junit -output cleanr-junit.xml
-```
-
-You can also run the CLI directly from source:
-
-```bash
-go run ./cmd/cleanr run -config cleanr.json
-```
-
-## Configuration
-
-`cleanr` accepts both JSON and YAML configuration files. Format is selected by extension: `.json`, `.yaml`, or `.yml`.
-
-The primary config sections are:
-
-- `target`: endpoint, headers, timeout, request field mapping, and response extraction path
-- `scenarios`: representative prompts and policy boundary cases
-- `suites.prompt_injection`: adversarial refusal markers
-- `suites.security`: leak patterns, dangerous tool indicators, and PII thresholds
-- `suites.load`: concurrency settings and SLO thresholds
-- `suites.chaos`: enabled fault injections and resilience thresholds
-- `suites.drift`: repeated-run stability thresholds
-- `suites.token_optimization`: token budgets, duplication limits, and optimization hints
-- `reporting`: output format defaults
-
-Run `init` to generate a working starter file.
+For a fuller setup walkthrough, see [docs/getting-started.md](docs/getting-started.md).
 
 ## Documentation
 
+- [Docs index](docs/README.md): documentation map and recommended reading order
+- [Getting started](docs/getting-started.md): first run, validation, and report generation
+- [Configuration](docs/configuration.md): config schema, request templating, suites, and reporting
+- [CI guide](docs/ci.md): GitHub Actions, release flow, and pipeline integration
 - [Roadmap](docs/roadmap.md): product direction, workstreams, and milestone sequencing
 - [Taskboard](docs/taskboard.md): execution-focused status of current and upcoming work
 
@@ -103,7 +54,7 @@ As the project grows, `docs/` should remain the home for guides, examples, and o
 ├── cleanr/              Public SDK types, config, runner, engines, reporters, HTTP target adapter
 ├── cmd/cleanr/          CLI entrypoint
 ├── cmd/cleanr-dev/      Developer tooling entrypoint used by Make targets
-├── docs/                Roadmap and execution docs
+├── docs/                Guides, reference docs, roadmap, and execution notes
 ├── img/                 README and documentation assets
 ├── internal/cli/        Command parsing and CLI behavior
 ├── internal/devtools/   Format, lint, test, build, and release helpers
@@ -137,19 +88,7 @@ make release VERSION=v0.1.0
 
 ## CI and Releases
 
-The repository includes:
-
-- `.github/workflows/ci.yml` for pull request and `main` branch verification
-- `.github/workflows/release.yml` for tag-driven packaging and release publishing
-
-Release artifacts are currently built for:
-
-- `darwin/amd64`
-- `darwin/arm64`
-- `linux/amd64`
-- `linux/arm64`
-
-Each release generates compressed archives plus a `SHA256SUMS` file.
+The repository includes CI and release workflows under `.github/workflows/`. For the current pipeline behavior and integration patterns, see [docs/ci.md](docs/ci.md).
 
 ## Exit Codes
 
@@ -161,12 +100,4 @@ That makes `cleanr` straightforward to wire into GitHub Actions, Buildkite, Circ
 
 ## Roadmap
 
-Near-term priorities are:
-
-- native provider adapters beginning with OpenAI
-- provider-neutral response normalization
-- reusable assertions and richer config ergonomics
-- snapshot and semantic drift capabilities
-- stronger docs, examples, and CI integration
-
-Longer-term direction is tracked in [docs/roadmap.md](docs/roadmap.md).
+Near-term priorities include provider adapters, provider-neutral response normalization, reusable assertions, and stronger docs. Longer-term direction is tracked in [docs/roadmap.md](docs/roadmap.md).

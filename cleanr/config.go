@@ -11,14 +11,32 @@ import (
 func ValidateConfig(cfg Config) error {
 	var errs ValidationErrors
 
-	requireNonEmpty(&errs, "target.url", cfg.Target.URL, "set target.url to the full API endpoint URL")
-	requireNonEmpty(&errs, "target.prompt_field", cfg.Target.PromptField, "set target.prompt_field to the request field that receives the prompt text")
-	requireNonEmpty(&errs, "target.response_field", cfg.Target.ResponseField, "set target.response_field to the JSON path that contains the model text response")
-	if rawURL := strings.TrimSpace(cfg.Target.URL); rawURL != "" {
-		parsed, err := url.Parse(rawURL)
-		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-			errs.Add("target.url", "must be an absolute http(s) URL", "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
+	switch cfg.Target.targetType() {
+	case "http":
+		requireNonEmpty(&errs, "target.url", cfg.Target.URL, "set target.url to the full API endpoint URL")
+		requireNonEmpty(&errs, "target.prompt_field", cfg.Target.PromptField, "set target.prompt_field to the request field that receives the prompt text")
+		requireNonEmpty(&errs, "target.response_field", cfg.Target.ResponseField, "set target.response_field to the JSON path that contains the model text response")
+		if rawURL := strings.TrimSpace(cfg.Target.URL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add("target.url", "must be an absolute http(s) URL", "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
+			}
 		}
+	case "openai":
+		requireNonEmpty(&errs, "target.openai.model", cfg.Target.OpenAI.Model, "set the OpenAI model name, for example gpt-4o-mini or gpt-4.1-mini")
+		switch cfg.Target.OpenAI.apiMode() {
+		case "responses", "chat_completions":
+		default:
+			errs.Add("target.openai.api_mode", "must be one of responses or chat_completions", "use responses for new projects or chat_completions for legacy-compatible message requests")
+		}
+		if rawURL := strings.TrimSpace(cfg.Target.OpenAI.BaseURL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add("target.openai.base_url", "must be an absolute http(s) URL", "use a value such as https://api.openai.com/v1 or a compatible base URL for testing")
+			}
+		}
+	default:
+		errs.Add("target.type", "must be one of http or openai", "omit target.type for the default HTTP adapter, or set it to openai for the native OpenAI adapter")
 	}
 
 	if cfg.Target.TimeoutMS < 0 {
@@ -135,6 +153,7 @@ func ExampleConfig() Config {
 	cfg := Config{
 		Version: "v1alpha1",
 		Target: TargetConfig{
+			Type:          "http",
 			Name:          "assistant-api",
 			URL:           "http://localhost:8080/v1/chat",
 			Method:        "POST",
@@ -221,6 +240,9 @@ func applyDefaults(cfg *Config) {
 	if cfg.Version == "" {
 		cfg.Version = "v1alpha1"
 	}
+	if cfg.Target.Type == "" {
+		cfg.Target.Type = "http"
+	}
 	if cfg.Target.Method == "" {
 		cfg.Target.Method = "POST"
 	}
@@ -230,6 +252,20 @@ func applyDefaults(cfg *Config) {
 	if cfg.Target.Headers == nil {
 		cfg.Target.Headers = map[string]string{
 			"Content-Type": "application/json",
+		}
+	}
+	if cfg.Target.targetType() == "openai" {
+		if cfg.Target.Name == "" {
+			cfg.Target.Name = "openai"
+		}
+		if cfg.Target.OpenAI.APIMode == "" {
+			cfg.Target.OpenAI.APIMode = "responses"
+		}
+		if cfg.Target.OpenAI.APIKeyEnv == "" {
+			cfg.Target.OpenAI.APIKeyEnv = "OPENAI_API_KEY"
+		}
+		if cfg.Target.OpenAI.BaseURL == "" {
+			cfg.Target.OpenAI.BaseURL = "https://api.openai.com/v1"
 		}
 	}
 	if cfg.Suites.PromptInjection.Enabled && len(cfg.Suites.PromptInjection.BlockIndicators) == 0 {
@@ -298,6 +334,20 @@ func applyDefaults(cfg *Config) {
 
 func (c TargetConfig) Timeout() time.Duration {
 	return time.Duration(c.TimeoutMS) * time.Millisecond
+}
+
+func (c TargetConfig) targetType() string {
+	if strings.TrimSpace(c.Type) == "" {
+		return "http"
+	}
+	return strings.ToLower(strings.TrimSpace(c.Type))
+}
+
+func (c OpenAIConfig) apiMode() string {
+	if strings.TrimSpace(c.APIMode) == "" {
+		return "responses"
+	}
+	return strings.ToLower(strings.TrimSpace(c.APIMode))
 }
 
 func requireNonEmpty(errs *ValidationErrors, path, value, hint string) {

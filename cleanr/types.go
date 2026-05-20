@@ -11,6 +11,7 @@ type Config struct {
 }
 
 type TargetConfig struct {
+	Type            string            `json:"type"`
 	Name            string            `json:"name"`
 	URL             string            `json:"url"`
 	Method          string            `json:"method"`
@@ -20,6 +21,16 @@ type TargetConfig struct {
 	SystemField     string            `json:"system_field"`
 	ResponseField   string            `json:"response_field"`
 	RequestTemplate any               `json:"request_template"`
+	OpenAI          OpenAIConfig      `json:"openai"`
+}
+
+type OpenAIConfig struct {
+	APIMode      string `json:"api_mode"`
+	Model        string `json:"model"`
+	APIKeyEnv    string `json:"api_key_env"`
+	BaseURL      string `json:"base_url"`
+	Organization string `json:"organization"`
+	Project      string `json:"project"`
 }
 
 type Scenario struct {
