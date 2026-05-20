@@ -1,5 +1,3 @@
-# cleanr
-
 <p align="center">
   <img src="img/cleanr.png" alt="cleanr logo" width="420">
 </p>

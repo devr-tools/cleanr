@@ -336,6 +336,7 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *RunContext) Suit
 	totalInput := 0
 	totalOutput := 0
 	totalSavings := 0
+	heuristicOnly := true
 
 	for _, scenario := range runCtx.Config.Scenarios {
 		start := time.Now()
@@ -357,6 +358,9 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *RunContext) Suit
 		totalInput += usage.InputTokens
 		totalOutput += usage.OutputTokens
 		totalSavings += savings
+		if !usage.Heuristic {
+			heuristicOnly = false
+		}
 
 		if usage.InputTokens > cfg.MaxInputTokens {
 			findings = append(findings, Finding{Severity: "high", Message: fmt.Sprintf("estimated input tokens %d exceeded threshold %d", usage.InputTokens, cfg.MaxInputTokens)})
@@ -407,7 +411,7 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *RunContext) Suit
 			"total_output_tokens":  totalOutput,
 			"total_tokens":         totalInput + totalOutput,
 			"estimated_savings":    totalSavings,
-			"heuristic_estimation": true,
+			"heuristic_estimation": heuristicOnly,
 		},
 	}
 }
