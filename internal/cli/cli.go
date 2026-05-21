@@ -2,6 +2,7 @@ package cli
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io"
@@ -29,6 +30,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runCmd(args[1:], stdout, stderr)
 	case "trends":
 		return trendsCmd(args[1:], stdout, stderr)
+	case "plugins":
+		return pluginsCmd(args[1:], stdout, stderr)
 	case "snapshot":
 		return snapshotCmd(args[1:], stdout, stderr)
 	case "validate":
@@ -55,7 +58,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	format := fs.String("format", "", "Report format: text, json, junit")
 	output := fs.String("output", "", "Optional output file")
 	trendFile := fs.String("trend-file", "", "Optional trend history file")
-	replayArtifact := fs.String("replay-artifact", "", "Optional replay artifact file")
+	replayArtifactPath := fs.String("replay-artifact", "", "Optional replay artifact file")
 	buildID := fs.String("build-id", "", "Optional build identifier for trend history")
 	trendLimit := fs.Int("trend-limit", 0, "Maximum number of trend history runs to keep")
 	timeout := fs.Duration("timeout", 0, "Overall execution timeout")
@@ -83,8 +86,8 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	if *trendFile != "" {
 		cfg.Reporting.TrendFile = *trendFile
 	}
-	if *replayArtifact != "" {
-		cfg.Reporting.ReplayArtifactFile = *replayArtifact
+	if *replayArtifactPath != "" {
+		cfg.Reporting.ReplayArtifactFile = *replayArtifactPath
 	}
 	if *buildID != "" {
 		cfg.Reporting.BuildID = *buildID
@@ -108,10 +111,29 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	cleanr.EvaluateTrendGates(&report, cfg.Reporting.TrendGates)
+	replayArtifact := cleanr.ReplayArtifact{}
+	hasReplayArtifact := false
 	if strings.TrimSpace(cfg.Reporting.ReplayArtifactFile) != "" {
-		artifact := cleanr.BuildReplayArtifact(report)
-		if err := cleanr.WriteReplayArtifactFile(cfg.Reporting.ReplayArtifactFile, artifact); err != nil {
+		replayArtifact = cleanr.BuildReplayArtifact(report)
+		hasReplayArtifact = true
+		if err := cleanr.WriteReplayArtifactFile(cfg.Reporting.ReplayArtifactFile, replayArtifact); err != nil {
 			_, _ = fmt.Fprintf(stderr, "replay artifact error: %v\n", err)
+			return 2
+		}
+	}
+	if cfg.Governance.Attestation.Enabled {
+		rawKey := os.Getenv(cfg.Governance.Attestation.KeyEnv)
+		if !hasReplayArtifact {
+			replayArtifact = cleanr.BuildReplayArtifact(report)
+		}
+		attestation, err := cleanr.BuildReleaseGateAttestation(report, replayArtifact, rawKey, cfg.Governance.Attestation.KeyID)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "attestation error: %v\n", err)
+			return 2
+		}
+		outputPath := resolveConfigRelativePath(resolvedConfigPath, cfg.Governance.Attestation.Output)
+		if err := cleanr.WriteReleaseGateAttestationFile(outputPath, attestation); err != nil {
+			_, _ = fmt.Fprintf(stderr, "attestation error: %v\n", err)
 			return 2
 		}
 	}
@@ -240,6 +262,57 @@ func trendsCmd(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func pluginsCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("plugins", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "Path to cleanr config")
+	format := fs.String("format", "text", "Output format: text or json")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "plugins error: %v\n", err)
+		return 2
+	}
+	cfg, err := cleanr.LoadConfigFile(resolvedConfigPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "plugins error: %v\n", err)
+		return 2
+	}
+
+	switch strings.ToLower(strings.TrimSpace(*format)) {
+	case "", "text":
+		if len(cfg.ResolvedPlugins) == 0 {
+			_, _ = fmt.Fprintln(stdout, "No plugins configured.")
+			return 0
+		}
+		for _, plugin := range cfg.ResolvedPlugins {
+			_, _ = fmt.Fprintf(stdout, "%s", plugin.Name)
+			if plugin.Version != "" {
+				_, _ = fmt.Fprintf(stdout, " (%s)", plugin.Version)
+			}
+			_, _ = fmt.Fprintln(stdout)
+			if len(plugin.PolicyPacks) > 0 {
+				_, _ = fmt.Fprintf(stdout, "  policy_packs: %s\n", strings.Join(plugin.PolicyPacks, ", "))
+			}
+			for _, suite := range plugin.Suites {
+				_, _ = fmt.Fprintf(stdout, "  suite: %s -> %s\n", suite.Name, suite.Command)
+			}
+			for _, adapter := range plugin.StateAdapters {
+				_, _ = fmt.Fprintf(stdout, "  state_adapter: %s -> %s\n", adapter.Name, adapter.Command)
+			}
+		}
+		return 0
+	case "json":
+		return writeJSON(stdout, cfg.ResolvedPlugins)
+	default:
+		_, _ = fmt.Fprintf(stderr, "plugins error: unsupported format %s\n", *format)
+		return 2
+	}
+}
+
 func validateCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -293,7 +366,7 @@ func mcpCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|trends|snapshot|validate|init|setup|mcp|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|trends|plugins|snapshot|validate|init|setup|mcp|version> [flags]")
 }
 
 func resolveConfigPath(configPath string) (string, error) {
@@ -352,4 +425,13 @@ func resolveTrendPath(configPath, explicitTrendPath string) (string, error) {
 		return "", fmt.Errorf("no trend file configured; set reporting.trend_file or pass -trend-file")
 	}
 	return trendPath, nil
+}
+
+func writeJSON(w io.Writer, value any) int {
+	enc := json.NewEncoder(w)
+	enc.SetIndent("", "  ")
+	if err := enc.Encode(value); err != nil {
+		return 2
+	}
+	return 0
 }

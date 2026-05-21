@@ -1,0 +1,23 @@
+version: v1alpha1
+suites:
+  claim_trace:
+    enabled: true
+  release_policy:
+    enabled: true
+    rules:
+      - name: require-approval-for-outbound-actions
+        type: tool
+        mode: require_approval
+        tools:
+          - send_email
+          - post_message
+      - name: block-untrusted-sensitive-sinks
+        type: sink
+        mode: approved_only
+        approved_tools:
+          - send_email
+  provenance:
+    enabled: true
+reporting:
+  trend_gates:
+    preset: moderate

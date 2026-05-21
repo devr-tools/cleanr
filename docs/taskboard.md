@@ -37,6 +37,10 @@
 - [x] Add grouped failure buckets and workflow-level blast-radius summaries.
 - [x] Add nightly replay artifacts for failing workflows and retained evidence.
 - [x] Deepen longitudinal memory replay coverage for stale, revoked, and poisoned fixtures.
+- [x] Add org-level policy packs for reusable release criteria.
+- [x] Add signed release-gate attestations for audit workflows.
+- [x] Add plugin manifests for external suites, state adapters, and plugin-shipped policy packs.
+- [x] Add SARIF output for IDE and PR review surfaces.
 
 ## Now
 
@@ -50,6 +54,10 @@ Exit criteria: OpenAI and Anthropic adapters populate exact usage automatically 
 Deliverable: scenario inheritance or shared variables for repeated prompt setups.
 Exit criteria: example configs use shared defaults without duplication.
 
+- [x] Add plugin manifest and discovery surface.
+Deliverable: stable extension points for custom suites, state adapters, and policy rules.
+Exit criteria: external teams can register at least one custom extension without forking core behavior.
+
 ### CI
 
 - [x] Create GitHub Actions CI workflow.
@@ -59,6 +67,10 @@ Exit criteria: workflow YAML is committed and validates the main developer path 
 - [ ] Stabilize machine-readable reports.
 Deliverable: consistent JSON schema and JUnit output contract.
 Exit criteria: docs specify report fields and compatibility expectations.
+
+- [x] Add PR and IDE review integration outputs.
+Deliverable: machine-readable findings that can be surfaced inline in pull requests and editor tooling.
+Exit criteria: one documented integration path exists for PR annotations or IDE diagnostics.
 
 ## Next
 
@@ -90,8 +102,8 @@ Exit criteria: tagged release process documented and repeatable.
 - [ ] Add distributed load workers.
 - [x] Add trend reports across builds.
 - [x] Add `cleanr trends` history summarizer.
-- [ ] Add signed attestations for compliance evidence.
-- [ ] Add plugin system for custom suites.
+- [x] Add signed attestations for compliance evidence.
+- [x] Add plugin system for custom suites.
 - [ ] Add hosted result aggregation.
 
 ## Blockers and decisions
@@ -133,5 +145,14 @@ Status: complete.
 - Memory and state regressions are reproducible with stable multi-session replay fixtures.
 - Trend summaries surface build, prompt, and configured model diffs alongside workflow evidence changes.
 - Nightly runs can emit replay artifacts with failing workflows and retained evidence for triage.
+
+Status: complete.
+
+## Definition of Phase 4 done
+
+- External teams can extend `cleanr` with plugin manifests for custom suites, state adapters, and plugin-shipped policy rules without forking core behavior.
+- Organizations can standardize release policy across services with reusable policy packs.
+- Signed release-gate attestations are available for audit and change-review workflows.
+- SARIF output is available for IDE and PR review surfaces.
 
 Status: complete.

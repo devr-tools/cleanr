@@ -1,0 +1,27 @@
+version: v1alpha1
+suites:
+  release_policy:
+    enabled: true
+    rules:
+      - name: deny-untrusted-db-writes
+        type: trust
+        mode: deny
+        trusts:
+          - untrusted
+        state_kinds:
+          - sql
+        state_actions:
+          - update
+          - delete
+          - insert
+      - name: require-approval-for-bulk-export
+        type: tool
+        mode: require_approval
+        tools:
+          - export_csv
+          - send_email
+  memory_safety:
+    enabled: true
+reporting:
+  trend_gates:
+    preset: strict

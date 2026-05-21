@@ -1,0 +1,14 @@
+name: release-audit
+version: v1
+policy_packs:
+  - ../policy-packs/support-strict.yaml
+suites:
+  - name: org-audit
+    command: ./bin/org-audit-suite
+    args: ["--mode", "release"]
+    timeout_ms: 8000
+state_adapters:
+  - name: ticketing-normalizer
+    command: ./bin/ticketing-state-adapter
+    args: ["--surface", "ticketing"]
+    timeout_ms: 4000

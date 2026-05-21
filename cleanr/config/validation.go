@@ -251,9 +251,9 @@ func ValidateConfig(cfg core.Config) error {
 
 	if format := strings.TrimSpace(cfg.Reporting.Format); format != "" {
 		switch format {
-		case "text", "json", "junit":
+		case "text", "json", "junit", "sarif":
 		default:
-			errs.Add("reporting.format", "must be one of text, json, or junit", "use one of the built-in report formats or omit the field for text output")
+			errs.Add("reporting.format", "must be one of text, json, junit, or sarif", "use one of the built-in report formats or omit the field for text output")
 		}
 	}
 	if cfg.Reporting.TrendLimit < 0 {
@@ -284,6 +284,10 @@ func ValidateConfig(cfg core.Config) error {
 		if cfg.Reporting.TrendGates.MaxBaselineSemanticDriftDelta != nil && (*cfg.Reporting.TrendGates.MaxBaselineSemanticDriftDelta < 0 || *cfg.Reporting.TrendGates.MaxBaselineSemanticDriftDelta > 1) {
 			errs.Add("reporting.trend_gates.max_baseline_semantic_drift_delta", "must be between 0 and 1", "use a decimal drift delta such as 0.05")
 		}
+	}
+	if cfg.Governance.Attestation.Enabled {
+		requireNonEmpty(&errs, "governance.attestation.output", cfg.Governance.Attestation.Output, "set the attestation output path so cleanr can write the signed release-gate artifact")
+		requireNonEmpty(&errs, "governance.attestation.key_env", cfg.Governance.Attestation.KeyEnv, "set the env var name that contains the Ed25519 signing key for attestations")
 	}
 
 	if errs.HasAny() {

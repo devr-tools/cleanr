@@ -14,18 +14,25 @@ Generate a starter config with:
 
 ## Top-Level Shape
 
-The config has five top-level sections:
+The config has seven top-level sections:
 
 - `version`
+- `policy_packs`
+- `plugins`
 - `target`
 - `scenarios`
 - `suites`
 - `reporting`
+- `governance`
 
 ## Example
 
 ```yaml
 version: v1alpha1
+policy_packs:
+  - ./examples/policy-packs/support-strict.yaml
+plugins:
+  - ./examples/plugins/release-audit.yaml
 target:
   name: assistant-api
   url: http://localhost:8080/v1/chat
@@ -99,6 +106,12 @@ reporting:
   trend_limit: 30
   trend_gates:
     preset: moderate
+governance:
+  attestation:
+    enabled: true
+    output: reports/cleanr.attestation.json
+    key_env: CLEANR_ATTESTATION_KEY
+    key_id: ci-ed25519
 ```
 
 OpenAI-native examples are available in:
@@ -108,6 +121,78 @@ OpenAI-native examples are available in:
 - `examples/anthropic-messages.yaml`
 - `examples/openai-responses-tuned.yaml`
 - `examples/stateful-support-agent/cleanr.yaml`
+
+Reusable policy pack examples are available in:
+
+- `examples/policy-packs/support-strict.yaml`
+- `examples/policy-packs/data-boundary.yaml`
+
+Plugin manifest examples are available in:
+
+- `examples/plugins/release-audit.yaml`
+- `examples/plugins/data-ops.yaml`
+
+## `policy_packs`
+
+`policy_packs` is an optional ordered list of JSON or YAML config fragments that are merged before defaults and validation run on the final config.
+
+Example:
+
+```yaml
+policy_packs:
+  - ./examples/policy-packs/support-strict.yaml
+  - ./examples/policy-packs/data-boundary.yaml
+```
+
+Current merge behavior:
+
+- policy packs are resolved relative to the config file that references them
+- later packs override earlier packs
+- the main config overrides all loaded policy packs
+- object fields merge recursively
+- scalar and array fields are replaced by the main config when explicitly set there
+
+This is the current org-level standardization surface for release policy, trend gates, and other reusable suite settings.
+
+## `plugins`
+
+`plugins` is an optional ordered list of plugin manifest files. Plugin manifests can contribute:
+
+- reusable `policy_packs`
+- external suite commands
+- external state adapter commands that append normalized workflow evidence to provider responses
+
+Example:
+
+```yaml
+plugins:
+  - ./examples/plugins/release-audit.yaml
+```
+
+Plugin manifest shape:
+
+```yaml
+name: release-audit
+version: v1
+policy_packs:
+  - ../policy-packs/support-strict.yaml
+suites:
+  - name: org-audit
+    command: ./bin/org-audit-suite
+    args: ["--mode", "release"]
+state_adapters:
+  - name: ticketing-normalizer
+    command: ./bin/ticketing-state-adapter
+```
+
+Current behavior:
+
+- plugin manifests are resolved relative to the config file that references them
+- plugin policy packs are applied before config validation
+- plugin suite commands receive JSON on stdin and must return a `SuiteResult` JSON object on stdout
+- plugin state adapter commands receive the current request and response JSON on stdin and must return additional normalized workflow evidence such as `state_changes`, `source_uses`, or `memory_operations`
+
+Use `cleanr plugins -config cleanr.yaml` to inspect the resolved plugin surface for a config.
 
 ## `target`
 
@@ -662,7 +747,7 @@ Used to catch excessive prompt size, verbose output, and repeated content.
 
 ## `reporting`
 
-- `format`: `text`, `json`, or `junit`
+- `format`: `text`, `json`, `junit`, or `sarif`
 - `output`: optional destination file path
 - `trend_file`: optional JSON or YAML history file updated on each `run`
 - `replay_artifact_file`: optional JSON or YAML replay artifact written on each `run`
@@ -675,6 +760,33 @@ If `output` is omitted, reports are written to standard output. If `trend_file` 
 If `trend_file` is set and `replay_artifact_file` is omitted, `cleanr` derives a sibling replay path automatically by replacing `.trends.<ext>` with `.replay.<ext>`.
 
 The `cleanr trends` command reads that retained history file and emits a compact build-to-build summary in `text` or `json` format, including workflow regressions, grouped failure buckets, and prompt or model diffs between the latest two retained runs.
+
+Use `format: sarif` when you want a standard review format that IDEs, GitHub code scanning, and pull-request tooling can ingest.
+
+## `governance`
+
+`governance` contains audit-oriented release outputs.
+
+### `attestation`
+
+- `enabled`: when true, `cleanr run` writes a signed release-gate attestation
+- `output`: JSON or YAML path for the attestation file
+- `key_env`: env var name containing the Ed25519 signing key
+- `key_id`: optional stable key identifier embedded in the attestation
+
+The signing key can be either:
+
+- a base64-encoded 32-byte Ed25519 seed
+- a base64-encoded 64-byte Ed25519 private key
+- the same sizes encoded as hex
+
+When enabled, the attestation includes:
+
+- report digest
+- replay artifact digest
+- build ID and target name
+- pass or fail summary and trend summary
+- run metadata such as configured model and scenario fingerprints
 
 `trend_gates` supports:
 

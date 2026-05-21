@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	adapterspkg "cleanr/cleanr/adapters"
+	attestpkg "cleanr/cleanr/attest"
 	configpkg "cleanr/cleanr/config"
 	"cleanr/cleanr/core"
 	reportpkg "cleanr/cleanr/report"
@@ -38,6 +39,11 @@ type MemorySafetyConfig = core.MemorySafetyConfig
 type TokenOptimizationConfig = core.TokenOptimizationConfig
 type ReportingConfig = core.ReportingConfig
 type TrendGateConfig = core.TrendGateConfig
+type GovernanceConfig = core.GovernanceConfig
+type AttestationConfig = core.AttestationConfig
+type PluginManifest = core.PluginManifest
+type PluginSuite = core.PluginSuite
+type PluginStateAdapter = core.PluginStateAdapter
 type RunMetadata = core.RunMetadata
 type ScenarioFingerprint = core.ScenarioFingerprint
 type BuildDiff = core.BuildDiff
@@ -75,6 +81,10 @@ type FailureBucket = core.FailureBucket
 type DriftTrend = core.DriftTrend
 type ReplayArtifact = core.ReplayArtifact
 type ReplayArtifactCase = core.ReplayArtifactCase
+type ReleaseGateAttestation = core.ReleaseGateAttestation
+type AttestationSubject = core.AttestationSubject
+type AttestationPredicate = core.AttestationPredicate
+type AttestationSignature = core.AttestationSignature
 type Target = core.Target
 type Engine = core.Engine
 type RunContext = core.RunContext
@@ -155,6 +165,14 @@ func BuildReplayArtifact(report Report) ReplayArtifact {
 
 func WriteReplayArtifactFile(path string, artifact ReplayArtifact) error {
 	return trendspkg.WriteReplayArtifactFile(path, artifact)
+}
+
+func BuildReleaseGateAttestation(report Report, artifact ReplayArtifact, rawKey string, keyID string) (ReleaseGateAttestation, error) {
+	return attestpkg.BuildReleaseGateAttestation(report, artifact, rawKey, keyID)
+}
+
+func WriteReleaseGateAttestationFile(path string, attestation ReleaseGateAttestation) error {
+	return attestpkg.WriteReleaseGateAttestationFile(path, attestation)
 }
 
 func NewTarget(cfg TargetConfig, client *http.Client) Target {

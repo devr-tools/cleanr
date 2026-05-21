@@ -245,6 +245,24 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			},
 			wantSub: "reporting.trend_gates.preset",
 		},
+		{
+			name: "attestation requires output",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Governance.Attestation.Enabled = true
+				cfg.Governance.Attestation.KeyEnv = "CLEANR_ATTESTATION_KEY"
+				cfg.Governance.Attestation.Output = ""
+			},
+			wantSub: "governance.attestation.output",
+		},
+		{
+			name: "attestation requires key env",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Governance.Attestation.Enabled = true
+				cfg.Governance.Attestation.Output = "reports/cleanr.attestation.json"
+				cfg.Governance.Attestation.KeyEnv = ""
+			},
+			wantSub: "governance.attestation.key_env",
+		},
 	}
 
 	for _, tt := range tests {

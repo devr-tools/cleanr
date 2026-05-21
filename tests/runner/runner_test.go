@@ -2,6 +2,8 @@ package tests
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -226,6 +228,94 @@ func TestTokenOptimizationEngineFlagsWastefulOutput(t *testing.T) {
 	if report.Suites[0].Cases[0].Passed {
 		t.Fatalf("expected wasteful case to fail")
 	}
+}
+
+func TestRunnerExecutesPluginSuite(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = false
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name: "org-plugin",
+		Suites: []cleanr.PluginSuite{{
+			Name: "org-policy",
+			Command: writeExecutableScript(t, `#!/bin/sh
+printf '%s\n' '{"name":"org-policy","passed":false,"cases":[{"name":"case-1","passed":false,"findings":[{"severity":"high","message":"custom suite failure"}]}]}'
+`),
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if report.Passed {
+		t.Fatalf("expected plugin suite to fail the report")
+	}
+	found := false
+	for _, suite := range report.Suites {
+		if suite.Name == "org-policy" {
+			found = true
+			if len(suite.Cases) != 1 || suite.Cases[0].Findings[0].Message != "custom suite failure" {
+				t.Fatalf("unexpected plugin suite result: %+v", suite)
+			}
+		}
+	}
+	if !found {
+		t.Fatalf("expected plugin suite in report: %+v", report.Suites)
+	}
+}
+
+func TestRunnerAppliesPluginStateAdapter(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:  "plugin-state-adapter",
+		Input: "update the ticket",
+		ExpectedStateChanges: []cleanr.ExpectedStateChange{{
+			Kind:   "ticket",
+			Action: "update",
+			Target: "case-123",
+		}},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = true
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name: "org-plugin",
+		StateAdapters: []cleanr.PluginStateAdapter{{
+			Name: "ticket-normalizer",
+			Command: writeExecutableScript(t, `#!/bin/sh
+printf '%s\n' '{"state_changes":[{"kind":"ticket","action":"update","target":"case-123","status":"applied"}]}'
+`),
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected plugin state adapter to satisfy release-policy suite: %+v", report)
+	}
+}
+
+func writeExecutableScript(t *testing.T, body string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "plugin.sh")
+	if err := os.WriteFile(path, []byte(body), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+	return path
 }
 
 func TestSecurityEnginePassesScenarioAssertions(t *testing.T) {

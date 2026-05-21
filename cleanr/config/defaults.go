@@ -278,6 +278,14 @@ func applyDefaults(cfg *core.Config) {
 	if cfg.Reporting.TrendFile != "" && cfg.Reporting.ReplayArtifactFile == "" {
 		cfg.Reporting.ReplayArtifactFile = deriveReplayArtifactPath(cfg.Reporting.TrendFile)
 	}
+	if cfg.Governance.Attestation.Enabled {
+		if cfg.Governance.Attestation.KeyEnv == "" {
+			cfg.Governance.Attestation.KeyEnv = "CLEANR_ATTESTATION_KEY"
+		}
+		if cfg.Governance.Attestation.Output == "" {
+			cfg.Governance.Attestation.Output = deriveAttestationPath(cfg.Reporting.ReplayArtifactFile, cfg.Reporting.TrendFile, cfg.Target.Name)
+		}
+	}
 	applyTrendGatePreset(&cfg.Reporting.TrendGates)
 	if cfg.Reporting.TrendGates.Enabled && cfg.Reporting.TrendGates.RequiredWindow == 0 {
 		cfg.Reporting.TrendGates.RequiredWindow = 2
@@ -296,4 +304,31 @@ func deriveReplayArtifactPath(trendPath string) string {
 		ext = ".yaml"
 	}
 	return base + ".replay" + ext
+}
+
+func deriveAttestationPath(replayPath, trendPath, targetName string) string {
+	replayPath = strings.TrimSpace(replayPath)
+	if replayPath != "" {
+		ext := filepath.Ext(replayPath)
+		base := strings.TrimSuffix(replayPath, ext)
+		if ext == "" {
+			ext = ".json"
+		}
+		return base + ".attestation" + ext
+	}
+	trendPath = strings.TrimSpace(trendPath)
+	if trendPath != "" {
+		ext := filepath.Ext(trendPath)
+		base := strings.TrimSuffix(trendPath, ext)
+		base = strings.TrimSuffix(base, ".trends")
+		if ext == "" {
+			ext = ".json"
+		}
+		return base + ".attestation" + ext
+	}
+	targetName = strings.TrimSpace(targetName)
+	if targetName == "" {
+		targetName = "cleanr"
+	}
+	return filepath.Join("reports", targetName+".attestation.json")
 }

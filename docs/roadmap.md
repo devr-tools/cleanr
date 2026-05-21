@@ -123,28 +123,18 @@ Phase 3 is now in place as well:
 - build-aware diffs for prompts, workflow inputs, and configured models between retained runs
 - nightly replay artifacts that preserve failing workflows and retained evidence for triage
 
-This establishes the longitudinal regression core. The next roadmap phase is about governance, policy packs, and broader ecosystem integration.
+This establishes the longitudinal regression core. Phase 4 is now in place as well:
+
+- org-level policy packs that can be layered into configs before validation
+- signed release-gate attestations over the report and replay artifact for audit workflows
+- plugin manifests for external suites, state adapters, and plugin-shipped policy rules
+- SARIF output for IDE and PR review surfaces
+
+This establishes the governance and ecosystem core. The next roadmap phase is about optional external eval and data integrations.
 
 ## Forward roadmap
 
-Phase 1, Phase 2, and Phase 3 are complete. The roadmap below covers the remaining forward-looking work only.
-
-### Phase 4: Governance and ecosystem
-
-Objective: standardize agent release policy across teams and services.
-
-Primary outcomes:
-
-- signed release-gate artifacts and attestations
-- org-level policy packs for common agent risk profiles
-- plugin system for custom suites, state adapters, and policy rules
-- IDE and PR integrations that surface policy failures inline
-
-Exit criteria:
-
-- external teams can extend `cleanr` without forking core behavior
-- organizations can standardize agent release criteria across multiple systems
-- governance artifacts are strong enough for internal audit and change review workflows
+Phase 1, Phase 2, Phase 3, and Phase 4 are complete. The roadmap below covers the remaining forward-looking work only.
 
 ### Phase 5: External eval and data integrations
 
@@ -165,15 +155,6 @@ Exit criteria:
 - integrations strengthen governance and review workflows as a companion layer rather than a replacement product surface
 
 ## Milestone sequence
-
-### Milestone D
-
-Standardize governance and extensibility.
-
-- signed release-gate artifacts and attestations
-- policy packs for common agent risk profiles
-- plugin and extension surfaces for custom policy and state adapters
-- PR and IDE integrations that surface workflow failures inline
 
 ### Milestone E
 

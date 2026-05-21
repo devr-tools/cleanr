@@ -41,6 +41,20 @@ The generated file includes:
 - all currently supported suites enabled with starter thresholds
 - text reporting as the default output mode
 
+If you want to start from an org-level policy baseline instead of a raw starter, add a policy pack such as:
+
+```yaml
+policy_packs:
+  - ./examples/policy-packs/support-strict.yaml
+```
+
+If you also want organization-specific extension points, add a plugin manifest such as:
+
+```yaml
+plugins:
+  - ./examples/plugins/release-audit.yaml
+```
+
 If you want `cleanr` to set up a native provider for you instead of editing the starter manually, use:
 
 ```bash
@@ -198,11 +212,19 @@ Write a nightly replay artifact for failing workflows:
 ./dist/cleanr run -config cleanr.json -trend-file reports/cleanr.trends.yaml -replay-artifact reports/cleanr.replay.json -build-id "$GITHUB_SHA"
 ```
 
+Write a signed attestation for audit or release review:
+
+```bash
+export CLEANR_ATTESTATION_KEY=...
+./dist/cleanr run -config cleanr.json -trend-file reports/cleanr.trends.yaml -replay-artifact reports/cleanr.replay.json -build-id "$GITHUB_SHA"
+```
+
 Summarize the retained history window:
 
 ```bash
 ./dist/cleanr trends -config cleanr.json
 ./dist/cleanr trends -config cleanr.json -format json
+./dist/cleanr plugins -config cleanr.json
 ```
 
 Set an overall execution timeout:

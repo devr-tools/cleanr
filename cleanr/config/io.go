@@ -12,12 +12,7 @@ import (
 )
 
 func LoadConfigFile(path string) (core.Config, error) {
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return core.Config{}, err
-	}
-
-	cfg, err := decodeConfig(data, path)
+	cfg, err := loadConfigFile(path, nil)
 	if err != nil {
 		return core.Config{}, err
 	}
@@ -30,7 +25,7 @@ func LoadConfigFile(path string) (core.Config, error) {
 }
 
 func LoadConfigData(data []byte, format string) (core.Config, error) {
-	cfg, err := decodeConfig(data, syntheticPath(format))
+	cfg, err := decodeConfigWithPolicyPacks(data, syntheticPath(format), ".", nil)
 	if err != nil {
 		return core.Config{}, err
 	}
@@ -58,15 +53,7 @@ func MarshalConfig(cfg core.Config, format string) ([]byte, error) {
 }
 
 func decodeConfig(data []byte, path string) (core.Config, error) {
-	if isYAMLPath(path) {
-		return decodeYAMLConfig(data)
-	}
-
-	var cfg core.Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return core.Config{}, fmt.Errorf("decode config: %w", err)
-	}
-	return cfg, nil
+	return decodeConfigWithPolicyPacks(data, path, filepath.Dir(path), nil)
 }
 
 func encodeConfig(cfg core.Config, path string) ([]byte, error) {
@@ -112,6 +99,275 @@ func decodeYAMLConfig(data []byte) (core.Config, error) {
 		return core.Config{}, fmt.Errorf("decode config: %w", err)
 	}
 	return cfg, nil
+}
+
+func loadConfigFile(path string, seen map[string]struct{}) (core.Config, error) {
+	resolved := path
+	if !filepath.IsAbs(resolved) {
+		abs, err := filepath.Abs(resolved)
+		if err == nil {
+			resolved = abs
+		}
+	}
+	if seen == nil {
+		seen = map[string]struct{}{}
+	}
+	if _, ok := seen[resolved]; ok {
+		return core.Config{}, fmt.Errorf("decode config: policy pack cycle detected at %s", resolved)
+	}
+	seen[resolved] = struct{}{}
+	defer delete(seen, resolved)
+
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return core.Config{}, err
+	}
+	return decodeConfigWithPolicyPacks(data, resolved, filepath.Dir(resolved), seen)
+}
+
+func decodeConfigWithPolicyPacks(data []byte, path, baseDir string, seen map[string]struct{}) (core.Config, error) {
+	generic, err := decodeGenericConfig(data, path)
+	if err != nil {
+		return core.Config{}, err
+	}
+	pluginPaths := stringList(generic["plugins"])
+	pluginManifests, pluginDefaults, err := loadPluginManifests(baseDir, pluginPaths, seen)
+	if err != nil {
+		return core.Config{}, err
+	}
+	merged := cloneMap(generic)
+	if len(pluginDefaults) > 0 {
+		merged = applyDefaultsGenerics(merged, pluginDefaults)
+	}
+	merged, err = applyPolicyPackGenerics(merged, baseDir, seen)
+	if err != nil {
+		return core.Config{}, err
+	}
+	raw, err := json.Marshal(merged)
+	if err != nil {
+		return core.Config{}, fmt.Errorf("decode config: %w", err)
+	}
+	var cfg core.Config
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return core.Config{}, fmt.Errorf("decode config: %w", err)
+	}
+	cfg.ResolvedPlugins = pluginManifests
+	return cfg, nil
+}
+
+func decodeGenericConfig(data []byte, path string) (map[string]any, error) {
+	if isYAMLPath(path) {
+		var generic any
+		if err := yaml.Unmarshal(data, &generic); err != nil {
+			return nil, fmt.Errorf("decode config: %w", err)
+		}
+		normalized := normalizeYAMLValue(generic)
+		if mapped, ok := normalized.(map[string]any); ok {
+			return mapped, nil
+		}
+		return map[string]any{}, nil
+	}
+	var generic map[string]any
+	if err := json.Unmarshal(data, &generic); err != nil {
+		return nil, fmt.Errorf("decode config: %w", err)
+	}
+	return generic, nil
+}
+
+func applyPolicyPackGenerics(base map[string]any, baseDir string, seen map[string]struct{}) (map[string]any, error) {
+	packs := stringList(base["policy_packs"])
+	delete(base, "policy_packs")
+	defaults := map[string]any{}
+	for _, pack := range packs {
+		if strings.TrimSpace(pack) == "" {
+			continue
+		}
+		packPath := resolveRelativePath(baseDir, pack)
+		packGeneric, err := loadPackGenericFile(packPath, seen)
+		if err != nil {
+			return nil, err
+		}
+		delete(packGeneric, "policy_packs")
+		delete(packGeneric, "plugins")
+		defaults = overlayConfig(defaults, packGeneric)
+	}
+	merged := applyDefaultsGenerics(base, defaults)
+	if len(packs) > 0 {
+		merged["policy_packs"] = packs
+	}
+	return merged, nil
+}
+
+func applyDefaultsGenerics(base, defaults map[string]any) map[string]any {
+	if len(defaults) == 0 {
+		return cloneMap(base)
+	}
+	return overlayConfig(defaults, base)
+}
+
+func overlayConfig(base, override map[string]any) map[string]any {
+	out := cloneMap(base)
+	for key, overrideValue := range override {
+		baseValue, ok := out[key]
+		if !ok {
+			out[key] = overrideValue
+			continue
+		}
+		baseMap, baseIsMap := baseValue.(map[string]any)
+		overrideMap, overrideIsMap := overrideValue.(map[string]any)
+		if baseIsMap && overrideIsMap {
+			out[key] = overlayConfig(baseMap, overrideMap)
+			continue
+		}
+		out[key] = overrideValue
+	}
+	return out
+}
+
+func cloneMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return map[string]any{}
+	}
+	out := make(map[string]any, len(src))
+	for key, value := range src {
+		out[key] = value
+	}
+	return out
+}
+
+func stringList(value any) []string {
+	switch typed := value.(type) {
+	case []string:
+		return append([]string(nil), typed...)
+	case []any:
+		out := make([]string, 0, len(typed))
+		for _, item := range typed {
+			if text, ok := item.(string); ok && strings.TrimSpace(text) != "" {
+				out = append(out, strings.TrimSpace(text))
+			}
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
+func resolveRelativePath(baseDir, rel string) string {
+	rel = strings.TrimSpace(rel)
+	if rel == "" || filepath.IsAbs(rel) {
+		return rel
+	}
+	if strings.TrimSpace(baseDir) == "" {
+		baseDir = "."
+	}
+	return filepath.Join(baseDir, rel)
+}
+
+func loadPackGenericFile(path string, seen map[string]struct{}) (map[string]any, error) {
+	resolved := path
+	if !filepath.IsAbs(resolved) {
+		abs, err := filepath.Abs(resolved)
+		if err == nil {
+			resolved = abs
+		}
+	}
+	if seen == nil {
+		seen = map[string]struct{}{}
+	}
+	if _, ok := seen[resolved]; ok {
+		return nil, fmt.Errorf("decode config: policy pack cycle detected at %s", resolved)
+	}
+	seen[resolved] = struct{}{}
+	defer delete(seen, resolved)
+
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return nil, err
+	}
+	generic, err := decodeGenericConfig(data, resolved)
+	if err != nil {
+		return nil, err
+	}
+	return applyPolicyPackGenerics(generic, filepath.Dir(resolved), seen)
+}
+
+func loadPluginManifests(baseDir string, pluginPaths []string, seen map[string]struct{}) ([]core.PluginManifest, map[string]any, error) {
+	if len(pluginPaths) == 0 {
+		return nil, nil, nil
+	}
+	manifests := make([]core.PluginManifest, 0, len(pluginPaths))
+	defaults := map[string]any{}
+	for _, pluginPath := range pluginPaths {
+		manifest, pluginDefaults, err := loadPluginManifestFile(resolveRelativePath(baseDir, pluginPath), seen)
+		if err != nil {
+			return nil, nil, err
+		}
+		manifests = append(manifests, manifest)
+		defaults = overlayConfig(defaults, pluginDefaults)
+	}
+	return manifests, defaults, nil
+}
+
+func loadPluginManifestFile(path string, seen map[string]struct{}) (core.PluginManifest, map[string]any, error) {
+	resolved := path
+	if !filepath.IsAbs(resolved) {
+		abs, err := filepath.Abs(resolved)
+		if err == nil {
+			resolved = abs
+		}
+	}
+	data, err := os.ReadFile(resolved)
+	if err != nil {
+		return core.PluginManifest{}, nil, err
+	}
+	generic, err := decodeGenericConfig(data, resolved)
+	if err != nil {
+		return core.PluginManifest{}, nil, err
+	}
+	raw, err := json.Marshal(generic)
+	if err != nil {
+		return core.PluginManifest{}, nil, fmt.Errorf("decode config: %w", err)
+	}
+	var manifest core.PluginManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return core.PluginManifest{}, nil, fmt.Errorf("decode config: %w", err)
+	}
+	if strings.TrimSpace(manifest.Name) == "" {
+		manifest.Name = strings.TrimSuffix(filepath.Base(resolved), filepath.Ext(resolved))
+	}
+	if err := validatePluginManifest(manifest, resolved); err != nil {
+		return core.PluginManifest{}, nil, err
+	}
+	defaults := map[string]any{}
+	for _, pack := range manifest.PolicyPacks {
+		packGeneric, err := loadPackGenericFile(resolveRelativePath(filepath.Dir(resolved), pack), seen)
+		if err != nil {
+			return core.PluginManifest{}, nil, err
+		}
+		delete(packGeneric, "plugins")
+		defaults = overlayConfig(defaults, packGeneric)
+	}
+	return manifest, defaults, nil
+}
+
+func validatePluginManifest(manifest core.PluginManifest, path string) error {
+	for i, suite := range manifest.Suites {
+		if strings.TrimSpace(suite.Name) == "" {
+			return fmt.Errorf("decode config: plugin %s suite[%d] is missing name", path, i)
+		}
+		if strings.TrimSpace(suite.Command) == "" {
+			return fmt.Errorf("decode config: plugin %s suite[%d] is missing command", path, i)
+		}
+	}
+	for i, adapter := range manifest.StateAdapters {
+		if strings.TrimSpace(adapter.Name) == "" {
+			return fmt.Errorf("decode config: plugin %s state_adapter[%d] is missing name", path, i)
+		}
+		if strings.TrimSpace(adapter.Command) == "" {
+			return fmt.Errorf("decode config: plugin %s state_adapter[%d] is missing command", path, i)
+		}
+	}
+	return nil
 }
 
 func normalizeYAMLValue(v any) any {

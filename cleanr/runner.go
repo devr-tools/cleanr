@@ -7,6 +7,7 @@ import (
 
 	adapterspkg "cleanr/cleanr/adapters"
 	enginespkg "cleanr/cleanr/engines"
+	pluginspkg "cleanr/cleanr/plugins"
 )
 
 type Runner struct {
@@ -17,6 +18,7 @@ type Runner struct {
 
 func NewRunner(cfg Config, target Target) *Runner {
 	engines := defaultEngines(cfg)
+	target = pluginspkg.WrapTarget(target, cfg.ResolvedPlugins)
 	return &Runner{
 		config:  cfg,
 		target:  target,

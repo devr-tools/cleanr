@@ -1,6 +1,7 @@
 package tests
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -61,5 +62,128 @@ func TestConfigMarshalAndLoadCoverErrorAndFormatBranches(t *testing.T) {
 	path := testutil.WriteNamedConfigFile(t, "broken.yaml", "key: [unterminated")
 	if _, err := cleanr.LoadConfigFile(path); err == nil || !strings.Contains(err.Error(), "decode config:") {
 		t.Fatalf("expected yaml decode failure, got %v", err)
+	}
+}
+
+func TestLoadConfigFileAppliesPolicyPacksBeforeValidation(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	packPath := filepath.Join(dir, "support-strict.yaml")
+	if err := os.WriteFile(packPath, []byte(`
+suites:
+  claim_trace:
+    enabled: true
+  release_policy:
+    enabled: true
+    rules:
+      - type: tool
+        mode: require_approval
+        tools:
+          - send_email
+reporting:
+  trend_file: reports/cleanr.trends.yaml
+  trend_gates:
+    preset: moderate
+`), 0o644); err != nil {
+		t.Fatalf("write policy pack: %v", err)
+	}
+
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+version: v1alpha1
+policy_packs:
+  - ./support-strict.yaml
+target:
+  url: https://example.com/v1/chat
+  prompt_field: input
+  response_field: output.text
+scenarios:
+  - name: refund-summary
+    input: Summarize the refund policy.
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load config with policy pack: %v", err)
+	}
+	if !cfg.Suites.ClaimTrace.Enabled || !cfg.Suites.ReleasePolicy.Enabled {
+		t.Fatalf("expected policy pack suites to apply, got %+v", cfg.Suites)
+	}
+	if len(cfg.Suites.ReleasePolicy.Rules) != 1 || cfg.Suites.ReleasePolicy.Rules[0].Tools[0] != "send_email" {
+		t.Fatalf("expected pack release-policy rules, got %+v", cfg.Suites.ReleasePolicy.Rules)
+	}
+	if cfg.Reporting.TrendGates.Preset != "moderate" || !cfg.Reporting.TrendGates.Enabled {
+		t.Fatalf("expected policy pack trend gate preset, got %+v", cfg.Reporting.TrendGates)
+	}
+}
+
+func TestLoadConfigFileResolvesPluginManifest(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	packPath := filepath.Join(dir, "plugin-pack.yaml")
+	if err := os.WriteFile(packPath, []byte(`
+suites:
+  provenance:
+    enabled: true
+  release_policy:
+    enabled: true
+    rules:
+      - type: tool
+        mode: deny
+        tools:
+          - send_email
+`), 0o644); err != nil {
+		t.Fatalf("write pack: %v", err)
+	}
+	pluginPath := filepath.Join(dir, "workflow-plugin.yaml")
+	if err := os.WriteFile(pluginPath, []byte(`
+name: workflow-plugin
+version: v1
+policy_packs:
+  - ./plugin-pack.yaml
+suites:
+  - name: org-policy
+    command: /bin/echo
+state_adapters:
+  - name: ticket-adapter
+    command: /bin/echo
+`), 0o644); err != nil {
+		t.Fatalf("write plugin: %v", err)
+	}
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+version: v1alpha1
+plugins:
+  - ./workflow-plugin.yaml
+target:
+  url: https://example.com/v1/chat
+  prompt_field: input
+  response_field: output.text
+scenarios:
+  - name: x
+    input: y
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if len(cfg.ResolvedPlugins) != 1 || cfg.ResolvedPlugins[0].Name != "workflow-plugin" {
+		t.Fatalf("expected resolved plugin manifest, got %+v", cfg.ResolvedPlugins)
+	}
+	if !cfg.Suites.Provenance.Enabled {
+		t.Fatalf("expected plugin policy pack to apply, got %+v", cfg.Suites.Provenance)
+	}
+	if !cfg.Suites.ReleasePolicy.Enabled {
+		t.Fatalf("expected plugin release policy to apply, got %+v", cfg.Suites.ReleasePolicy)
+	}
+	if len(cfg.Suites.ReleasePolicy.Rules) != 1 || len(cfg.Suites.ReleasePolicy.Rules[0].Tools) != 1 || cfg.Suites.ReleasePolicy.Rules[0].Tools[0] != "send_email" {
+		t.Fatalf("expected plugin policy rules, got %+v", cfg.Suites.ReleasePolicy.Rules)
 	}
 }

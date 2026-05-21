@@ -147,4 +147,20 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 	if err := cleanr.WriteReport(&bytes.Buffer{}, report, "markdown"); err == nil {
 		t.Fatal("expected unsupported report format error")
 	}
+
+	var sarif bytes.Buffer
+	if err := cleanr.WriteReport(&sarif, report, "sarif"); err != nil {
+		t.Fatalf("write sarif report: %v", err)
+	}
+	sarifOut := sarif.String()
+	for _, want := range []string{
+		`"version": "2.1.0"`,
+		`"ruleId": "cleanr.security.case-1.critical"`,
+		`"level": "error"`,
+		`"text": "boom"`,
+	} {
+		if !strings.Contains(sarifOut, want) {
+			t.Fatalf("expected %q in sarif output:\n%s", want, sarifOut)
+		}
+	}
 }

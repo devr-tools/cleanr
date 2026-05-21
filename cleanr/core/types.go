@@ -7,11 +7,15 @@ import (
 )
 
 type Config struct {
-	Version   string          `json:"version"`
-	Target    TargetConfig    `json:"target"`
-	Scenarios []Scenario      `json:"scenarios"`
-	Suites    SuitesConfig    `json:"suites"`
-	Reporting ReportingConfig `json:"reporting"`
+	Version         string           `json:"version"`
+	PolicyPacks     []string         `json:"policy_packs,omitempty"`
+	Plugins         []string         `json:"plugins,omitempty"`
+	Target          TargetConfig     `json:"target"`
+	Scenarios       []Scenario       `json:"scenarios"`
+	Suites          SuitesConfig     `json:"suites"`
+	Reporting       ReportingConfig  `json:"reporting"`
+	Governance      GovernanceConfig `json:"governance"`
+	ResolvedPlugins []PluginManifest `json:"-"`
 }
 
 type TargetConfig struct {
@@ -228,6 +232,41 @@ type ReportingConfig struct {
 	TrendLimit         int             `json:"trend_limit"`
 	BuildID            string          `json:"build_id"`
 	TrendGates         TrendGateConfig `json:"trend_gates"`
+}
+
+type GovernanceConfig struct {
+	Attestation AttestationConfig `json:"attestation"`
+}
+
+type AttestationConfig struct {
+	Enabled bool   `json:"enabled"`
+	Output  string `json:"output"`
+	KeyEnv  string `json:"key_env"`
+	KeyID   string `json:"key_id"`
+}
+
+type PluginManifest struct {
+	Name          string               `json:"name"`
+	Version       string               `json:"version,omitempty"`
+	PolicyPacks   []string             `json:"policy_packs,omitempty"`
+	Suites        []PluginSuite        `json:"suites,omitempty"`
+	StateAdapters []PluginStateAdapter `json:"state_adapters,omitempty"`
+}
+
+type PluginSuite struct {
+	Name      string            `json:"name"`
+	Command   string            `json:"command"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	TimeoutMS int               `json:"timeout_ms,omitempty"`
+}
+
+type PluginStateAdapter struct {
+	Name      string            `json:"name"`
+	Command   string            `json:"command"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	TimeoutMS int               `json:"timeout_ms,omitempty"`
 }
 
 type TrendGateConfig struct {
@@ -493,6 +532,36 @@ type ReplayArtifactCase struct {
 	Findings []Finding            `json:"findings,omitempty"`
 	Evidence map[string]any       `json:"evidence,omitempty"`
 	Failed   bool                 `json:"failed"`
+}
+
+type ReleaseGateAttestation struct {
+	Version     string               `json:"version"`
+	Type        string               `json:"type"`
+	GeneratedAt time.Time            `json:"generated_at"`
+	Subject     AttestationSubject   `json:"subject"`
+	Predicate   AttestationPredicate `json:"predicate"`
+	Signature   AttestationSignature `json:"signature"`
+}
+
+type AttestationSubject struct {
+	Target               string `json:"target"`
+	BuildID              string `json:"build_id,omitempty"`
+	ReportSHA256         string `json:"report_sha256"`
+	ReplayArtifactSHA256 string `json:"replay_artifact_sha256,omitempty"`
+}
+
+type AttestationPredicate struct {
+	Passed       bool          `json:"passed"`
+	FailedSuites int           `json:"failed_suites"`
+	FailedCases  int           `json:"failed_cases"`
+	TrendSummary *TrendSummary `json:"trend_summary,omitempty"`
+	Metadata     *RunMetadata  `json:"metadata,omitempty"`
+}
+
+type AttestationSignature struct {
+	KeyID     string `json:"key_id,omitempty"`
+	Algorithm string `json:"algorithm"`
+	Value     string `json:"value"`
 }
 
 type DriftTrend struct {

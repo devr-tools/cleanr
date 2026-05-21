@@ -78,6 +78,8 @@ jobs:
         run: ./dist/cleanr validate -config cleanr.yaml
 
       - name: Run cleanr
+        env:
+          CLEANR_ATTESTATION_KEY: ${{ secrets.CLEANR_ATTESTATION_KEY }}
         run: ./dist/cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml -trend-file reports/cleanr.trends.yaml -replay-artifact reports/cleanr.replay.json -build-id "${{ github.sha }}"
 
       - name: Upload report
@@ -88,6 +90,7 @@ jobs:
             cleanr-junit.xml
             reports/cleanr.trends.yaml
             reports/cleanr.replay.json
+            reports/cleanr.attestation.json
 ```
 
 ## Local-to-CI Workflow
@@ -105,6 +108,7 @@ A practical rollout path is:
 - `text`: good for local development and terminal-first review
 - `json`: good for automation, custom ingestion, or post-processing
 - `junit`: good for CI systems that already understand test reports
+- `sarif`: good for IDEs, GitHub code scanning, and PR review surfaces that understand SARIF
 
 Trend history is orthogonal to the main report format. If `reporting.trend_file` or `-trend-file` is set, `cleanr` also writes a compact JSON or YAML history file that can be persisted as a CI artifact and compared by later runs.
 
@@ -117,6 +121,8 @@ Replay artifacts are the nightly triage companion to that retained history. If `
 
 If `trend_file` is set and `replay_artifact_file` is omitted, `cleanr` derives a sibling replay artifact path automatically.
 
+Signed attestations are the governance companion to those artifacts. If `governance.attestation.enabled` is true, `cleanr run` signs the release-gate statement with an Ed25519 key from the configured env var and writes an attestation file for audit or change-review workflows.
+
 If you want CI to fail only on meaningful regressions instead of every informational delta, enable `reporting.trend_gates` in the config. That lets you gate on metrics like additional failed cases, semantic drift delta, or duration growth between builds.
 
 A sane starter policy is:
@@ -128,6 +134,12 @@ reporting:
   trend_limit: 30
   trend_gates:
     preset: moderate
+governance:
+  attestation:
+    enabled: true
+    output: reports/cleanr.attestation.json
+    key_env: CLEANR_ATTESTATION_KEY
+    key_id: ci-ed25519
 ```
 
 Use `preset: strict` when you want tighter budgets, or `preset: exploratory` when you want the same trend history and summaries without CI-blocking gates.

@@ -1,0 +1,11 @@
+name: data-ops
+version: v1
+policy_packs:
+  - ../policy-packs/data-boundary.yaml
+suites:
+  - name: warehouse-guard
+    command: ./bin/warehouse-guard-suite
+state_adapters:
+  - name: sql-normalizer
+    command: ./bin/sql-state-adapter
+    args: ["--dialect", "postgres"]
