@@ -825,6 +825,8 @@ That exact pattern is also available as a copyable file in `examples/openai-resp
 
 `integrations` is the optional Phase 5 companion layer. It never replaces the local `cleanr` pass or fail contract.
 
+For a snapshot of what is implemented today, see [integrations.md](integrations.md).
+
 - local suite execution, local trend gates, and CLI exit codes remain blocking
 - remote trend sources, result sinks, and summary artifacts are best-effort add-ons
 - integration failures are recorded in the report and written to stderr, but they do not flip a passing local run into exit code `2`
