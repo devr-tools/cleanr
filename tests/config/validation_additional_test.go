@@ -263,6 +263,35 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			},
 			wantSub: "governance.attestation.key_env",
 		},
+		{
+			name: "result sink requires absolute endpoint",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+					Type:     "braintrust",
+					Endpoint: "not-a-url",
+				}}
+			},
+			wantSub: "integrations.result_sinks[0].endpoint",
+		},
+		{
+			name: "trend source validates required selector",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+					Type: "file",
+				}}
+			},
+			wantSub: "integrations.trend_sources[0].path",
+		},
+		{
+			name: "summary validates format",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Integrations.Summaries = []cleanr.SummaryConfig{{
+					Format: "html",
+					Output: "reports/summary.md",
+				}}
+			},
+			wantSub: "integrations.summaries[0].format",
+		},
 	}
 
 	for _, tt := range tests {

@@ -272,6 +272,21 @@ func applyDefaults(cfg *core.Config) {
 			cfg.Suites.TokenOptimization.SuggestedMaxOutputTokens = 180
 		}
 	}
+	for i := range cfg.Integrations.ResultSinks {
+		if cfg.Integrations.ResultSinks[i].TimeoutMS == 0 {
+			cfg.Integrations.ResultSinks[i].TimeoutMS = 5000
+		}
+	}
+	for i := range cfg.Integrations.TrendSources {
+		if cfg.Integrations.TrendSources[i].TimeoutMS == 0 {
+			cfg.Integrations.TrendSources[i].TimeoutMS = 5000
+		}
+	}
+	for i := range cfg.Integrations.Summaries {
+		if strings.TrimSpace(cfg.Integrations.Summaries[i].Format) == "" {
+			cfg.Integrations.Summaries[i].Format = "markdown"
+		}
+	}
 	if cfg.Reporting.TrendFile != "" && cfg.Reporting.TrendLimit == 0 {
 		cfg.Reporting.TrendLimit = 30
 	}

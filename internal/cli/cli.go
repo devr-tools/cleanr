@@ -30,6 +30,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return runCmd(args[1:], stdout, stderr)
 	case "trends":
 		return trendsCmd(args[1:], stdout, stderr)
+	case "dataset":
+		return datasetCmd(args[1:], stdout, stderr)
 	case "plugins":
 		return pluginsCmd(args[1:], stdout, stderr)
 	case "snapshot":
@@ -113,29 +115,44 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	cleanr.EvaluateTrendGates(&report, cfg.Reporting.TrendGates)
 	replayArtifact := cleanr.ReplayArtifact{}
 	hasReplayArtifact := false
-	if strings.TrimSpace(cfg.Reporting.ReplayArtifactFile) != "" {
+	if needsReplayArtifact(cfg) {
 		replayArtifact = cleanr.BuildReplayArtifact(report)
 		hasReplayArtifact = true
+	}
+	if strings.TrimSpace(cfg.Reporting.ReplayArtifactFile) != "" {
 		if err := cleanr.WriteReplayArtifactFile(cfg.Reporting.ReplayArtifactFile, replayArtifact); err != nil {
 			_, _ = fmt.Fprintf(stderr, "replay artifact error: %v\n", err)
 			return 2
 		}
 	}
+	var attestation *cleanr.ReleaseGateAttestation
 	if cfg.Governance.Attestation.Enabled {
 		rawKey := os.Getenv(cfg.Governance.Attestation.KeyEnv)
 		if !hasReplayArtifact {
 			replayArtifact = cleanr.BuildReplayArtifact(report)
 		}
-		attestation, err := cleanr.BuildReleaseGateAttestation(report, replayArtifact, rawKey, cfg.Governance.Attestation.KeyID)
+		builtAttestation, err := cleanr.BuildReleaseGateAttestation(report, replayArtifact, rawKey, cfg.Governance.Attestation.KeyID)
 		if err != nil {
 			_, _ = fmt.Fprintf(stderr, "attestation error: %v\n", err)
 			return 2
 		}
+		attestation = &builtAttestation
 		outputPath := resolveConfigRelativePath(resolvedConfigPath, cfg.Governance.Attestation.Output)
-		if err := cleanr.WriteReleaseGateAttestationFile(outputPath, attestation); err != nil {
+		if err := cleanr.WriteReleaseGateAttestationFile(outputPath, builtAttestation); err != nil {
 			_, _ = fmt.Fprintf(stderr, "attestation error: %v\n", err)
 			return 2
 		}
+	}
+	if hasConfiguredIntegrations(cfg.Integrations) {
+		integrationReport := cleanr.EnsureIntegrationReport(&report)
+		integrationReport.TrendSources = cleanr.CompareTrendSources(ctx, cfg.Integrations, report, resolvedConfigPath)
+		if hasReplayArtifact {
+			integrationReport.ResultSinks = cleanr.PublishResultSinks(ctx, cfg.Integrations, report, &replayArtifact, attestation)
+		} else {
+			integrationReport.ResultSinks = cleanr.PublishResultSinks(ctx, cfg.Integrations, report, nil, attestation)
+		}
+		integrationReport.Summaries = cleanr.WriteSummaries(cfg.Integrations, report, resolvedConfigPath)
+		printIntegrationWarnings(stderr, integrationReport)
 	}
 
 	dest := stdout
@@ -262,6 +279,109 @@ func trendsCmd(args []string, stdout, stderr io.Writer) int {
 	return 0
 }
 
+func datasetCmd(args []string, stdout, stderr io.Writer) int {
+	if len(args) == 0 {
+		_, _ = fmt.Fprintln(stderr, "dataset error: expected one of export or import")
+		return 2
+	}
+	switch args[0] {
+	case "export":
+		return datasetExportCmd(args[1:], stdout, stderr)
+	case "import":
+		return datasetImportCmd(args[1:], stdout, stderr)
+	default:
+		_, _ = fmt.Fprintf(stderr, "dataset error: unsupported subcommand %s\n", args[0])
+		return 2
+	}
+}
+
+func datasetExportCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("dataset export", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "Path to cleanr config")
+	replayPath := fs.String("replay-artifact", "", "Path to replay artifact file")
+	output := fs.String("output", "cleanr.dataset.yaml", "Path to write the exported scenario dataset")
+	includeAll := fs.Bool("all", false, "Include all scenarios instead of only reviewed replay failures")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset export error: %v\n", err)
+		return 2
+	}
+	cfg, err := cleanr.LoadConfigFile(resolvedConfigPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset export error: %v\n", err)
+		return 2
+	}
+	artifactPath := strings.TrimSpace(*replayPath)
+	if artifactPath == "" {
+		artifactPath = cfg.Reporting.ReplayArtifactFile
+	}
+	artifactPath = resolveConfigRelativePath(resolvedConfigPath, artifactPath)
+	if strings.TrimSpace(artifactPath) == "" {
+		_, _ = fmt.Fprintln(stderr, "dataset export error: no replay artifact configured; pass -replay-artifact or set reporting.replay_artifact_file")
+		return 2
+	}
+	artifact, err := cleanr.LoadReplayArtifactFile(artifactPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset export error: %v\n", err)
+		return 2
+	}
+	dataset := cleanr.ExportScenarioDataset(cfg, artifact, *includeAll)
+	outputPath := resolveConfigRelativePath(resolvedConfigPath, *output)
+	if err := cleanr.WriteScenarioDatasetFile(outputPath, dataset); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset export error: %v\n", err)
+		return 2
+	}
+	_, _ = fmt.Fprintf(stdout, "wrote %d scenarios to %s\n", len(dataset.Scenarios), outputPath)
+	return 0
+}
+
+func datasetImportCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("dataset import", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	input := fs.String("input", "", "Path to scenario dataset file")
+	baseConfig := fs.String("base-config", "", "Optional base cleanr config to merge into")
+	output := fs.String("output", "cleanr.imported.yaml", "Path to write the merged cleanr config")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	if strings.TrimSpace(*input) == "" {
+		_, _ = fmt.Fprintln(stderr, "dataset import error: -input is required")
+		return 2
+	}
+
+	dataset, err := cleanr.LoadScenarioDatasetFile(*input)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset import error: %v\n", err)
+		return 2
+	}
+	if len(dataset.Scenarios) == 0 {
+		_, _ = fmt.Fprintln(stderr, "dataset import error: dataset contains no scenarios")
+		return 2
+	}
+
+	cfg := cleanr.ExampleConfig()
+	basePath := strings.TrimSpace(*baseConfig)
+	if basePath != "" {
+		cfg, err = cleanr.LoadConfigFile(basePath)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "dataset import error: %v\n", err)
+			return 2
+		}
+	}
+	cfg = cleanr.MergeDatasetIntoConfig(cfg, dataset)
+	if err := cleanr.WriteConfigFile(*output, cfg); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset import error: %v\n", err)
+		return 2
+	}
+	_, _ = fmt.Fprintf(stdout, "wrote merged config with %d scenarios to %s\n", len(cfg.Scenarios), *output)
+	return 0
+}
+
 func pluginsCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("plugins", flag.ContinueOnError)
 	fs.SetOutput(stderr)
@@ -366,7 +486,7 @@ func mcpCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|trends|plugins|snapshot|validate|init|setup|mcp|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|trends|dataset|plugins|snapshot|validate|init|setup|mcp|version> [flags]")
 }
 
 func resolveConfigPath(configPath string) (string, error) {
@@ -425,6 +545,43 @@ func resolveTrendPath(configPath, explicitTrendPath string) (string, error) {
 		return "", fmt.Errorf("no trend file configured; set reporting.trend_file or pass -trend-file")
 	}
 	return trendPath, nil
+}
+
+func needsReplayArtifact(cfg cleanr.Config) bool {
+	if strings.TrimSpace(cfg.Reporting.ReplayArtifactFile) != "" || cfg.Governance.Attestation.Enabled {
+		return true
+	}
+	for _, sink := range cfg.Integrations.ResultSinks {
+		if sink.IncludeReplay {
+			return true
+		}
+	}
+	return false
+}
+
+func hasConfiguredIntegrations(cfg cleanr.IntegrationsConfig) bool {
+	return len(cfg.ResultSinks) > 0 || len(cfg.TrendSources) > 0 || len(cfg.Summaries) > 0
+}
+
+func printIntegrationWarnings(stderr io.Writer, report *cleanr.IntegrationReport) {
+	if report == nil {
+		return
+	}
+	for _, item := range report.TrendSources {
+		if item.Status == "error" && strings.TrimSpace(item.Message) != "" {
+			_, _ = fmt.Fprintf(stderr, "integration warning: trend source %s: %s\n", item.Name, item.Message)
+		}
+	}
+	for _, item := range report.ResultSinks {
+		if !item.Published && strings.TrimSpace(item.Message) != "" {
+			_, _ = fmt.Fprintf(stderr, "integration warning: result sink %s: %s\n", item.Name, item.Message)
+		}
+	}
+	for _, item := range report.Summaries {
+		if !item.Written && strings.TrimSpace(item.Message) != "" {
+			_, _ = fmt.Fprintf(stderr, "integration warning: summary %s: %s\n", item.Name, item.Message)
+		}
+	}
 }
 
 func writeJSON(w io.Writer, value any) int {

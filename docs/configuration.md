@@ -821,6 +821,55 @@ reporting:
 
 That exact pattern is also available as a copyable file in `examples/openai-responses-tuned.yaml`.
 
+## `integrations`
+
+`integrations` is the optional Phase 5 companion layer. It never replaces the local `cleanr` pass or fail contract.
+
+- local suite execution, local trend gates, and CLI exit codes remain blocking
+- remote trend sources, result sinks, and summary artifacts are best-effort add-ons
+- integration failures are recorded in the report and written to stderr, but they do not flip a passing local run into exit code `2`
+
+### `result_sinks`
+
+Each entry describes a remote machine-readable result publisher.
+
+- `name`: optional display label in reports
+- `type`: `http` or `braintrust`
+- `endpoint`: absolute HTTP or HTTPS endpoint that receives the JSON run payload
+- `api_key_env`: optional env var whose value is sent as a bearer token
+- `headers`: optional static request headers
+- `project`: optional remote project name
+- `experiment`: optional remote experiment name
+- `run_url_template`: optional fallback URL template using `{{project}}`, `{{experiment}}`, `{{build_id}}`, and `{{target}}`
+- `include_replay_artifact`: include the replay artifact payload in the POST body
+- `include_attestation`: include the signed attestation payload in the POST body
+- `timeout_ms`: optional request timeout
+
+### `trend_sources`
+
+Each entry describes a non-blocking comparison source for approved prior histories.
+
+- `name`: optional display label in reports
+- `type`: `file` or `http`
+- `path`: retained local history file when `type: file`
+- `url`: remote history endpoint when `type: http`
+- `api_key_env`: optional env var whose value is sent as a bearer token for HTTP sources
+- `headers`: optional static request headers for HTTP sources
+- `view_url`: optional human-facing dashboard link shown in reports and summaries
+- `timeout_ms`: optional request timeout for HTTP sources
+
+Remote comparisons reuse the same trend-history schema as local `reporting.trend_file`. That means teams can publish approved histories elsewhere and still compare the current run back to them without weakening the local gate.
+
+### `summaries`
+
+Each entry writes a PR or release summary artifact after the run completes.
+
+- `name`: optional display label in reports
+- `format`: `markdown` or `json`
+- `output`: output path for the generated summary file
+
+Summaries include the local gate outcome, local trend and gate state when present, top failures, and any remote result or experiment URLs captured by result sinks or trend sources.
+
 ## Validation Rules
 
 The validator checks for:
@@ -838,6 +887,9 @@ The validator checks for:
 - invalid load, chaos, drift, and token thresholds
 - invalid `reporting.trend_limit`
 - invalid `reporting.trend_gates.*`
+- invalid `integrations.result_sinks.*`
+- invalid `integrations.trend_sources.*`
+- invalid `integrations.summaries.*`
 - invalid single-session `memory_replay` fixtures
 - conflicting `memory_replay[*].metadata.session_id` values
 - duplicate scenario names

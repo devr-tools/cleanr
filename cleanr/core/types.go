@@ -7,15 +7,16 @@ import (
 )
 
 type Config struct {
-	Version         string           `json:"version"`
-	PolicyPacks     []string         `json:"policy_packs,omitempty"`
-	Plugins         []string         `json:"plugins,omitempty"`
-	Target          TargetConfig     `json:"target"`
-	Scenarios       []Scenario       `json:"scenarios"`
-	Suites          SuitesConfig     `json:"suites"`
-	Reporting       ReportingConfig  `json:"reporting"`
-	Governance      GovernanceConfig `json:"governance"`
-	ResolvedPlugins []PluginManifest `json:"-"`
+	Version         string             `json:"version"`
+	PolicyPacks     []string           `json:"policy_packs,omitempty"`
+	Plugins         []string           `json:"plugins,omitempty"`
+	Target          TargetConfig       `json:"target"`
+	Scenarios       []Scenario         `json:"scenarios"`
+	Suites          SuitesConfig       `json:"suites"`
+	Reporting       ReportingConfig    `json:"reporting"`
+	Governance      GovernanceConfig   `json:"governance"`
+	Integrations    IntegrationsConfig `json:"integrations,omitempty"`
+	ResolvedPlugins []PluginManifest   `json:"-"`
 }
 
 type TargetConfig struct {
@@ -245,6 +246,43 @@ type AttestationConfig struct {
 	KeyID   string `json:"key_id"`
 }
 
+type IntegrationsConfig struct {
+	ResultSinks  []ResultSinkConfig  `json:"result_sinks,omitempty"`
+	TrendSources []TrendSourceConfig `json:"trend_sources,omitempty"`
+	Summaries    []SummaryConfig     `json:"summaries,omitempty"`
+}
+
+type ResultSinkConfig struct {
+	Name           string            `json:"name,omitempty"`
+	Type           string            `json:"type"`
+	Endpoint       string            `json:"endpoint,omitempty"`
+	APIKeyEnv      string            `json:"api_key_env,omitempty"`
+	Headers        map[string]string `json:"headers,omitempty"`
+	Project        string            `json:"project,omitempty"`
+	Experiment     string            `json:"experiment,omitempty"`
+	RunURLTemplate string            `json:"run_url_template,omitempty"`
+	IncludeReplay  bool              `json:"include_replay_artifact,omitempty"`
+	IncludeAttest  bool              `json:"include_attestation,omitempty"`
+	TimeoutMS      int               `json:"timeout_ms,omitempty"`
+}
+
+type TrendSourceConfig struct {
+	Name      string            `json:"name,omitempty"`
+	Type      string            `json:"type"`
+	Path      string            `json:"path,omitempty"`
+	URL       string            `json:"url,omitempty"`
+	APIKeyEnv string            `json:"api_key_env,omitempty"`
+	Headers   map[string]string `json:"headers,omitempty"`
+	ViewURL   string            `json:"view_url,omitempty"`
+	TimeoutMS int               `json:"timeout_ms,omitempty"`
+}
+
+type SummaryConfig struct {
+	Name   string `json:"name,omitempty"`
+	Format string `json:"format,omitempty"`
+	Output string `json:"output"`
+}
+
 type PluginManifest struct {
 	Name          string               `json:"name"`
 	Version       string               `json:"version,omitempty"`
@@ -398,19 +436,63 @@ type SuiteResult struct {
 }
 
 type Report struct {
-	Name            string           `json:"name"`
-	Passed          bool             `json:"passed"`
-	GeneratedAt     time.Time        `json:"generated_at"`
-	Duration        time.Duration    `json:"duration"`
-	TotalSuites     int              `json:"total_suites"`
-	FailedSuites    int              `json:"failed_suites"`
-	TotalCases      int              `json:"total_cases"`
-	FailedCases     int              `json:"failed_cases"`
-	Metadata        *RunMetadata     `json:"metadata,omitempty"`
-	Suites          []SuiteResult    `json:"suites"`
-	Trend           *TrendReport     `json:"trend,omitempty"`
-	TrendGate       *TrendGateReport `json:"trend_gate,omitempty"`
-	Recommendations []string         `json:"recommendations,omitempty"`
+	Name            string             `json:"name"`
+	Passed          bool               `json:"passed"`
+	GeneratedAt     time.Time          `json:"generated_at"`
+	Duration        time.Duration      `json:"duration"`
+	TotalSuites     int                `json:"total_suites"`
+	FailedSuites    int                `json:"failed_suites"`
+	TotalCases      int                `json:"total_cases"`
+	FailedCases     int                `json:"failed_cases"`
+	Metadata        *RunMetadata       `json:"metadata,omitempty"`
+	Suites          []SuiteResult      `json:"suites"`
+	Trend           *TrendReport       `json:"trend,omitempty"`
+	TrendGate       *TrendGateReport   `json:"trend_gate,omitempty"`
+	Integrations    *IntegrationReport `json:"integrations,omitempty"`
+	Recommendations []string           `json:"recommendations,omitempty"`
+}
+
+type IntegrationReport struct {
+	LocalBlocking bool                    `json:"local_blocking"`
+	RemoteMode    string                  `json:"remote_mode,omitempty"`
+	TrendSources  []ExternalTrendReport   `json:"trend_sources,omitempty"`
+	ResultSinks   []ResultSinkReport      `json:"result_sinks,omitempty"`
+	Summaries     []SummaryArtifactReport `json:"summaries,omitempty"`
+}
+
+type ExternalTrendReport struct {
+	Name            string        `json:"name"`
+	SourceType      string        `json:"source_type,omitempty"`
+	Blocking        bool          `json:"blocking"`
+	BestEffort      bool          `json:"best_effort"`
+	Status          string        `json:"status,omitempty"`
+	Message         string        `json:"message,omitempty"`
+	ViewURL         string        `json:"view_url,omitempty"`
+	HistoryLength   int           `json:"history_length,omitempty"`
+	LatestBuildID   string        `json:"latest_build_id,omitempty"`
+	LatestAt        time.Time     `json:"latest_at,omitempty"`
+	PreviousAt      time.Time     `json:"previous_at,omitempty"`
+	ComparedBuildID string        `json:"compared_build_id,omitempty"`
+	Summary         *TrendSummary `json:"summary,omitempty"`
+	BuildDiff       *BuildDiff    `json:"build_diff,omitempty"`
+}
+
+type ResultSinkReport struct {
+	Name       string `json:"name"`
+	SinkType   string `json:"sink_type,omitempty"`
+	Blocking   bool   `json:"blocking"`
+	BestEffort bool   `json:"best_effort"`
+	Published  bool   `json:"published"`
+	Message    string `json:"message,omitempty"`
+	RunURL     string `json:"run_url,omitempty"`
+}
+
+type SummaryArtifactReport struct {
+	Name    string `json:"name"`
+	Format  string `json:"format,omitempty"`
+	Output  string `json:"output,omitempty"`
+	Written bool   `json:"written"`
+	Message string `json:"message,omitempty"`
 }
 
 type TrendReport struct {

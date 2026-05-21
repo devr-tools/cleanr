@@ -15,6 +15,10 @@ func LoadFile(path string) (HistoryFile, error) {
 	if err != nil {
 		return HistoryFile{}, err
 	}
+	return LoadData(data, path)
+}
+
+func LoadData(data []byte, path string) (HistoryFile, error) {
 	return decodeFile(data, path)
 }
 

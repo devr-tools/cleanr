@@ -123,6 +123,8 @@ If `trend_file` is set and `replay_artifact_file` is omitted, `cleanr` derives a
 
 Signed attestations are the governance companion to those artifacts. If `governance.attestation.enabled` is true, `cleanr run` signs the release-gate statement with an Ed25519 key from the configured env var and writes an attestation file for audit or change-review workflows.
 
+Phase 5 integrations sit beside that local gate instead of replacing it. Remote trend-source fetches, result publishing, and summary writing are best-effort companions. A local passing run still exits `0` even if a remote sink is unavailable, and a local failing run still exits `1` even if the remote publish succeeds.
+
 If you want CI to fail only on meaningful regressions instead of every informational delta, enable `reporting.trend_gates` in the config. That lets you gate on metrics like additional failed cases, semantic drift delta, or duration growth between builds.
 
 A sane starter policy is:
@@ -158,6 +160,32 @@ reporting:
 
 That exact policy is checked in as `examples/openai-responses-tuned.yaml` so teams can copy a working partial-override pattern directly.
 
+To attach optional remote publishing and PR summaries, add an `integrations` block such as:
+
+```yaml
+integrations:
+  trend_sources:
+    - name: approved-history
+      type: http
+      url: https://example.internal/cleanr/history.yaml
+      view_url: https://braintrust.example/runs/approved-history
+      api_key_env: CLEANR_REMOTE_HISTORY_TOKEN
+  result_sinks:
+    - name: braintrust
+      type: braintrust
+      endpoint: https://example.internal/cleanr/publish
+      api_key_env: CLEANR_BRAINTRUST_TOKEN
+      experiment: release-gate
+      include_replay_artifact: true
+      include_attestation: true
+  summaries:
+    - name: pr
+      format: markdown
+      output: reports/cleanr-summary.md
+```
+
+That gives CI a durable local gate plus add-on remote triage links without turning `cleanr` into the system of record for hosted observability.
+
 To summarize the retained window for dashboards or release notes, run:
 
 ```bash
@@ -186,10 +214,10 @@ This repository is not installable with `brew install cleanr` yet. That only bec
 
 ## Future CI Direction
 
-The roadmap includes stronger CI-native support such as:
+The next CI-facing work is narrower:
 
-- a first-party GitHub Action
-- more stable machine-readable contracts
-- richer example workflows for common AI app setups
+- a first-party GitHub Action wrapper around the existing CLI
+- broader example workflows for common remote sink and dataset promotion flows
+- additional machine-readable contracts for downstream automation beyond the current JSON, JUnit, SARIF, replay, and summary outputs
 
 Track that work in [roadmap.md](roadmap.md) and [taskboard.md](taskboard.md).

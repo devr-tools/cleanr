@@ -131,10 +131,18 @@ This establishes the longitudinal regression core. Phase 4 is now in place as we
 - SARIF output for IDE and PR review surfaces
 
 This establishes the governance and ecosystem core. The next roadmap phase is about optional external eval and data integrations.
+This final planned roadmap phase is now in place as well:
+
+- best-effort result sink publishing for remote eval or experiment systems
+- non-blocking remote trend-source comparisons against approved retained histories
+- dataset import and export flows for promoting reviewed failures into replayable `cleanr` scenarios
+- PR and release summary artifacts that link the local gate to deeper remote triage views
+
+This establishes the local-first companion integration layer.
 
 ## Forward roadmap
 
-Phase 1, Phase 2, Phase 3, and Phase 4 are complete. The roadmap below covers the remaining forward-looking work only.
+Phase 1 through Phase 5 are complete. The roadmap below records the Phase 5 scope that was delivered.
 
 ### Phase 5: External eval and data integrations
 

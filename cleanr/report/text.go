@@ -104,6 +104,55 @@ func renderText(report core.Report, palette textPalette) string {
 			writeFinding(&b, palette, 2, finding)
 		}
 	}
+	if report.Integrations != nil {
+		writeSectionHeader(&b, palette, "Integrations")
+		writeIndentedValue(&b, palette, 2, "Contract", "local gate remains blocking | remote integrations are best-effort")
+		for _, source := range report.Integrations.TrendSources {
+			status := source.Status
+			if strings.TrimSpace(status) == "" {
+				status = "unknown"
+			}
+			text := strings.ToUpper(status)
+			if source.Summary != nil {
+				text += " | " + trendSummaryText(*source.Summary)
+			}
+			if source.ViewURL != "" {
+				text += " | view=" + source.ViewURL
+			}
+			if source.Message != "" && source.Status != "compared" {
+				text += " | " + source.Message
+			}
+			writeIndentedValue(&b, palette, 2, source.Name, text)
+		}
+		for _, sink := range report.Integrations.ResultSinks {
+			status := "FAILED"
+			if sink.Published {
+				status = "PUBLISHED"
+			}
+			text := status
+			if sink.RunURL != "" {
+				text += " | view=" + sink.RunURL
+			}
+			if sink.Message != "" {
+				text += " | " + sink.Message
+			}
+			writeIndentedValue(&b, palette, 2, sink.Name, text)
+		}
+		for _, summary := range report.Integrations.Summaries {
+			status := "FAILED"
+			if summary.Written {
+				status = "WRITTEN"
+			}
+			text := status
+			if summary.Output != "" {
+				text += " | output=" + summary.Output
+			}
+			if summary.Message != "" {
+				text += " | " + summary.Message
+			}
+			writeIndentedValue(&b, palette, 2, summary.Name, text)
+		}
+	}
 	if len(report.Recommendations) > 0 {
 		writeSectionHeader(&b, palette, "Recommendations")
 		for _, rec := range report.Recommendations {

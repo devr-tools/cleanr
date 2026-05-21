@@ -9,6 +9,7 @@ import (
 	attestpkg "cleanr/cleanr/attest"
 	configpkg "cleanr/cleanr/config"
 	"cleanr/cleanr/core"
+	integrationspkg "cleanr/cleanr/integrations"
 	reportpkg "cleanr/cleanr/report"
 	snapshotspkg "cleanr/cleanr/snapshots"
 	trendspkg "cleanr/cleanr/trends"
@@ -41,6 +42,10 @@ type ReportingConfig = core.ReportingConfig
 type TrendGateConfig = core.TrendGateConfig
 type GovernanceConfig = core.GovernanceConfig
 type AttestationConfig = core.AttestationConfig
+type IntegrationsConfig = core.IntegrationsConfig
+type ResultSinkConfig = core.ResultSinkConfig
+type TrendSourceConfig = core.TrendSourceConfig
+type SummaryConfig = core.SummaryConfig
 type PluginManifest = core.PluginManifest
 type PluginSuite = core.PluginSuite
 type PluginStateAdapter = core.PluginStateAdapter
@@ -72,6 +77,10 @@ type Finding = core.Finding
 type CaseResult = core.CaseResult
 type SuiteResult = core.SuiteResult
 type Report = core.Report
+type IntegrationReport = core.IntegrationReport
+type ExternalTrendReport = core.ExternalTrendReport
+type ResultSinkReport = core.ResultSinkReport
+type SummaryArtifactReport = core.SummaryArtifactReport
 type TrendReport = core.TrendReport
 type TrendGateReport = core.TrendGateReport
 type TrendSummary = core.TrendSummary
@@ -81,6 +90,9 @@ type FailureBucket = core.FailureBucket
 type DriftTrend = core.DriftTrend
 type ReplayArtifact = core.ReplayArtifact
 type ReplayArtifactCase = core.ReplayArtifactCase
+type ScenarioDataset = integrationspkg.ScenarioDataset
+type ScenarioDatasetEntry = integrationspkg.ScenarioDatasetEntry
+type DatasetScenarioOrigin = integrationspkg.DatasetScenarioOrigin
 type ReleaseGateAttestation = core.ReleaseGateAttestation
 type AttestationSubject = core.AttestationSubject
 type AttestationPredicate = core.AttestationPredicate
@@ -131,6 +143,10 @@ func LoadTrendHistoryFile(path string) (TrendHistoryFile, error) {
 	return trendspkg.LoadFile(path)
 }
 
+func LoadTrendHistoryData(data []byte, path string) (TrendHistoryFile, error) {
+	return trendspkg.LoadData(data, path)
+}
+
 func WriteTrendHistoryFile(path string, history TrendHistoryFile) error {
 	return trendspkg.WriteFile(path, history)
 }
@@ -163,8 +179,52 @@ func BuildReplayArtifact(report Report) ReplayArtifact {
 	return trendspkg.BuildReplayArtifact(report)
 }
 
+func LoadReplayArtifactFile(path string) (ReplayArtifact, error) {
+	return trendspkg.LoadReplayArtifactFile(path)
+}
+
+func LoadReplayArtifactData(data []byte, path string) (ReplayArtifact, error) {
+	return trendspkg.LoadReplayArtifactData(data, path)
+}
+
 func WriteReplayArtifactFile(path string, artifact ReplayArtifact) error {
 	return trendspkg.WriteReplayArtifactFile(path, artifact)
+}
+
+func CompareTrendSources(ctx context.Context, cfg IntegrationsConfig, report Report, configPath string) []ExternalTrendReport {
+	return integrationspkg.CompareTrendSources(ctx, cfg, report, configPath)
+}
+
+func PublishResultSinks(ctx context.Context, cfg IntegrationsConfig, report Report, replay *ReplayArtifact, attestation *ReleaseGateAttestation) []ResultSinkReport {
+	return integrationspkg.PublishResultSinks(ctx, cfg, report, replay, attestation)
+}
+
+func EnsureIntegrationReport(report *Report) *IntegrationReport {
+	return integrationspkg.EnsureReport(report)
+}
+
+func WriteSummaries(cfg IntegrationsConfig, report Report, configPath string) []SummaryArtifactReport {
+	return integrationspkg.WriteSummaries(cfg, report, configPath)
+}
+
+func LoadScenarioDatasetFile(path string) (ScenarioDataset, error) {
+	return integrationspkg.LoadScenarioDatasetFile(path)
+}
+
+func LoadScenarioDatasetData(data []byte, path string) (ScenarioDataset, error) {
+	return integrationspkg.LoadScenarioDatasetData(data, path)
+}
+
+func WriteScenarioDatasetFile(path string, dataset ScenarioDataset) error {
+	return integrationspkg.WriteScenarioDatasetFile(path, dataset)
+}
+
+func ExportScenarioDataset(cfg Config, artifact ReplayArtifact, includeAll bool) ScenarioDataset {
+	return integrationspkg.ExportScenarioDataset(cfg, artifact, includeAll)
+}
+
+func MergeDatasetIntoConfig(base Config, dataset ScenarioDataset) Config {
+	return integrationspkg.MergeDatasetIntoConfig(base, dataset)
 }
 
 func BuildReleaseGateAttestation(report Report, artifact ReplayArtifact, rawKey string, keyID string) (ReleaseGateAttestation, error) {

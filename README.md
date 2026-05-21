@@ -4,7 +4,7 @@
 
 **cleanr** is a Go-based AI testing SDK and CLI for validating AI applications in CI with adversarial, security, load, chaos, drift, token-efficiency, and cross-build trend reporting.
 
-Phase 1, the foundation runner release, is complete. Phase 2, the agent release-gate core, is now complete as well. The current focus is Phase 3: longitudinal replay, blast-radius analysis, and workflow-level regression intelligence.
+Phase 1 through Phase 4 are complete. Phase 5, external eval and data integrations, is now in place as an optional companion layer around the local-first release gate.
 
 ## Installation
 
@@ -66,6 +66,8 @@ cleanr snapshot -config cleanr.yaml
 cleanr validate -config cleanr.yaml
 cleanr run -config cleanr.yaml
 cleanr trends -config cleanr.yaml
+cleanr dataset export -config cleanr.yaml
+cleanr dataset import -input cleanr.dataset.yaml
 cleanr version
 cleanr mcp
 ```
@@ -104,6 +106,8 @@ What each command does:
 - `cleanr run -config <file>`: execute enabled suites and emit a report
 - `cleanr run -config <file> -trend-file <file> -build-id <id>`: compare the current run to prior builds and append trend history
 - `cleanr trends -config <file>`: summarize the retained trend history window
+- `cleanr dataset export -config <file>`: convert replayed failures or all configured scenarios into a reusable scenario dataset
+- `cleanr dataset import -input <file>`: merge a reviewed scenario dataset back into a runnable `cleanr` config
 - `cleanr version`: print the installed CLI version
 - `cleanr mcp`: start the MCP server for agent and tool integrations
 
@@ -124,6 +128,8 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 - Provenance-aware context attacks that originate from untrusted retrieved, tool, memory, or approval content
 - Approval-bypass and sink-restriction checks for tool-calling agents
 - Trend history across builds so drift and failure deltas are comparable over time
+- Optional best-effort external result publishing, remote trend comparisons, and PR or release summaries
+- Dataset promotion flows for turning reviewed failures into reusable regression scenarios
 - Token budgets, duplication, and output-efficiency regressions
 - CI-friendly reporting in text, JSON, and JUnit formats
 - MCP server mode for agent and tool-based integrations

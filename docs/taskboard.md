@@ -41,6 +41,7 @@
 - [x] Add signed release-gate attestations for audit workflows.
 - [x] Add plugin manifests for external suites, state adapters, and plugin-shipped policy packs.
 - [x] Add SARIF output for IDE and PR review surfaces.
+- [x] Add optional external result sinks, remote trend-source comparisons, dataset promotion flows, and PR or release summaries.
 
 ## Now
 
@@ -154,5 +155,14 @@ Status: complete.
 - Organizations can standardize release policy across services with reusable policy packs.
 - Signed release-gate attestations are available for audit and change-review workflows.
 - SARIF output is available for IDE and PR review surfaces.
+
+Status: complete.
+
+## Definition of Phase 5 done
+
+- Teams can publish machine-readable CI results to external systems without changing the local blocking exit-code contract.
+- Remote histories can enrich comparison and review workflows without becoming the primary release gate.
+- Reviewed failures can be exported and re-imported as durable `cleanr` regression scenarios.
+- PR and release summaries can link local failures to remote experiment views.
 
 Status: complete.

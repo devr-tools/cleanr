@@ -220,6 +220,213 @@ func TestSnapshotCommandWritesBaselineFile(t *testing.T) {
 	}
 }
 
+func TestRunCommandSupportsExternalIntegrations(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Reporting.Format = "json"
+	cfg.Reporting.BuildID = "build-2"
+	cfg.Reporting.ReplayArtifactFile = "reports/cleanr.replay.json"
+	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+		Name:    "approved-history",
+		Type:    "http",
+		URL:     "https://example.test/history.yaml",
+		ViewURL: "https://braintrust.dev/app/history/build-1",
+	}}
+	cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+		Name:          "braintrust",
+		Type:          "braintrust",
+		Endpoint:      "https://example.test/publish",
+		Experiment:    "release-gate",
+		IncludeReplay: true,
+	}}
+	cfg.Integrations.Summaries = []cleanr.SummaryConfig{{
+		Name:   "pr",
+		Format: "markdown",
+		Output: "reports/summary.md",
+	}}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	historyPath := filepath.Join(dir, "history.yaml")
+	history := cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  cfg.Target.Name,
+		Runs: []cleanr.TrendHistoryRun{{
+			BuildID:      "build-1",
+			GeneratedAt:  time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC),
+			Passed:       true,
+			Duration:     time.Second,
+			FailedSuites: 0,
+			FailedCases:  0,
+		}},
+	}
+	if err := cleanr.WriteTrendHistoryFile(historyPath, history); err != nil {
+		t.Fatalf("write history: %v", err)
+	}
+	historyBody, err := os.ReadFile(historyPath)
+	if err != nil {
+		t.Fatalf("read history: %v", err)
+	}
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch req.URL.String() {
+		case "https://example.test/history.yaml":
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/x-yaml"}},
+				Body:       io.NopCloser(bytes.NewReader(historyBody)),
+			}, nil
+		case "https://example.test/publish":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read publish body: %v", err)
+			}
+			if !bytes.Contains(body, []byte(`"replay_artifact"`)) || !bytes.Contains(body, []byte(`"source":"cleanr"`)) {
+				t.Fatalf("unexpected publish payload: %s", string(body))
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"run_url":"https://braintrust.dev/app/release-gate/build-2"}`)),
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s", req.URL.String())
+			return nil, nil
+		}
+	})
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"run", "-config", configPath, "-format", "json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", exitCode, stderr.String())
+	}
+
+	var report cleanr.Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode report: %v\n%s", err, stdout.String())
+	}
+	if report.Integrations == nil {
+		t.Fatalf("expected integrations in report")
+	}
+	if len(report.Integrations.TrendSources) != 1 || report.Integrations.TrendSources[0].Status != "compared" {
+		t.Fatalf("unexpected trend source report: %+v", report.Integrations.TrendSources)
+	}
+	if len(report.Integrations.ResultSinks) != 1 || !report.Integrations.ResultSinks[0].Published {
+		t.Fatalf("unexpected result sink report: %+v", report.Integrations.ResultSinks)
+	}
+	if got := report.Integrations.ResultSinks[0].RunURL; got != "https://braintrust.dev/app/release-gate/build-2" {
+		t.Fatalf("unexpected run url: %s", got)
+	}
+	if len(report.Integrations.Summaries) != 1 || !report.Integrations.Summaries[0].Written {
+		t.Fatalf("unexpected summary report: %+v", report.Integrations.Summaries)
+	}
+
+	summaryPath := filepath.Join(dir, "reports", "summary.md")
+	summaryBody, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	for _, want := range []string{
+		"cleanr Release Summary",
+		"Local gate: `PASS`",
+		"approved-history",
+		"Remote Views",
+		"https://braintrust.dev/app/release-gate/build-2",
+	} {
+		if !strings.Contains(string(summaryBody), want) {
+			t.Fatalf("expected %q in summary:\n%s", want, string(summaryBody))
+		}
+	}
+}
+
+func TestDatasetExportAndImportCommands(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{
+		{Name: "happy-path", Input: "hello", Tags: []string{"stable"}},
+		{Name: "security-path", Input: "secret"},
+	}
+	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	replayPath := filepath.Join(filepath.Dir(configPath), "reports", "cleanr.replay.json")
+	artifact := cleanr.ReplayArtifact{
+		Version:     "v1alpha1",
+		Target:      cfg.Target.Name,
+		BuildID:     "build-9",
+		GeneratedAt: time.Now().UTC(),
+		Failures: []cleanr.ReplayArtifactCase{{
+			Suite: "security",
+			Name:  "happy-path",
+			Findings: []cleanr.Finding{{
+				Severity: "high",
+				Message:  "review me",
+			}},
+			Failed: true,
+		}},
+	}
+	if err := cleanr.WriteReplayArtifactFile(replayPath, artifact); err != nil {
+		t.Fatalf("write replay artifact: %v", err)
+	}
+
+	datasetPath := filepath.Join(filepath.Dir(configPath), "reviewed-failures.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := cli.Run([]string{"dataset", "export", "-config", configPath, "-replay-artifact", replayPath, "-output", datasetPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("expected dataset export success, code=%d stderr=%s", code, stderr.String())
+	}
+
+	dataset, err := cleanr.LoadScenarioDatasetFile(datasetPath)
+	if err != nil {
+		t.Fatalf("load dataset: %v", err)
+	}
+	if len(dataset.Scenarios) != 1 || dataset.Scenarios[0].Scenario.Name != "happy-path" {
+		t.Fatalf("unexpected dataset scenarios: %+v", dataset.Scenarios)
+	}
+	if !strings.Contains(strings.Join(dataset.Scenarios[0].Scenario.Tags, ","), "regression") {
+		t.Fatalf("expected regression tag, got %+v", dataset.Scenarios[0].Scenario.Tags)
+	}
+
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{{Name: "legacy", Input: "existing"}}
+	basePath := filepath.Join(filepath.Dir(configPath), "base.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	importedPath := filepath.Join(filepath.Dir(configPath), "imported.yaml")
+	stdout.Reset()
+	stderr.Reset()
+	if code := cli.Run([]string{"dataset", "import", "-input", datasetPath, "-base-config", basePath, "-output", importedPath}, &stdout, &stderr); code != 0 {
+		t.Fatalf("expected dataset import success, code=%d stderr=%s", code, stderr.String())
+	}
+
+	importedCfg, err := cleanr.LoadConfigFile(importedPath)
+	if err != nil {
+		t.Fatalf("load imported config: %v", err)
+	}
+	if len(importedCfg.Scenarios) != 2 {
+		t.Fatalf("expected merged scenarios, got %+v", importedCfg.Scenarios)
+	}
+	names := []string{importedCfg.Scenarios[0].Name, importedCfg.Scenarios[1].Name}
+	if !strings.Contains(strings.Join(names, ","), "happy-path") || !strings.Contains(strings.Join(names, ","), "legacy") {
+		t.Fatalf("unexpected merged scenario names: %+v", names)
+	}
+}
+
 func TestRunCommandPersistsTrendHistory(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Scenarios = []cleanr.Scenario{{

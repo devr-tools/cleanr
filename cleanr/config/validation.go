@@ -289,6 +289,15 @@ func ValidateConfig(cfg core.Config) error {
 		requireNonEmpty(&errs, "governance.attestation.output", cfg.Governance.Attestation.Output, "set the attestation output path so cleanr can write the signed release-gate artifact")
 		requireNonEmpty(&errs, "governance.attestation.key_env", cfg.Governance.Attestation.KeyEnv, "set the env var name that contains the Ed25519 signing key for attestations")
 	}
+	for i, sink := range cfg.Integrations.ResultSinks {
+		validateResultSink(&errs, fmt.Sprintf("integrations.result_sinks[%d]", i), sink)
+	}
+	for i, source := range cfg.Integrations.TrendSources {
+		validateTrendSource(&errs, fmt.Sprintf("integrations.trend_sources[%d]", i), source)
+	}
+	for i, summary := range cfg.Integrations.Summaries {
+		validateSummary(&errs, fmt.Sprintf("integrations.summaries[%d]", i), summary)
+	}
 
 	if errs.HasAny() {
 		return errs
@@ -468,4 +477,57 @@ func validatePolicyRule(errs *ValidationErrors, prefix string, rule core.PolicyR
 			errs.Add(prefix+".severity", "must be one of low, medium, high, or critical", "omit severity to use the default, or pick a supported severity level")
 		}
 	}
+}
+
+func validateResultSink(errs *ValidationErrors, prefix string, sink core.ResultSinkConfig) {
+	switch strings.TrimSpace(sink.Type) {
+	case "http", "braintrust":
+	default:
+		errs.Add(prefix+".type", "must be one of http or braintrust", "use http for a generic JSON webhook or braintrust for a Braintrust-style run publisher")
+	}
+	requireNonEmpty(errs, prefix+".endpoint", sink.Endpoint, "set the remote endpoint that should receive the machine-readable cleanr result payload")
+	if rawURL := strings.TrimSpace(sink.Endpoint); rawURL != "" {
+		parsed, err := url.Parse(rawURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			errs.Add(prefix+".endpoint", "must be an absolute http(s) URL", "use a value such as https://example.internal/cleanr/runs")
+		}
+	}
+	if sink.TimeoutMS < 0 {
+		errs.Add(prefix+".timeout_ms", "must be >= 0", "use a non-negative timeout in milliseconds")
+	}
+}
+
+func validateTrendSource(errs *ValidationErrors, prefix string, source core.TrendSourceConfig) {
+	switch strings.TrimSpace(source.Type) {
+	case "file":
+		requireNonEmpty(errs, prefix+".path", source.Path, "set the path to a retained cleanr trend history file")
+	case "http":
+		requireNonEmpty(errs, prefix+".url", source.URL, "set the remote URL that returns a cleanr trend history file")
+		if rawURL := strings.TrimSpace(source.URL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add(prefix+".url", "must be an absolute http(s) URL", "use a value such as https://example.internal/cleanr/history.json")
+			}
+		}
+	default:
+		errs.Add(prefix+".type", "must be one of file or http", "use file for a retained local artifact or http for a remote history endpoint")
+	}
+	if strings.TrimSpace(source.ViewURL) != "" {
+		parsed, err := url.Parse(strings.TrimSpace(source.ViewURL))
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			errs.Add(prefix+".view_url", "must be an absolute http(s) URL", "use a direct dashboard URL that reviewers can open when triaging the linked remote experiment")
+		}
+	}
+	if source.TimeoutMS < 0 {
+		errs.Add(prefix+".timeout_ms", "must be >= 0", "use a non-negative timeout in milliseconds")
+	}
+}
+
+func validateSummary(errs *ValidationErrors, prefix string, summary core.SummaryConfig) {
+	switch strings.TrimSpace(summary.Format) {
+	case "", "markdown", "json":
+	default:
+		errs.Add(prefix+".format", "must be one of markdown or json", "use markdown for PR or release notes, or json for downstream automation")
+	}
+	requireNonEmpty(errs, prefix+".output", summary.Output, "set the output path for the generated PR or release summary artifact")
 }

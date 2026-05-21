@@ -71,6 +71,38 @@ func BuildReplayArtifact(report core.Report) core.ReplayArtifact {
 	return artifact
 }
 
+func LoadReplayArtifactFile(path string) (core.ReplayArtifact, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return core.ReplayArtifact{}, err
+	}
+	return LoadReplayArtifactData(data, path)
+}
+
+func LoadReplayArtifactData(data []byte, path string) (core.ReplayArtifact, error) {
+	if isYAMLPath(path) {
+		var generic any
+		if err := yaml.Unmarshal(data, &generic); err != nil {
+			return core.ReplayArtifact{}, fmt.Errorf("decode replay artifact: %w", err)
+		}
+		normalized := normalizeYAMLValue(generic)
+		raw, err := json.Marshal(normalized)
+		if err != nil {
+			return core.ReplayArtifact{}, fmt.Errorf("decode replay artifact: %w", err)
+		}
+		var artifact core.ReplayArtifact
+		if err := json.Unmarshal(raw, &artifact); err != nil {
+			return core.ReplayArtifact{}, fmt.Errorf("decode replay artifact: %w", err)
+		}
+		return artifact, nil
+	}
+	var artifact core.ReplayArtifact
+	if err := json.Unmarshal(data, &artifact); err != nil {
+		return core.ReplayArtifact{}, fmt.Errorf("decode replay artifact: %w", err)
+	}
+	return artifact, nil
+}
+
 func WriteReplayArtifactFile(path string, artifact core.ReplayArtifact) error {
 	data, err := encodeReplayArtifact(artifact, path)
 	if err != nil {
