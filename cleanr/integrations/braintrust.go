@@ -1,13 +1,11 @@
 package integrations
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha1"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"path"
@@ -21,9 +19,7 @@ import (
 const defaultBraintrustBaseURL = "https://api.braintrust.dev"
 
 type braintrustClient struct {
-	baseURL string
-	headers map[string]string
-	client  *http.Client
+	http *jsonAPIClient
 }
 
 type braintrustProject struct {
@@ -63,14 +59,13 @@ func useNativeBraintrustSink(sink core.ResultSinkConfig) bool {
 }
 
 func newBraintrustClient(baseURL, endpoint, apiKeyEnv string, headers map[string]string, timeoutMS int) *braintrustClient {
-	timeout := 10 * time.Second
-	if timeoutMS > 0 {
-		timeout = time.Duration(timeoutMS) * time.Millisecond
-	}
 	return &braintrustClient{
-		baseURL: braintrustBaseURL(baseURL, endpoint),
-		headers: headers,
-		client:  &http.Client{Timeout: timeout},
+		http: newJSONAPIClient(
+			braintrustBaseURL(baseURL, endpoint),
+			headers,
+			timeoutMS,
+			func(h http.Header) { applyAuth(h, apiKeyEnv) },
+		),
 	}
 }
 
@@ -82,7 +77,7 @@ func postBraintrustSinkPayload(ctx context.Context, sink core.ResultSinkConfig, 
 	}
 	family := braintrustFamilyName(sink.Experiment)
 
-	project, err := client.createProject(ctx, sink.APIKeyEnv, projectName)
+	project, err := client.createProject(ctx, projectName)
 	if err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
@@ -105,20 +100,20 @@ func postBraintrustSinkPayload(ctx context.Context, sink core.ResultSinkConfig, 
 		},
 	}
 	var experiment braintrustExperiment
-	if err := client.postJSON(ctx, "/v1/experiment", sink.APIKeyEnv, experimentBody, &experiment); err != nil {
+	if err := client.http.postJSON(ctx, "/v1/experiment", experimentBody, &experiment); err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 
 	historyRun := trendspkg.BuildRun(payload.Report, payload.BuildID)
 	events := buildBraintrustEvents(payload, family, historyRun)
-	if err := client.postJSON(ctx, path.Join("/v1/experiment", experiment.ID, "insert"), sink.APIKeyEnv, map[string]any{
+	if err := client.http.postJSON(ctx, path.Join("/v1/experiment", experiment.ID, "insert"), map[string]any{
 		"events": events,
 	}, nil); err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 
 	var summary braintrustExperimentSummary
-	if err := client.getJSON(ctx, path.Join("/v1/experiment", experiment.ID, "summarize"), sink.APIKeyEnv, nil, &summary); err == nil && strings.TrimSpace(summary.ExperimentURL) != "" {
+	if err := client.http.getJSON(ctx, path.Join("/v1/experiment", experiment.ID, "summarize"), nil, &summary); err == nil && strings.TrimSpace(summary.ExperimentURL) != "" {
 		return strings.TrimSpace(summary.ExperimentURL), nil
 	}
 	return expandRunURLTemplate(sink.RunURLTemplate, payload), nil
@@ -290,9 +285,9 @@ func braintrustBaseURL(baseURL, endpoint string) string {
 	return defaultBraintrustBaseURL
 }
 
-func (c *braintrustClient) createProject(ctx context.Context, apiKeyEnv, name string) (braintrustProject, error) {
+func (c *braintrustClient) createProject(ctx context.Context, name string) (braintrustProject, error) {
 	var project braintrustProject
-	if err := c.postJSON(ctx, "/v1/project", apiKeyEnv, map[string]any{"name": name}, &project); err != nil {
+	if err := c.http.postJSON(ctx, "/v1/project", map[string]any{"name": name}, &project); err != nil {
 		return braintrustProject{}, err
 	}
 	return project, nil
@@ -314,7 +309,7 @@ func (c *braintrustClient) listExperiments(ctx context.Context, apiKeyEnv, proje
 		query.Set("metadata", string(rawFilter))
 	}
 	var resp braintrustExperimentList
-	if err := c.getJSON(ctx, "/v1/experiment", apiKeyEnv, query, &resp); err != nil {
+	if err := c.http.getJSON(ctx, "/v1/experiment", query, &resp); err != nil {
 		return nil, fmt.Errorf("load trend source %s: %w", displayName(project, "braintrust"), err)
 	}
 	return resp.Objects, nil
@@ -326,7 +321,7 @@ func (c *braintrustClient) fetchHistoryRun(ctx context.Context, apiKeyEnv, exper
 		experimentID,
 	)
 	var resp braintrustBTQLResponse
-	if err := c.postJSON(ctx, "/btql", apiKeyEnv, map[string]any{
+	if err := c.http.postJSON(ctx, "/btql", map[string]any{
 		"query": query,
 		"fmt":   "json",
 	}, &resp); err != nil {
@@ -344,69 +339,4 @@ func (c *braintrustClient) fetchHistoryRun(ctx context.Context, apiKeyEnv, exper
 		return trendspkg.HistoryRun{}, fmt.Errorf("load trend source braintrust: %w", err)
 	}
 	return run, nil
-}
-
-func (c *braintrustClient) getJSON(ctx context.Context, resource, apiKeyEnv string, query url.Values, out any) error {
-	endpoint := c.baseURL + resource
-	if len(query) > 0 {
-		endpoint += "?" + query.Encode()
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
-	if err != nil {
-		return err
-	}
-	applyAuth(req.Header, apiKeyEnv)
-	applyHeaders(req.Header, c.headers)
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf(compactHTTPError(resp.StatusCode, body))
-	}
-	if out == nil {
-		return nil
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return err
-	}
-	return nil
-}
-
-func (c *braintrustClient) postJSON(ctx context.Context, resource, apiKeyEnv string, payload, out any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+resource, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	applyAuth(req.Header, apiKeyEnv)
-	applyHeaders(req.Header, c.headers)
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf(compactHTTPError(resp.StatusCode, body))
-	}
-	if out == nil || len(body) == 0 {
-		return nil
-	}
-	if err := json.Unmarshal(body, out); err != nil {
-		return err
-	}
-	return nil
 }

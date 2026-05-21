@@ -202,6 +202,7 @@ cleanr setup --ci -provider anthropic -model claude-sonnet-4-20250514 -output cl
 - [Getting started](docs/getting-started.md): first run, validation, and report generation
 - [Configuration](docs/configuration.md): config schema, suites, assertions, and reporting
 - [CI guide](docs/ci.md): pipeline integration and release packaging
+- [Integrations](docs/integrations.md): current external sink, trend-source, and summary integration support
 - [MCP and MCPO](docs/mcp.md): expose `cleanr` as agent-callable tools
 - [Developer guide](docs/development.md): local contributor workflows and repository checks
 - [Docs index](docs/README.md): documentation map and reading order

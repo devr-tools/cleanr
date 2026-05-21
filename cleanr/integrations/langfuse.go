@@ -1,14 +1,11 @@
 package integrations
 
 import (
-	"bytes"
 	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/hex"
-	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
 	"net/url"
 	"os"
@@ -21,11 +18,7 @@ import (
 const defaultLangfuseBaseURL = "https://cloud.langfuse.com"
 
 type langfuseClient struct {
-	baseURL    string
-	publicKey  string
-	secretKey  string
-	headers    map[string]string
-	httpClient *http.Client
+	http *jsonAPIClient
 }
 
 type langfuseScore struct {
@@ -47,16 +40,15 @@ func newLangfuseClient(sink core.ResultSinkConfig) (*langfuseClient, error) {
 	if publicKey == "" || secretKey == "" {
 		return nil, fmt.Errorf("missing Langfuse credentials in %s or %s", emptyValue(sink.PublicKeyEnv), emptyValue(sink.SecretKeyEnv))
 	}
-	timeout := 10 * time.Second
-	if sink.TimeoutMS > 0 {
-		timeout = time.Duration(sink.TimeoutMS) * time.Millisecond
-	}
 	return &langfuseClient{
-		baseURL:    strings.TrimRight(langfuseBaseURL(sink.BaseURL, sink.Endpoint), "/"),
-		publicKey:  publicKey,
-		secretKey:  secretKey,
-		headers:    sink.Headers,
-		httpClient: &http.Client{Timeout: timeout},
+		http: newJSONAPIClient(
+			strings.TrimRight(langfuseBaseURL(sink.BaseURL, sink.Endpoint), "/"),
+			sink.Headers,
+			sink.TimeoutMS,
+			func(h http.Header) {
+				h.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(publicKey+":"+secretKey)))
+			},
+		),
 	}, nil
 }
 
@@ -97,12 +89,12 @@ func postLangfuseSinkPayload(ctx context.Context, sink core.ResultSinkConfig, pa
 			},
 		}},
 	}
-	if err := client.postJSON(ctx, "/api/public/ingestion", traceEvent, nil); err != nil {
+	if err := client.http.postJSON(ctx, "/api/public/ingestion", traceEvent, nil); err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 
 	for _, score := range buildLangfuseScores(traceID, payload) {
-		if err := client.postJSON(ctx, "/api/public/scores", score, nil); err != nil {
+		if err := client.http.postJSON(ctx, "/api/public/scores", score, nil); err != nil {
 			return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 		}
 	}
@@ -239,39 +231,5 @@ func envValue(name string) string {
 	if name == "" {
 		return ""
 	}
-	return strings.TrimSpace(getenv(name))
-}
-
-func getenv(name string) string {
-	return os.Getenv(name)
-}
-
-func (c *langfuseClient) postJSON(ctx context.Context, resource string, payload, out any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+resource, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(c.publicKey+":"+c.secretKey)))
-	applyHeaders(req.Header, c.headers)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf(compactHTTPError(resp.StatusCode, body))
-	}
-	if out == nil || len(body) == 0 {
-		return nil
-	}
-	return json.Unmarshal(body, out)
+	return strings.TrimSpace(os.Getenv(name))
 }

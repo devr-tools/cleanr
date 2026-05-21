@@ -1,12 +1,8 @@
 package integrations
 
 import (
-	"bytes"
 	"context"
-	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
 	"net/url"
 	"strings"
 	"time"
@@ -17,10 +13,8 @@ import (
 const defaultPostHogBaseURL = "https://us.i.posthog.com"
 
 type postHogClient struct {
-	baseURL    string
-	token      string
-	headers    map[string]string
-	httpClient *http.Client
+	token string
+	http  *jsonAPIClient
 }
 
 func useNativePostHogSink(sink core.ResultSinkConfig) bool {
@@ -32,15 +26,14 @@ func newPostHogClient(sink core.ResultSinkConfig) (*postHogClient, error) {
 	if token == "" {
 		return nil, fmt.Errorf("missing PostHog project token in %s", emptyValue(sink.ProjectTokenEnv))
 	}
-	timeout := 10 * time.Second
-	if sink.TimeoutMS > 0 {
-		timeout = time.Duration(sink.TimeoutMS) * time.Millisecond
-	}
 	return &postHogClient{
-		baseURL:    strings.TrimRight(postHogBaseURL(sink.BaseURL, sink.Endpoint), "/"),
-		token:      token,
-		headers:    sink.Headers,
-		httpClient: &http.Client{Timeout: timeout},
+		token: token,
+		http: newJSONAPIClient(
+			strings.TrimRight(postHogBaseURL(sink.BaseURL, sink.Endpoint), "/"),
+			sink.Headers,
+			sink.TimeoutMS,
+			nil,
+		),
 	}, nil
 }
 
@@ -56,7 +49,7 @@ func postPostHogSinkPayload(ctx context.Context, sink core.ResultSinkConfig, pay
 		"api_key": client.token,
 		"batch":   buildPostHogEvents(payload, family, distinctID),
 	}
-	if err := client.postJSON(ctx, "/batch/", body, nil); err != nil {
+	if err := client.http.postJSON(ctx, "/batch/", body, nil); err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 	return expandPostHogRunURL(sink.RunURLTemplate, payload, distinctID), nil
@@ -165,33 +158,4 @@ func postHogBaseURL(baseURL, endpoint string) string {
 		}
 	}
 	return defaultPostHogBaseURL
-}
-
-func (c *postHogClient) postJSON(ctx context.Context, resource string, payload, out any) error {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return err
-	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+resource, bytes.NewReader(data))
-	if err != nil {
-		return err
-	}
-	req.Header.Set("Content-Type", "application/json")
-	applyHeaders(req.Header, c.headers)
-	resp, err := c.httpClient.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	body, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20))
-	if err != nil {
-		return err
-	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf(compactHTTPError(resp.StatusCode, body))
-	}
-	if out == nil || len(body) == 0 {
-		return nil
-	}
-	return json.Unmarshal(body, out)
 }

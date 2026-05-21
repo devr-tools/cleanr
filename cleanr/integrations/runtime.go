@@ -104,25 +104,7 @@ func PublishResultSinks(ctx context.Context, cfg core.IntegrationsConfig, report
 			BestEffort: true,
 			Published:  false,
 		}
-		payload := SinkPayload{
-			Version:          "v1alpha1",
-			Source:           "cleanr",
-			SinkType:         strings.TrimSpace(sink.Type),
-			Project:          strings.TrimSpace(sink.Project),
-			Experiment:       strings.TrimSpace(sink.Experiment),
-			Target:           report.Name,
-			BuildID:          buildID(report.Metadata),
-			GeneratedAt:      report.GeneratedAt,
-			LocalBlocking:    true,
-			RemoteBestEffort: true,
-			Report:           report,
-		}
-		if sink.IncludeReplay && replay != nil {
-			payload.ReplayArtifact = replay
-		}
-		if sink.IncludeAttest && attestation != nil {
-			payload.Attestation = attestation
-		}
+		payload := buildSinkPayload(sink, report, replay, attestation)
 		runURL, err := postSinkPayload(ctx, sink, payload)
 		if err != nil {
 			item.Message = err.Error()
@@ -205,14 +187,8 @@ func loadTrendSource(ctx context.Context, source core.TrendSourceConfig, baseDir
 }
 
 func postSinkPayload(ctx context.Context, sink core.ResultSinkConfig, payload SinkPayload) (string, error) {
-	if useNativeBraintrustSink(sink) {
-		return postBraintrustSinkPayload(ctx, sink, payload)
-	}
-	if useNativeLangfuseSink(sink) {
-		return postLangfuseSinkPayload(ctx, sink, payload)
-	}
-	if useNativePostHogSink(sink) {
-		return postPostHogSinkPayload(ctx, sink, payload)
+	if runURL, handled, err := publishNativeSink(ctx, sink, payload); handled {
+		return runURL, err
 	}
 	data, err := json.Marshal(payload)
 	if err != nil {

@@ -8,6 +8,7 @@ This directory holds the project documentation that should stay more detailed th
 - [Configuration](configuration.md): understand the config model, request templating, suites, and report options
 - [Developer guide](development.md): local contributor workflows, checks, and release packaging commands
 - [CI guide](ci.md): wire `cleanr` into GitHub Actions or another CI system
+- [Integrations](integrations.md): see which external sinks, trend sources, and summary outputs are implemented today
 - [MCP and MCPO](mcp.md): expose `cleanr` as an MCP server and bridge it to OpenAPI for agents
 
 ## Project Planning
