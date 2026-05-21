@@ -481,9 +481,9 @@ func validatePolicyRule(errs *ValidationErrors, prefix string, rule core.PolicyR
 
 func validateResultSink(errs *ValidationErrors, prefix string, sink core.ResultSinkConfig) {
 	switch strings.TrimSpace(sink.Type) {
-	case "http", "braintrust", "langfuse":
+	case "http", "braintrust", "langfuse", "posthog":
 	default:
-		errs.Add(prefix+".type", "must be one of http, braintrust, or langfuse", "use http for a generic JSON webhook, braintrust for a Braintrust-style run publisher, or langfuse for a Langfuse trace publisher")
+		errs.Add(prefix+".type", "must be one of http, braintrust, langfuse, or posthog", "use http for a generic JSON webhook, braintrust for a Braintrust-style run publisher, langfuse for a Langfuse trace publisher, or posthog for a PostHog event publisher")
 	}
 	switch strings.TrimSpace(sink.Type) {
 	case "http":
@@ -498,6 +498,8 @@ func validateResultSink(errs *ValidationErrors, prefix string, sink core.ResultS
 	case "langfuse":
 		requireNonEmpty(errs, prefix+".public_key_env", sink.PublicKeyEnv, "set the env var that contains the Langfuse public key")
 		requireNonEmpty(errs, prefix+".secret_key_env", sink.SecretKeyEnv, "set the env var that contains the Langfuse secret key")
+	case "posthog":
+		requireNonEmpty(errs, prefix+".project_token_env", sink.ProjectTokenEnv, "set the env var that contains the PostHog project API token")
 	}
 	if rawURL := strings.TrimSpace(sink.Endpoint); rawURL != "" {
 		parsed, err := url.Parse(rawURL)

@@ -253,20 +253,21 @@ type IntegrationsConfig struct {
 }
 
 type ResultSinkConfig struct {
-	Name           string            `json:"name,omitempty"`
-	Type           string            `json:"type"`
-	BaseURL        string            `json:"base_url,omitempty"`
-	Endpoint       string            `json:"endpoint,omitempty"`
-	APIKeyEnv      string            `json:"api_key_env,omitempty"`
-	PublicKeyEnv   string            `json:"public_key_env,omitempty"`
-	SecretKeyEnv   string            `json:"secret_key_env,omitempty"`
-	Headers        map[string]string `json:"headers,omitempty"`
-	Project        string            `json:"project,omitempty"`
-	Experiment     string            `json:"experiment,omitempty"`
-	RunURLTemplate string            `json:"run_url_template,omitempty"`
-	IncludeReplay  bool              `json:"include_replay_artifact,omitempty"`
-	IncludeAttest  bool              `json:"include_attestation,omitempty"`
-	TimeoutMS      int               `json:"timeout_ms,omitempty"`
+	Name            string            `json:"name,omitempty"`
+	Type            string            `json:"type"`
+	BaseURL         string            `json:"base_url,omitempty"`
+	Endpoint        string            `json:"endpoint,omitempty"`
+	APIKeyEnv       string            `json:"api_key_env,omitempty"`
+	ProjectTokenEnv string            `json:"project_token_env,omitempty"`
+	PublicKeyEnv    string            `json:"public_key_env,omitempty"`
+	SecretKeyEnv    string            `json:"secret_key_env,omitempty"`
+	Headers         map[string]string `json:"headers,omitempty"`
+	Project         string            `json:"project,omitempty"`
+	Experiment      string            `json:"experiment,omitempty"`
+	RunURLTemplate  string            `json:"run_url_template,omitempty"`
+	IncludeReplay   bool              `json:"include_replay_artifact,omitempty"`
+	IncludeAttest   bool              `json:"include_attestation,omitempty"`
+	TimeoutMS       int               `json:"timeout_ms,omitempty"`
 }
 
 type TrendSourceConfig struct {

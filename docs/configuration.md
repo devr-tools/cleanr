@@ -834,10 +834,11 @@ That exact pattern is also available as a copyable file in `examples/openai-resp
 Each entry describes a remote machine-readable result publisher.
 
 - `name`: optional display label in reports
-- `type`: `http`, `braintrust`, or `langfuse`
-- `base_url`: optional API base URL for native Braintrust or Langfuse publishing, for example `https://api.braintrust.dev` or `https://cloud.langfuse.com`
+- `type`: `http`, `braintrust`, `langfuse`, or `posthog`
+- `base_url`: optional API base URL for native Braintrust, Langfuse, or PostHog publishing, for example `https://api.braintrust.dev`, `https://cloud.langfuse.com`, or `https://us.i.posthog.com`
 - `endpoint`: absolute HTTP or HTTPS endpoint that receives the JSON run payload
 - `api_key_env`: optional env var whose value is sent as a bearer token
+- `project_token_env`: PostHog project token env var for native PostHog publishing
 - `public_key_env`: Langfuse public key env var for native Langfuse publishing
 - `secret_key_env`: Langfuse secret key env var for native Langfuse publishing
 - `headers`: optional static request headers
@@ -859,6 +860,13 @@ For `type: langfuse`, use the native Langfuse API mode:
 - optionally set `base_url` for Langfuse Cloud EU or self-hosted deployments
 - optionally set `experiment` to control the trace name for cleanr CI runs
 - optionally set `run_url_template` if you want reports and summaries to link directly to the Langfuse UI
+
+For `type: posthog`, use the native PostHog batch event mode:
+
+- set `project_token_env`
+- optionally set `base_url`, for example `https://us.i.posthog.com` or `https://eu.i.posthog.com`
+- optionally set `experiment` to label the cleanr event family
+- optionally set `run_url_template` if you want reports and summaries to link to a PostHog dashboard or filtered event view using `{{distinct_id}}`
 
 ### `trend_sources`
 

@@ -206,6 +206,22 @@ integrations:
 
 That mode publishes the local CI result as a Langfuse trace plus numeric scores such as pass or fail, failed suite count, and failed case count.
 
+For PostHog, the native sink companion looks like this:
+
+```yaml
+integrations:
+  result_sinks:
+    - name: posthog
+      type: posthog
+      base_url: https://us.i.posthog.com
+      project_token_env: POSTHOG_PROJECT_API_KEY
+      experiment: release-gate
+      include_replay_artifact: true
+      run_url_template: https://eu.posthog.com/project/demo/events?distinct_id={{distinct_id}}
+```
+
+That mode publishes the CI result as PostHog batch events, with one run-level event plus case-level events for failures or findings.
+
 To summarize the retained window for dashboards or release notes, run:
 
 ```bash

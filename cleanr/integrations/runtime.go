@@ -211,6 +211,9 @@ func postSinkPayload(ctx context.Context, sink core.ResultSinkConfig, payload Si
 	if useNativeLangfuseSink(sink) {
 		return postLangfuseSinkPayload(ctx, sink, payload)
 	}
+	if useNativePostHogSink(sink) {
+		return postPostHogSinkPayload(ctx, sink, payload)
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)

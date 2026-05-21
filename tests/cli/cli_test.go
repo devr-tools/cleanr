@@ -686,6 +686,124 @@ func TestRunCommandSupportsNativeLangfuseConnector(t *testing.T) {
 	}
 }
 
+func TestRunCommandSupportsNativePostHogConnector(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Reporting.Format = "json"
+	cfg.Reporting.BuildID = "build-2"
+	cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+		Name:            "posthog",
+		Type:            "posthog",
+		BaseURL:         "https://us.i.posthog.com",
+		ProjectTokenEnv: "POSTHOG_PROJECT_API_KEY",
+		Experiment:      "release-gate",
+		IncludeReplay:   true,
+		RunURLTemplate:  "https://eu.posthog.com/project/demo/events?distinct_id={{distinct_id}}",
+	}}
+	cfg.Integrations.Summaries = []cleanr.SummaryConfig{{
+		Name:   "pr",
+		Format: "markdown",
+		Output: "reports/posthog-summary.md",
+	}}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("POSTHOG_PROJECT_API_KEY", "phc_test_token")
+
+	var distinctID string
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodPost && req.URL.String() == "https://us.i.posthog.com/batch/":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read posthog batch body: %v", err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("decode posthog batch body: %v\n%s", err, string(body))
+			}
+			if got, _ := payload["api_key"].(string); got != "phc_test_token" {
+				t.Fatalf("unexpected api_key: %v", payload["api_key"])
+			}
+			batch, ok := payload["batch"].([]any)
+			if !ok || len(batch) < 1 {
+				t.Fatalf("unexpected batch payload: %s", string(body))
+			}
+			first, ok := batch[0].(map[string]any)
+			if !ok || first["event"] != "cleanr_run" {
+				t.Fatalf("unexpected first event: %s", string(body))
+			}
+			gotDistinctID, _ := first["distinct_id"].(string)
+			if gotDistinctID == "" {
+				t.Fatalf("missing distinct_id in event: %s", string(body))
+			}
+			distinctID = gotDistinctID
+			for _, want := range []string{`"event":"cleanr_run"`, `"cleanr_replay_artifact"`, `"cleanr_report"`} {
+				if !bytes.Contains(body, []byte(want)) {
+					t.Fatalf("expected %q in posthog payload: %s", want, string(body))
+				}
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"status":1}`)),
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"run", "-config", configPath, "-format", "json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", exitCode, stderr.String())
+	}
+
+	var report cleanr.Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode report: %v\n%s", err, stdout.String())
+	}
+	if report.Integrations == nil {
+		t.Fatalf("expected integrations in report")
+	}
+	if len(report.Integrations.ResultSinks) != 1 || !report.Integrations.ResultSinks[0].Published {
+		t.Fatalf("unexpected result sink report: %+v", report.Integrations.ResultSinks)
+	}
+	wantRunURL := "https://eu.posthog.com/project/demo/events?distinct_id=" + distinctID
+	if got := report.Integrations.ResultSinks[0].RunURL; got != wantRunURL {
+		t.Fatalf("unexpected run url: %s", got)
+	}
+
+	summaryPath := filepath.Join(dir, "reports", "posthog-summary.md")
+	summaryBody, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	for _, want := range []string{
+		"cleanr Release Summary",
+		"Local gate: `PASS`",
+		"Remote Views",
+		wantRunURL,
+	} {
+		if !strings.Contains(string(summaryBody), want) {
+			t.Fatalf("expected %q in summary:\n%s", want, string(summaryBody))
+		}
+	}
+}
+
 func TestDatasetExportAndImportCommands(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Scenarios = []cleanr.Scenario{

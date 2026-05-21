@@ -294,6 +294,15 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "integrations.result_sinks[0].secret_key_env",
 		},
 		{
+			name: "posthog sink requires project token env",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+					Type: "posthog",
+				}}
+			},
+			wantSub: "integrations.result_sinks[0].project_token_env",
+		},
+		{
 			name: "trend source validates required selector",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
@@ -407,6 +416,22 @@ func TestValidateConfigAcceptsNativeLangfuseIntegrationConfig(t *testing.T) {
 
 	if err := cleanr.ValidateConfig(cfg); err != nil {
 		t.Fatalf("expected native Langfuse config to validate, got %v", err)
+	}
+}
+
+func TestValidateConfigAcceptsNativePostHogIntegrationConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+		Type:            "posthog",
+		BaseURL:         "https://us.i.posthog.com",
+		ProjectTokenEnv: "POSTHOG_PROJECT_API_KEY",
+		Experiment:      "release-gate",
+	}}
+
+	if err := cleanr.ValidateConfig(cfg); err != nil {
+		t.Fatalf("expected native PostHog config to validate, got %v", err)
 	}
 }
 
