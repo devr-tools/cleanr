@@ -7,8 +7,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
-	"net/url"
-	"os"
 	"strings"
 	"time"
 
@@ -42,7 +40,7 @@ func newLangfuseClient(sink core.ResultSinkConfig) (*langfuseClient, error) {
 	}
 	return &langfuseClient{
 		http: newJSONAPIClient(
-			strings.TrimRight(langfuseBaseURL(sink.BaseURL, sink.Endpoint), "/"),
+			normalizedBaseURL(sink.BaseURL, sink.Endpoint, defaultLangfuseBaseURL),
 			sink.Headers,
 			sink.TimeoutMS,
 			func(h http.Header) {
@@ -58,7 +56,7 @@ func postLangfuseSinkPayload(ctx context.Context, sink core.ResultSinkConfig, pa
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 
-	family := langfuseRunFamily(sink.Experiment)
+	family := integrationFamily(sink.Experiment)
 	traceID := langfuseTraceID(payload.Target, family, payload.BuildID, payload.GeneratedAt)
 	traceEvent := map[string]any{
 		"batch": []map[string]any{{
@@ -99,7 +97,7 @@ func postLangfuseSinkPayload(ctx context.Context, sink core.ResultSinkConfig, pa
 		}
 	}
 
-	return expandLangfuseRunURL(sink.RunURLTemplate, payload, traceID), nil
+	return expandRunURLWithValues(sink.RunURLTemplate, payload, map[string]string{"trace_id": traceID}), nil
 }
 
 func buildLangfuseTraceMetadata(payload SinkPayload, family string) map[string]any {
@@ -173,20 +171,11 @@ func buildLangfuseScores(traceID string, payload SinkPayload) []langfuseScore {
 	return scores
 }
 
-func langfuseRunFamily(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "cleanr-release-gate"
-	}
-	return name
-}
-
 func langfuseTraceID(target, family, buildID string, generatedAt time.Time) string {
 	seed := strings.Join([]string{
 		strings.TrimSpace(target),
 		strings.TrimSpace(family),
-		strings.TrimSpace(buildID),
-		generatedAt.UTC().Format(time.RFC3339Nano),
+		runScopeSuffix(buildID, generatedAt),
 	}, "|")
 	sum := sha256.Sum256([]byte(seed))
 	return hex.EncodeToString(sum[:16])
@@ -196,40 +185,4 @@ func langfuseEventID(parts ...string) string {
 	seed := strings.Join(parts, "|")
 	sum := sha256.Sum256([]byte(seed))
 	return hex.EncodeToString(sum[:16])
-}
-
-func expandLangfuseRunURL(tmpl string, payload SinkPayload, traceID string) string {
-	tmpl = strings.TrimSpace(tmpl)
-	if tmpl == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer(
-		"{{project}}", payload.Project,
-		"{{experiment}}", payload.Experiment,
-		"{{build_id}}", payload.BuildID,
-		"{{target}}", payload.Target,
-		"{{trace_id}}", traceID,
-	)
-	return replacer.Replace(tmpl)
-}
-
-func langfuseBaseURL(baseURL, endpoint string) string {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL != "" {
-		return baseURL
-	}
-	if raw := strings.TrimSpace(endpoint); raw != "" {
-		if parsed, err := url.Parse(raw); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-			return parsed.Scheme + "://" + parsed.Host
-		}
-	}
-	return defaultLangfuseBaseURL
-}
-
-func envValue(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return ""
-	}
-	return strings.TrimSpace(os.Getenv(name))
 }

@@ -61,7 +61,7 @@ func useNativeBraintrustSink(sink core.ResultSinkConfig) bool {
 func newBraintrustClient(baseURL, endpoint, apiKeyEnv string, headers map[string]string, timeoutMS int) *braintrustClient {
 	return &braintrustClient{
 		http: newJSONAPIClient(
-			braintrustBaseURL(baseURL, endpoint),
+			normalizedBaseURL(baseURL, endpoint, defaultBraintrustBaseURL),
 			headers,
 			timeoutMS,
 			func(h http.Header) { applyAuth(h, apiKeyEnv) },
@@ -75,14 +75,14 @@ func postBraintrustSinkPayload(ctx context.Context, sink core.ResultSinkConfig, 
 	if projectName == "" {
 		projectName = payload.Target
 	}
-	family := braintrustFamilyName(sink.Experiment)
+	family := integrationFamily(sink.Experiment)
 
 	project, err := client.createProject(ctx, projectName)
 	if err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 
-	experimentName := braintrustExperimentName(family, payload.BuildID, payload.GeneratedAt)
+	experimentName := family + "/" + runScopeSuffix(payload.BuildID, payload.GeneratedAt)
 	experimentBody := map[string]any{
 		"project_id": project.ID,
 		"name":       experimentName,
@@ -116,7 +116,7 @@ func postBraintrustSinkPayload(ctx context.Context, sink core.ResultSinkConfig, 
 	if err := client.http.getJSON(ctx, path.Join("/v1/experiment", experiment.ID, "summarize"), nil, &summary); err == nil && strings.TrimSpace(summary.ExperimentURL) != "" {
 		return strings.TrimSpace(summary.ExperimentURL), nil
 	}
-	return expandRunURLTemplate(sink.RunURLTemplate, payload), nil
+	return expandRunURLWithValues(sink.RunURLTemplate, payload, nil), nil
 }
 
 func loadBraintrustTrendSource(ctx context.Context, source core.TrendSourceConfig) (trendspkg.HistoryFile, error) {
@@ -236,23 +236,6 @@ func braintrustRunOutput(payload SinkPayload) map[string]any {
 	return out
 }
 
-func braintrustFamilyName(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "cleanr-release-gate"
-	}
-	return name
-}
-
-func braintrustExperimentName(family, buildID string, generatedAt time.Time) string {
-	buildID = strings.TrimSpace(buildID)
-	if buildID != "" {
-		return family + "/" + buildID
-	}
-	stamp := generatedAt.UTC().Format("20060102T150405Z")
-	return family + "/" + stamp
-}
-
 func braintrustEventID(parts ...string) string {
 	filtered := make([]string, 0, len(parts))
 	for _, part := range parts {
@@ -270,19 +253,6 @@ func boolScore(ok bool) float64 {
 		return 1
 	}
 	return 0
-}
-
-func braintrustBaseURL(baseURL, endpoint string) string {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL != "" {
-		return strings.TrimRight(baseURL, "/")
-	}
-	if raw := strings.TrimSpace(endpoint); raw != "" {
-		if parsed, err := url.Parse(raw); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-			return strings.TrimRight(parsed.Scheme+"://"+parsed.Host, "/")
-		}
-	}
-	return defaultBraintrustBaseURL
 }
 
 func (c *braintrustClient) createProject(ctx context.Context, name string) (braintrustProject, error) {

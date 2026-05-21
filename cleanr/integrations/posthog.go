@@ -3,7 +3,6 @@ package integrations
 import (
 	"context"
 	"fmt"
-	"net/url"
 	"strings"
 	"time"
 
@@ -29,7 +28,7 @@ func newPostHogClient(sink core.ResultSinkConfig) (*postHogClient, error) {
 	return &postHogClient{
 		token: token,
 		http: newJSONAPIClient(
-			strings.TrimRight(postHogBaseURL(sink.BaseURL, sink.Endpoint), "/"),
+			normalizedBaseURL(sink.BaseURL, sink.Endpoint, defaultPostHogBaseURL),
 			sink.Headers,
 			sink.TimeoutMS,
 			nil,
@@ -43,7 +42,7 @@ func postPostHogSinkPayload(ctx context.Context, sink core.ResultSinkConfig, pay
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 
-	family := postHogFamilyName(sink.Experiment)
+	family := integrationFamily(sink.Experiment)
 	distinctID := postHogDistinctID(payload.Target, family, payload.BuildID, payload.GeneratedAt)
 	body := map[string]any{
 		"api_key": client.token,
@@ -52,7 +51,7 @@ func postPostHogSinkPayload(ctx context.Context, sink core.ResultSinkConfig, pay
 	if err := client.http.postJSON(ctx, "/batch/", body, nil); err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
-	return expandPostHogRunURL(sink.RunURLTemplate, payload, distinctID), nil
+	return expandRunURLWithValues(sink.RunURLTemplate, payload, map[string]string{"distinct_id": distinctID}), nil
 }
 
 func buildPostHogEvents(payload SinkPayload, family, distinctID string) []map[string]any {
@@ -116,46 +115,6 @@ func buildPostHogRunProperties(payload SinkPayload, family, distinctID string) m
 	return properties
 }
 
-func postHogFamilyName(name string) string {
-	name = strings.TrimSpace(name)
-	if name == "" {
-		return "cleanr-release-gate"
-	}
-	return name
-}
-
 func postHogDistinctID(target, family, buildID string, generatedAt time.Time) string {
-	buildID = strings.TrimSpace(buildID)
-	if buildID != "" {
-		return strings.Join([]string{"cleanr", target, family, buildID}, ":")
-	}
-	return strings.Join([]string{"cleanr", target, family, generatedAt.UTC().Format("20060102T150405Z")}, ":")
-}
-
-func expandPostHogRunURL(tmpl string, payload SinkPayload, distinctID string) string {
-	tmpl = strings.TrimSpace(tmpl)
-	if tmpl == "" {
-		return ""
-	}
-	replacer := strings.NewReplacer(
-		"{{project}}", payload.Project,
-		"{{experiment}}", payload.Experiment,
-		"{{build_id}}", payload.BuildID,
-		"{{target}}", payload.Target,
-		"{{distinct_id}}", distinctID,
-	)
-	return replacer.Replace(tmpl)
-}
-
-func postHogBaseURL(baseURL, endpoint string) string {
-	baseURL = strings.TrimSpace(baseURL)
-	if baseURL != "" {
-		return baseURL
-	}
-	if raw := strings.TrimSpace(endpoint); raw != "" {
-		if parsed, err := url.Parse(raw); err == nil && parsed.Scheme != "" && parsed.Host != "" {
-			return parsed.Scheme + "://" + parsed.Host
-		}
-	}
-	return defaultPostHogBaseURL
+	return strings.Join([]string{"cleanr", target, family, runScopeSuffix(buildID, generatedAt)}, ":")
 }
