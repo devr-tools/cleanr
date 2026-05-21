@@ -70,6 +70,14 @@ func renderText(report core.Report, palette textPalette) string {
 		} else {
 			writeIndentedValue(&b, palette, 2, "Compared", trendComparedText(*report.Trend))
 			writeIndentedValue(&b, palette, 2, "Summary", trendSummaryText(report.Trend.Summary))
+			if report.Trend.BuildDiff != nil {
+				if header := buildDiffHeaderText(*report.Trend.BuildDiff); header != "" {
+					writeIndentedValue(&b, palette, 2, "BuildDiff", header)
+				}
+				for _, change := range report.Trend.BuildDiff.ScenarioChanges {
+					writeIndentedValue(&b, palette, 2, "Scenario", scenarioBuildDiffText(change))
+				}
+			}
 			for _, suiteTrend := range report.Trend.Suites {
 				if suiteTrend.Status == "unchanged" && suiteTrend.Drift == nil && suiteTrend.FailedCasesDelta == 0 && suiteTrend.ScoreDelta == 0 {
 					continue
@@ -118,4 +126,42 @@ func renderBanner(palette textPalette) string {
 		lines[i] = palette.accent(line)
 	}
 	return strings.Join(lines, "\n")
+}
+
+func buildDiffHeaderText(diff core.BuildDiff) string {
+	parts := make([]string, 0, 2)
+	if diff.TargetTypeBefore != "" || diff.TargetTypeAfter != "" {
+		parts = append(parts, fmt.Sprintf("target_type=%s -> %s", emptyValue(diff.TargetTypeBefore), emptyValue(diff.TargetTypeAfter)))
+	}
+	if diff.ModelBefore != "" || diff.ModelAfter != "" {
+		parts = append(parts, fmt.Sprintf("model=%s -> %s", emptyValue(diff.ModelBefore), emptyValue(diff.ModelAfter)))
+	}
+	return strings.Join(parts, " | ")
+}
+
+func scenarioBuildDiffText(change core.ScenarioDiff) string {
+	parts := []string{change.Name, change.Status}
+	if change.SystemChanged {
+		parts = append(parts, "system")
+	}
+	if change.InputChanged {
+		parts = append(parts, "input")
+	}
+	if change.ContextChanged {
+		parts = append(parts, "context")
+	}
+	if change.MemoryReplayChanged {
+		parts = append(parts, "memory_replay")
+	}
+	if change.TagsChanged {
+		parts = append(parts, "tags")
+	}
+	return strings.Join(parts, " | ")
+}
+
+func emptyValue(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "<unset>"
+	}
+	return value
 }

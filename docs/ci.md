@@ -78,7 +78,7 @@ jobs:
         run: ./dist/cleanr validate -config cleanr.yaml
 
       - name: Run cleanr
-        run: ./dist/cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml -trend-file reports/cleanr.trends.yaml -build-id "${{ github.sha }}"
+        run: ./dist/cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml -trend-file reports/cleanr.trends.yaml -replay-artifact reports/cleanr.replay.json -build-id "${{ github.sha }}"
 
       - name: Upload report
         uses: actions/upload-artifact@v4
@@ -87,6 +87,7 @@ jobs:
           path: |
             cleanr-junit.xml
             reports/cleanr.trends.yaml
+            reports/cleanr.replay.json
 ```
 
 ## Local-to-CI Workflow
@@ -107,6 +108,15 @@ A practical rollout path is:
 
 Trend history is orthogonal to the main report format. If `reporting.trend_file` or `-trend-file` is set, `cleanr` also writes a compact JSON or YAML history file that can be persisted as a CI artifact and compared by later runs.
 
+Replay artifacts are the nightly triage companion to that retained history. If `reporting.replay_artifact_file` or `-replay-artifact` is set, `cleanr` writes a JSON or YAML bundle that includes:
+
+- failing workflows and findings
+- curated retained evidence from the failing cases
+- run metadata such as build ID, target type, configured model, and scenario fingerprints
+- the latest build diff, including prompt and model changes when they changed between retained runs
+
+If `trend_file` is set and `replay_artifact_file` is omitted, `cleanr` derives a sibling replay artifact path automatically.
+
 If you want CI to fail only on meaningful regressions instead of every informational delta, enable `reporting.trend_gates` in the config. That lets you gate on metrics like additional failed cases, semantic drift delta, or duration growth between builds.
 
 A sane starter policy is:
@@ -114,6 +124,7 @@ A sane starter policy is:
 ```yaml
 reporting:
   trend_file: reports/cleanr.trends.yaml
+  replay_artifact_file: reports/cleanr.replay.json
   trend_limit: 30
   trend_gates:
     preset: moderate
@@ -126,6 +137,7 @@ If you want to keep a preset but tune one threshold, add only that field. For ex
 ```yaml
 reporting:
   trend_file: reports/cleanr.trends.yaml
+  replay_artifact_file: reports/cleanr.replay.json
   trend_limit: 30
   trend_gates:
     preset: moderate
@@ -139,6 +151,8 @@ To summarize the retained window for dashboards or release notes, run:
 ```bash
 ./dist/cleanr trends -trend-file reports/cleanr.trends.yaml -format json > cleanr-trends-summary.json
 ```
+
+For nightly failures, upload the replay artifact alongside that summary so reviewers can inspect the exact failing workflows instead of only aggregate score deltas.
 
 ## Release Workflow Notes
 

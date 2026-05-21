@@ -192,6 +192,12 @@ Track trend history across builds:
 ./dist/cleanr run -config cleanr.json -trend-file reports/cleanr.trends.yaml -build-id "$GITHUB_SHA"
 ```
 
+Write a nightly replay artifact for failing workflows:
+
+```bash
+./dist/cleanr run -config cleanr.json -trend-file reports/cleanr.trends.yaml -replay-artifact reports/cleanr.replay.json -build-id "$GITHUB_SHA"
+```
+
 Summarize the retained history window:
 
 ```bash
@@ -227,6 +233,7 @@ For an initial rollout, keep the first config simple:
 - confirm the response extraction path is correct
 - tune load, chaos, and drift thresholds after a few real runs
 - add `reporting.trend_file` once the suite is stable enough to track build-over-build drift deltas
+- upload the replay artifact in CI once you want workflow-level nightly triage instead of only score deltas
 - emit JUnit in CI so failures show up as native test results
 
 The next reference to read is [configuration.md](configuration.md).

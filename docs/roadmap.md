@@ -115,31 +115,19 @@ The Phase 2 action-verification core is now in place as well:
 - exact expected state-change verification for non-file workflow surfaces
 - end-to-end stateful sample project with a real workflow gate
 
-This establishes the release-gate core. The next phase is about making those workflow checks longitudinal, replayable, and useful for broader regression triage.
+Phase 3 is now in place as well:
+
+- multi-session replay fixtures for revoked, stale, poisoned, and cross-user memory regressions
+- replay validation with fixed session metadata for reproducible fixtures
+- workflow-level regressions, grouped failure buckets, and blast-radius summaries across retained runs
+- build-aware diffs for prompts, workflow inputs, and configured models between retained runs
+- nightly replay artifacts that preserve failing workflows and retained evidence for triage
+
+This establishes the longitudinal regression core. The next roadmap phase is about governance, policy packs, and broader ecosystem integration.
 
 ## Forward roadmap
 
-Phase 1 and Phase 2 are complete. The roadmap below covers the remaining forward-looking work only.
-
-### Phase 3: Longitudinal and blast-radius analysis
-
-Status: current focus
-
-Objective: make `cleanr` credible for higher-risk and longer-lived agent systems.
-
-Primary outcomes:
-
-- stale-memory and memory-poisoning regression packs
-- seeded replay with fixed workflow metadata where supported
-- change-impact replay and blast-radius summaries
-- richer trace diffs across builds, prompts, and models
-- grouped failure triage for repeated workflow-level failure modes
-
-Exit criteria:
-
-- teams can compare not just pass or fail, but which workflows regressed and how broadly
-- memory and state regressions can be reproduced with stable fixtures
-- nightly runs produce actionable replay artifacts rather than generic score deltas
+Phase 1, Phase 2, and Phase 3 are complete. The roadmap below covers the remaining forward-looking work only.
 
 ### Phase 4: Governance and ecosystem
 
@@ -176,38 +164,7 @@ Exit criteria:
 - reviewed failures in external systems can be promoted back into durable `cleanr` regression fixtures
 - integrations strengthen governance and review workflows as a companion layer rather than a replacement product surface
 
-## Phase 3 workstreams
-
-### 1. Longitudinal memory safety
-
-- Add fixtures for persistent memory reads and writes.
-- Add expiry and freshness assertions.
-- Add replay support for multi-session scenarios.
-
-### 2. Change-impact replay
-
-- Re-run stored evidence packs against new builds.
-- Group regressions by workflow, tool, trust tier, and policy family.
-- Summarize blast radius for pull requests and release candidates.
-- Distinguish local regressions from broad systemic failures.
-
-### 3. Trace diffs and triage
-
-- Produce diffs that show changed actions, not just changed text.
-- Group repeated failures into root-cause-oriented buckets.
-- Highlight first divergence points in workflow execution.
-- Improve artifacts for engineering review and audit workflows.
-
 ## Milestone sequence
-
-### Milestone C
-
-Add longitudinal and replay intelligence.
-
-- memory safety suite
-- change-impact replay
-- workflow-level diffs
-- grouped regression summaries
 
 ### Milestone D
 

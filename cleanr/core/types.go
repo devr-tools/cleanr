@@ -221,12 +221,13 @@ type TokenOptimizationConfig struct {
 }
 
 type ReportingConfig struct {
-	Format     string          `json:"format"`
-	Output     string          `json:"output"`
-	TrendFile  string          `json:"trend_file"`
-	TrendLimit int             `json:"trend_limit"`
-	BuildID    string          `json:"build_id"`
-	TrendGates TrendGateConfig `json:"trend_gates"`
+	Format             string          `json:"format"`
+	Output             string          `json:"output"`
+	TrendFile          string          `json:"trend_file"`
+	ReplayArtifactFile string          `json:"replay_artifact_file"`
+	TrendLimit         int             `json:"trend_limit"`
+	BuildID            string          `json:"build_id"`
+	TrendGates         TrendGateConfig `json:"trend_gates"`
 }
 
 type TrendGateConfig struct {
@@ -366,6 +367,7 @@ type Report struct {
 	FailedSuites    int              `json:"failed_suites"`
 	TotalCases      int              `json:"total_cases"`
 	FailedCases     int              `json:"failed_cases"`
+	Metadata        *RunMetadata     `json:"metadata,omitempty"`
 	Suites          []SuiteResult    `json:"suites"`
 	Trend           *TrendReport     `json:"trend,omitempty"`
 	TrendGate       *TrendGateReport `json:"trend_gate,omitempty"`
@@ -373,16 +375,17 @@ type Report struct {
 }
 
 type TrendReport struct {
-	Baseline         bool          `json:"baseline"`
-	HistoryLength    int           `json:"history_length"`
-	CurrentBuildID   string        `json:"current_build_id,omitempty"`
-	PreviousBuildID  string        `json:"previous_build_id,omitempty"`
-	PreviousAt       time.Time     `json:"previous_at,omitempty"`
-	PreviousDuration time.Duration `json:"previous_duration,omitempty"`
-	Summary          TrendSummary  `json:"summary"`
-	Suites           []SuiteTrend  `json:"suites,omitempty"`
-	CaseRegressions  []CaseTrend   `json:"case_regressions,omitempty"`
-	CaseImprovements []CaseTrend   `json:"case_improvements,omitempty"`
+	Baseline         bool            `json:"baseline"`
+	HistoryLength    int             `json:"history_length"`
+	CurrentBuildID   string          `json:"current_build_id,omitempty"`
+	PreviousBuildID  string          `json:"previous_build_id,omitempty"`
+	PreviousAt       time.Time       `json:"previous_at,omitempty"`
+	PreviousDuration time.Duration   `json:"previous_duration,omitempty"`
+	BuildDiff        *BuildDiff      `json:"build_diff,omitempty"`
+	Summary          TrendSummary    `json:"summary"`
+	Suites           []SuiteTrend    `json:"suites,omitempty"`
+	CaseRegressions  []CaseTrend     `json:"case_regressions,omitempty"`
+	CaseImprovements []CaseTrend     `json:"case_improvements,omitempty"`
 	FailureBuckets   []FailureBucket `json:"failure_buckets,omitempty"`
 }
 
@@ -404,6 +407,42 @@ type TrendSummary struct {
 	ImprovedSuites    int           `json:"improved_suites"`
 }
 
+type RunMetadata struct {
+	BuildID              string                `json:"build_id,omitempty"`
+	TargetType           string                `json:"target_type,omitempty"`
+	ProviderModel        string                `json:"provider_model,omitempty"`
+	ScenarioFingerprints []ScenarioFingerprint `json:"scenario_fingerprints,omitempty"`
+}
+
+type ScenarioFingerprint struct {
+	Name              string   `json:"name"`
+	SystemHash        string   `json:"system_hash,omitempty"`
+	InputHash         string   `json:"input_hash,omitempty"`
+	ContextHash       string   `json:"context_hash,omitempty"`
+	MemoryReplayHash  string   `json:"memory_replay_hash,omitempty"`
+	MemoryReplaySteps int      `json:"memory_replay_steps,omitempty"`
+	TagsHash          string   `json:"tags_hash,omitempty"`
+	Tags              []string `json:"tags,omitempty"`
+}
+
+type BuildDiff struct {
+	TargetTypeBefore string         `json:"target_type_before,omitempty"`
+	TargetTypeAfter  string         `json:"target_type_after,omitempty"`
+	ModelBefore      string         `json:"model_before,omitempty"`
+	ModelAfter       string         `json:"model_after,omitempty"`
+	ScenarioChanges  []ScenarioDiff `json:"scenario_changes,omitempty"`
+}
+
+type ScenarioDiff struct {
+	Name                string `json:"name"`
+	Status              string `json:"status"`
+	SystemChanged       bool   `json:"system_changed,omitempty"`
+	InputChanged        bool   `json:"input_changed,omitempty"`
+	ContextChanged      bool   `json:"context_changed,omitempty"`
+	MemoryReplayChanged bool   `json:"memory_replay_changed,omitempty"`
+	TagsChanged         bool   `json:"tags_changed,omitempty"`
+}
+
 type SuiteTrend struct {
 	Name             string      `json:"name"`
 	Status           string      `json:"status"`
@@ -413,24 +452,47 @@ type SuiteTrend struct {
 }
 
 type CaseTrend struct {
-	Suite                   string   `json:"suite"`
-	Name                    string   `json:"name"`
-	Status                  string   `json:"status"`
-	Passed                  bool     `json:"passed"`
-	FindingSignatures       []string `json:"finding_signatures,omitempty"`
-	NewFindingSignatures    []string `json:"new_finding_signatures,omitempty"`
+	Suite                    string   `json:"suite"`
+	Name                     string   `json:"name"`
+	Status                   string   `json:"status"`
+	Passed                   bool     `json:"passed"`
+	FindingSignatures        []string `json:"finding_signatures,omitempty"`
+	NewFindingSignatures     []string `json:"new_finding_signatures,omitempty"`
 	ClearedFindingSignatures []string `json:"cleared_finding_signatures,omitempty"`
-	FirstUnsupportedClaim   string   `json:"first_unsupported_claim,omitempty"`
-	ToolCalls               []string `json:"tool_calls,omitempty"`
-	StateChanges            []string `json:"state_changes,omitempty"`
-	FileChanges             []string `json:"file_changes,omitempty"`
-	MemoryMarkers           []string `json:"memory_markers,omitempty"`
+	FirstUnsupportedClaim    string   `json:"first_unsupported_claim,omitempty"`
+	ToolCalls                []string `json:"tool_calls,omitempty"`
+	StateChanges             []string `json:"state_changes,omitempty"`
+	FileChanges              []string `json:"file_changes,omitempty"`
+	MemoryMarkers            []string `json:"memory_markers,omitempty"`
 }
 
 type FailureBucket struct {
 	Signature string   `json:"signature"`
 	Count     int      `json:"count"`
 	Cases     []string `json:"cases,omitempty"`
+}
+
+type ReplayArtifact struct {
+	Version      string               `json:"version"`
+	Target       string               `json:"target"`
+	BuildID      string               `json:"build_id,omitempty"`
+	GeneratedAt  time.Time            `json:"generated_at"`
+	Passed       bool                 `json:"passed"`
+	FailedSuites int                  `json:"failed_suites"`
+	FailedCases  int                  `json:"failed_cases"`
+	Metadata     *RunMetadata         `json:"metadata,omitempty"`
+	BuildDiff    *BuildDiff           `json:"build_diff,omitempty"`
+	TrendSummary *TrendSummary        `json:"trend_summary,omitempty"`
+	Failures     []ReplayArtifactCase `json:"failures,omitempty"`
+}
+
+type ReplayArtifactCase struct {
+	Suite    string               `json:"suite"`
+	Name     string               `json:"name"`
+	Scenario *ScenarioFingerprint `json:"scenario,omitempty"`
+	Findings []Finding            `json:"findings,omitempty"`
+	Evidence map[string]any       `json:"evidence,omitempty"`
+	Failed   bool                 `json:"failed"`
 }
 
 type DriftTrend struct {

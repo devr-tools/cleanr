@@ -33,6 +33,10 @@
 - [x] Add release-policy DSL for tools, trust boundaries, approvals, sinks, and state changes.
 - [x] Add exact expected state-change verification for non-file workflow surfaces.
 - [x] Add end-to-end stateful workflow sample project.
+- [x] Add build-aware trend diffs for workflows, prompts, and configured models.
+- [x] Add grouped failure buckets and workflow-level blast-radius summaries.
+- [x] Add nightly replay artifacts for failing workflows and retained evidence.
+- [x] Deepen longitudinal memory replay coverage for stale, revoked, and poisoned fixtures.
 
 ## Now
 
@@ -73,10 +77,6 @@ Exit criteria: assertions can inspect tool name, arguments, order, and counts.
 - [ ] Add agent safety cases.
 Deliverable: prebuilt adversarial scenarios for data exfiltration, unsafe tools, runaway loops, and instruction override.
 Exit criteria: sample policy packs exist and are documented.
-
-- [ ] Deepen longitudinal memory replay coverage.
-Deliverable: multi-session fixtures for stale-memory replay, revocation, and poisoning regressions.
-Exit criteria: nightly replay packs can reproduce cross-session memory failures with stable fixtures.
 
 ### Packaging
 
@@ -124,5 +124,14 @@ Exit criteria: tagged release process documented and repeatable.
 - Developers can express action-level pass or fail policy without custom forks.
 - At least one real tool-using or stateful workflow is covered by examples or sample projects.
 - Reports show observed actions, claimed actions, and the first mismatch clearly enough for CI triage.
+
+Status: complete.
+
+## Definition of Phase 3 done
+
+- Teams can compare workflow-level regressions, grouped failures, and blast radius instead of only aggregate pass or fail.
+- Memory and state regressions are reproducible with stable multi-session replay fixtures.
+- Trend summaries surface build, prompt, and configured model diffs alongside workflow evidence changes.
+- Nightly runs can emit replay artifacts with failing workflows and retained evidence for triage.
 
 Status: complete.

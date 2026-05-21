@@ -38,6 +38,10 @@ type MemorySafetyConfig = core.MemorySafetyConfig
 type TokenOptimizationConfig = core.TokenOptimizationConfig
 type ReportingConfig = core.ReportingConfig
 type TrendGateConfig = core.TrendGateConfig
+type RunMetadata = core.RunMetadata
+type ScenarioFingerprint = core.ScenarioFingerprint
+type BuildDiff = core.BuildDiff
+type ScenarioDiff = core.ScenarioDiff
 type Request = core.Request
 type Response = core.Response
 type TokenUsage = core.TokenUsage
@@ -69,6 +73,8 @@ type SuiteTrend = core.SuiteTrend
 type CaseTrend = core.CaseTrend
 type FailureBucket = core.FailureBucket
 type DriftTrend = core.DriftTrend
+type ReplayArtifact = core.ReplayArtifact
+type ReplayArtifactCase = core.ReplayArtifactCase
 type Target = core.Target
 type Engine = core.Engine
 type RunContext = core.RunContext
@@ -141,6 +147,14 @@ func AnalyzeTrendHistoryFile(path string, window int) (TrendAnalysis, error) {
 
 func WriteTrendAnalysis(w io.Writer, analysis TrendAnalysis, format string) error {
 	return trendspkg.WriteAnalysis(w, analysis, format)
+}
+
+func BuildReplayArtifact(report Report) ReplayArtifact {
+	return trendspkg.BuildReplayArtifact(report)
+}
+
+func WriteReplayArtifactFile(path string, artifact ReplayArtifact) error {
+	return trendspkg.WriteReplayArtifactFile(path, artifact)
 }
 
 func NewTarget(cfg TargetConfig, client *http.Client) Target {

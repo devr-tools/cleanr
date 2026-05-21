@@ -14,13 +14,14 @@ type HistoryFile struct {
 }
 
 type HistoryRun struct {
-	BuildID      string         `json:"build_id,omitempty"`
-	GeneratedAt  time.Time      `json:"generated_at"`
-	Passed       bool           `json:"passed"`
-	Duration     time.Duration  `json:"duration"`
-	FailedSuites int            `json:"failed_suites"`
-	FailedCases  int            `json:"failed_cases"`
-	Suites       []HistorySuite `json:"suites"`
+	BuildID      string            `json:"build_id,omitempty"`
+	GeneratedAt  time.Time         `json:"generated_at"`
+	Passed       bool              `json:"passed"`
+	Duration     time.Duration     `json:"duration"`
+	FailedSuites int               `json:"failed_suites"`
+	FailedCases  int               `json:"failed_cases"`
+	Metadata     *core.RunMetadata `json:"metadata,omitempty"`
+	Suites       []HistorySuite    `json:"suites"`
 }
 
 type HistorySuite struct {
@@ -60,24 +61,25 @@ type PersistOptions struct {
 }
 
 type Analysis struct {
-	Version           string            `json:"version"`
-	Target            string            `json:"target"`
-	TotalRetainedRuns int               `json:"total_retained_runs"`
-	WindowSize        int               `json:"window_size"`
-	PassRate          float64           `json:"pass_rate"`
-	FailedRuns        int               `json:"failed_runs"`
-	AverageDuration   time.Duration     `json:"average_duration"`
-	OldestAt          time.Time         `json:"oldest_at,omitempty"`
-	Latest            RunSnapshot       `json:"latest"`
-	Previous          *RunSnapshot      `json:"previous,omitempty"`
-	Delta             *AnalysisDelta    `json:"delta,omitempty"`
-	Regressions       []core.SuiteTrend `json:"regressions,omitempty"`
-	Improvements      []core.SuiteTrend `json:"improvements,omitempty"`
-	CaseRegressions   []core.CaseTrend  `json:"case_regressions,omitempty"`
-	CaseImprovements  []core.CaseTrend  `json:"case_improvements,omitempty"`
+	Version           string               `json:"version"`
+	Target            string               `json:"target"`
+	TotalRetainedRuns int                  `json:"total_retained_runs"`
+	WindowSize        int                  `json:"window_size"`
+	PassRate          float64              `json:"pass_rate"`
+	FailedRuns        int                  `json:"failed_runs"`
+	AverageDuration   time.Duration        `json:"average_duration"`
+	OldestAt          time.Time            `json:"oldest_at,omitempty"`
+	Latest            RunSnapshot          `json:"latest"`
+	Previous          *RunSnapshot         `json:"previous,omitempty"`
+	Delta             *AnalysisDelta       `json:"delta,omitempty"`
+	BuildDiff         *core.BuildDiff      `json:"build_diff,omitempty"`
+	Regressions       []core.SuiteTrend    `json:"regressions,omitempty"`
+	Improvements      []core.SuiteTrend    `json:"improvements,omitempty"`
+	CaseRegressions   []core.CaseTrend     `json:"case_regressions,omitempty"`
+	CaseImprovements  []core.CaseTrend     `json:"case_improvements,omitempty"`
 	FailureBuckets    []core.FailureBucket `json:"failure_buckets,omitempty"`
-	Drift             *DriftWindow      `json:"drift,omitempty"`
-	RecentRuns        []RunSnapshot     `json:"recent_runs,omitempty"`
+	Drift             *DriftWindow         `json:"drift,omitempty"`
+	RecentRuns        []RunSnapshot        `json:"recent_runs,omitempty"`
 }
 
 type RunSnapshot struct {
@@ -142,6 +144,7 @@ func BuildRun(report core.Report, buildID string) HistoryRun {
 		Duration:     report.Duration,
 		FailedSuites: report.FailedSuites,
 		FailedCases:  report.FailedCases,
+		Metadata:     report.Metadata,
 		Suites:       make([]HistorySuite, 0, len(report.Suites)),
 	}
 	for _, suite := range report.Suites {

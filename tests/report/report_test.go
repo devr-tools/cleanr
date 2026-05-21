@@ -29,6 +29,15 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 			CurrentBuildID:  "build-2",
 			PreviousBuildID: "build-1",
 			PreviousAt:      time.Date(2026, 5, 20, 12, 0, 0, 0, time.UTC),
+			BuildDiff: &cleanr.BuildDiff{
+				ModelBefore: "gpt-4.1-mini",
+				ModelAfter:  "gpt-4.1",
+				ScenarioChanges: []cleanr.ScenarioDiff{{
+					Name:         "case-1",
+					Status:       "changed",
+					InputChanged: true,
+				}},
+			},
 			Summary: cleanr.TrendSummary{
 				FailedSuitesDelta: 1,
 				FailedCasesDelta:  2,
@@ -89,6 +98,10 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		"Trend Gates",
 		"semantic drift delta 0.180 exceeded gate 0.050",
 		"Compared",
+		"BuildDiff",
+		"model=gpt-4.1-mini -> gpt-4.1",
+		"Scenario",
+		"case-1 | changed | input",
 		"drift",
 		"semantic_drift_delta=+0.180",
 		"Recommendations",

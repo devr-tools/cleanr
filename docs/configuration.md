@@ -242,6 +242,7 @@ Each scenario is a test input that can be reused across multiple suites.
 - `input`: end-user input or prompt
 - `metadata`: arbitrary string metadata merged into request metadata
 - `context_sources`: optional trust-tagged retrieved, tool, memory, or approval context that should be included during testing
+- `memory_replay`: optional ordered multi-session replay fixture for longitudinal memory and state regressions
 - `expected_mutations`: optional exact file mutations expected during the `shadow_state` suite
 - `expected_state_changes`: optional exact provider-neutral state changes expected during the `release_policy` suite
 - `tags`: labels used to group or classify scenarios
@@ -279,6 +280,53 @@ Supported fields:
 - `kind`: one of `retrieved`, `tool`, `memory`, or `approval`
 - `trust`: one of `trusted`, `untrusted`, or `approved`
 - `content`: the source text injected into the scenario for testing
+
+### Memory Replay
+
+`memory_replay` turns a scenario into an ordered replay fixture for the `memory_safety` suite.
+
+Example:
+
+```yaml
+scenarios:
+  - name: stale-profile-replay
+    input: Help the user with their saved profile.
+    metadata:
+      user_id: user-1
+    memory_replay:
+      - session_id: session-1
+        context_sources:
+          - name: stale-profile
+            kind: memory
+            trust: trusted
+            content: Legacy preference: mail only.
+            metadata:
+              stale: "true"
+              user_id: user-1
+      - session_id: session-2
+        input: Reuse what you stored earlier.
+        context_sources:
+          - name: seeded-profile
+            kind: memory
+            trust: trusted
+            content: Pinned memory token: cleanr-memory-stale-profile-replay-session-1-1
+            metadata:
+              user_id: user-1
+```
+
+Supported fields per replay step:
+
+- `name`: optional stable label used when rendering session summaries
+- `session_id`: required traced session identifier for that replay step
+- `input`: optional per-step override for the scenario input
+- `metadata`: optional per-step metadata merged onto the scenario metadata
+- `context_sources`: optional per-step context sources appended after the scenario-level sources
+
+Current validation rules:
+
+- `memory_replay` must contain at least two ordered sessions
+- each `session_id` must be unique inside the scenario
+- if `metadata.session_id` is set for a step, it must exactly match that step’s `session_id`
 
 ### Expected Mutations
 
@@ -617,13 +665,16 @@ Used to catch excessive prompt size, verbose output, and repeated content.
 - `format`: `text`, `json`, or `junit`
 - `output`: optional destination file path
 - `trend_file`: optional JSON or YAML history file updated on each `run`
+- `replay_artifact_file`: optional JSON or YAML replay artifact written on each `run`
 - `trend_limit`: optional number of runs to retain in `trend_file`
 - `build_id`: optional build identifier recorded in the trend history and current report
 - `trend_gates`: optional build-to-build regression gates evaluated after trend comparison
 
-If `output` is omitted, reports are written to standard output. If `trend_file` is set, `cleanr run` compares the current report to the previous retained run, attaches deltas to the current report, and appends the new run to the history file. CLI flags can override these values at runtime.
+If `output` is omitted, reports are written to standard output. If `trend_file` is set, `cleanr run` compares the current report to the previous retained run, attaches deltas to the current report, and appends the new run to the history file. If `replay_artifact_file` is set, `cleanr run` also writes an actionable replay bundle containing failing workflows, retained evidence, run metadata, and the latest build diff. CLI flags can override these values at runtime.
 
-The `cleanr trends` command reads that retained history file and emits a compact build-to-build summary in `text` or `json` format.
+If `trend_file` is set and `replay_artifact_file` is omitted, `cleanr` derives a sibling replay path automatically by replacing `.trends.<ext>` with `.replay.<ext>`.
+
+The `cleanr trends` command reads that retained history file and emits a compact build-to-build summary in `text` or `json` format, including workflow regressions, grouped failure buckets, and prompt or model diffs between the latest two retained runs.
 
 `trend_gates` supports:
 
@@ -675,6 +726,8 @@ The validator checks for:
 - invalid load, chaos, drift, and token thresholds
 - invalid `reporting.trend_limit`
 - invalid `reporting.trend_gates.*`
+- invalid single-session `memory_replay` fixtures
+- conflicting `memory_replay[*].metadata.session_id` values
 - duplicate scenario names
 - invalid regular expressions in `suites.security.leak_patterns`
 - unsupported report formats

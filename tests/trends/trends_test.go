@@ -118,6 +118,84 @@ func TestAnalyzeTrendHistoryBuildsWindowSummary(t *testing.T) {
 	}
 }
 
+func TestAnalyzeTrendHistoryReportsBuildPromptAndModelDiffs(t *testing.T) {
+	history := cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Runs: []cleanr.TrendHistoryRun{
+			{
+				BuildID:      "build-1",
+				GeneratedAt:  time.Date(2026, 5, 7, 12, 0, 0, 0, time.UTC),
+				Passed:       true,
+				Duration:     2 * time.Second,
+				FailedSuites: 0,
+				FailedCases:  0,
+				Metadata: &cleanr.RunMetadata{
+					TargetType:    "openai",
+					ProviderModel: "gpt-4.1-mini",
+					ScenarioFingerprints: []cleanr.ScenarioFingerprint{
+						{Name: "workflow-a", SystemHash: "sys-a", InputHash: "input-a", ContextHash: "ctx-a"},
+						{Name: "workflow-b", SystemHash: "sys-b", InputHash: "input-b"},
+					},
+				},
+				Suites: []cleanr.HistorySuite{{Name: "claim-trace", Passed: true}},
+			},
+			{
+				BuildID:      "build-2",
+				GeneratedAt:  time.Date(2026, 5, 8, 12, 0, 0, 0, time.UTC),
+				Passed:       false,
+				Duration:     3 * time.Second,
+				FailedSuites: 1,
+				FailedCases:  1,
+				Metadata: &cleanr.RunMetadata{
+					TargetType:    "openai",
+					ProviderModel: "gpt-4.1",
+					ScenarioFingerprints: []cleanr.ScenarioFingerprint{
+						{Name: "workflow-a", SystemHash: "sys-a", InputHash: "input-a-2", ContextHash: "ctx-a"},
+						{Name: "workflow-c", SystemHash: "sys-c", InputHash: "input-c", MemoryReplayHash: "mem-c", MemoryReplaySteps: 2},
+					},
+				},
+				Suites: []cleanr.HistorySuite{{Name: "claim-trace", Passed: false, FailedCases: 1}},
+			},
+		},
+	}
+
+	path := t.TempDir() + "/trends.yaml"
+	if err := cleanr.WriteTrendHistoryFile(path, history); err != nil {
+		t.Fatalf("write trend history: %v", err)
+	}
+
+	analysis, err := cleanr.AnalyzeTrendHistoryFile(path, 2)
+	if err != nil {
+		t.Fatalf("analyze trend history: %v", err)
+	}
+	if analysis.BuildDiff == nil {
+		t.Fatalf("expected build diff, got %+v", analysis)
+	}
+	if analysis.BuildDiff.ModelBefore != "gpt-4.1-mini" || analysis.BuildDiff.ModelAfter != "gpt-4.1" {
+		t.Fatalf("unexpected model diff: %+v", analysis.BuildDiff)
+	}
+	if len(analysis.BuildDiff.ScenarioChanges) != 3 {
+		t.Fatalf("expected 3 scenario changes, got %+v", analysis.BuildDiff.ScenarioChanges)
+	}
+
+	var text bytes.Buffer
+	if err := cleanr.WriteTrendAnalysis(&text, analysis, "text"); err != nil {
+		t.Fatalf("write text analysis: %v", err)
+	}
+	for _, want := range []string{
+		"Build Changes",
+		"model=gpt-4.1-mini -> gpt-4.1",
+		"workflow-a | changed | input",
+		"workflow-b | removed",
+		"workflow-c | new",
+	} {
+		if !strings.Contains(text.String(), want) {
+			t.Fatalf("expected %q in trend analysis, got %s", want, text.String())
+		}
+	}
+}
+
 func TestAnalyzeTrendHistoryTracksCaseRegressionsAndFailureBuckets(t *testing.T) {
 	history := cleanr.TrendHistoryFile{
 		Version: "v1alpha1",

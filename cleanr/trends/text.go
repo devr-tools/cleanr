@@ -45,6 +45,16 @@ func RenderAnalysisText(analysis Analysis) string {
 			fmt.Fprintf(&b, "Improvements %d\n", analysis.Delta.ImprovedSuites)
 		}
 	}
+	if analysis.BuildDiff != nil {
+		fmt.Fprintf(&b, "\nBuild Changes\n")
+		fmt.Fprintf(&b, "-------------\n")
+		if line := buildDiffHeaderLine(*analysis.BuildDiff); line != "" {
+			fmt.Fprintf(&b, "%s\n", line)
+		}
+		for _, change := range analysis.BuildDiff.ScenarioChanges {
+			fmt.Fprintf(&b, "- %s\n", scenarioDiffLine(change))
+		}
+	}
 
 	if analysis.Drift != nil {
 		fmt.Fprintf(&b, "\nDrift Window\n")
@@ -167,6 +177,44 @@ func failureBucketLine(bucket core.FailureBucket) string {
 		parts = append(parts, "impacted="+compactItems(bucket.Cases, 3))
 	}
 	return strings.Join(parts, " | ")
+}
+
+func buildDiffHeaderLine(diff core.BuildDiff) string {
+	parts := make([]string, 0, 2)
+	if diff.TargetTypeBefore != "" || diff.TargetTypeAfter != "" {
+		parts = append(parts, fmt.Sprintf("target_type=%s -> %s", emptyLabel(diff.TargetTypeBefore), emptyLabel(diff.TargetTypeAfter)))
+	}
+	if diff.ModelBefore != "" || diff.ModelAfter != "" {
+		parts = append(parts, fmt.Sprintf("model=%s -> %s", emptyLabel(diff.ModelBefore), emptyLabel(diff.ModelAfter)))
+	}
+	return strings.Join(parts, " | ")
+}
+
+func scenarioDiffLine(change core.ScenarioDiff) string {
+	parts := []string{change.Name, change.Status}
+	if change.SystemChanged {
+		parts = append(parts, "system")
+	}
+	if change.InputChanged {
+		parts = append(parts, "input")
+	}
+	if change.ContextChanged {
+		parts = append(parts, "context")
+	}
+	if change.MemoryReplayChanged {
+		parts = append(parts, "memory_replay")
+	}
+	if change.TagsChanged {
+		parts = append(parts, "tags")
+	}
+	return strings.Join(parts, " | ")
+}
+
+func emptyLabel(value string) string {
+	if strings.TrimSpace(value) == "" {
+		return "<unset>"
+	}
+	return value
 }
 
 func compactItems(items []string, limit int) string {

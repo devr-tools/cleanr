@@ -1,6 +1,11 @@
 package config
 
-import "cleanr/cleanr/core"
+import (
+	"path/filepath"
+	"strings"
+
+	"cleanr/cleanr/core"
+)
 
 func ExampleConfig() core.Config {
 	cfg := core.Config{
@@ -270,8 +275,25 @@ func applyDefaults(cfg *core.Config) {
 	if cfg.Reporting.TrendFile != "" && cfg.Reporting.TrendLimit == 0 {
 		cfg.Reporting.TrendLimit = 30
 	}
+	if cfg.Reporting.TrendFile != "" && cfg.Reporting.ReplayArtifactFile == "" {
+		cfg.Reporting.ReplayArtifactFile = deriveReplayArtifactPath(cfg.Reporting.TrendFile)
+	}
 	applyTrendGatePreset(&cfg.Reporting.TrendGates)
 	if cfg.Reporting.TrendGates.Enabled && cfg.Reporting.TrendGates.RequiredWindow == 0 {
 		cfg.Reporting.TrendGates.RequiredWindow = 2
 	}
+}
+
+func deriveReplayArtifactPath(trendPath string) string {
+	trendPath = strings.TrimSpace(trendPath)
+	if trendPath == "" {
+		return ""
+	}
+	ext := filepath.Ext(trendPath)
+	base := strings.TrimSuffix(trendPath, ext)
+	base = strings.TrimSuffix(base, ".trends")
+	if ext == "" {
+		ext = ".yaml"
+	}
+	return base + ".replay" + ext
 }

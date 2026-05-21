@@ -39,6 +39,7 @@ func (r *Runner) Run(ctx context.Context) Report {
 	report := Report{
 		Name:        r.config.Target.Name,
 		GeneratedAt: start.UTC(),
+		Metadata:    buildRunMetadata(r.config),
 	}
 
 	for _, engine := range r.engines {

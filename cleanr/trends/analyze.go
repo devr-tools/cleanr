@@ -51,6 +51,7 @@ func Analyze(history HistoryFile, window int) Analysis {
 		}
 		analysis.Regressions = filterSuiteTrends(comparison.Suites, "regressed")
 		analysis.Improvements = filterSuiteTrends(comparison.Suites, "improved")
+		analysis.BuildDiff = comparison.BuildDiff
 		analysis.CaseRegressions = comparison.CaseRegressions
 		analysis.CaseImprovements = comparison.CaseImprovements
 		analysis.FailureBuckets = comparison.FailureBuckets
