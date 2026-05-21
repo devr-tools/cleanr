@@ -481,15 +481,34 @@ func validatePolicyRule(errs *ValidationErrors, prefix string, rule core.PolicyR
 
 func validateResultSink(errs *ValidationErrors, prefix string, sink core.ResultSinkConfig) {
 	switch strings.TrimSpace(sink.Type) {
-	case "http", "braintrust":
+	case "http", "braintrust", "langfuse":
 	default:
-		errs.Add(prefix+".type", "must be one of http or braintrust", "use http for a generic JSON webhook or braintrust for a Braintrust-style run publisher")
+		errs.Add(prefix+".type", "must be one of http, braintrust, or langfuse", "use http for a generic JSON webhook, braintrust for a Braintrust-style run publisher, or langfuse for a Langfuse trace publisher")
 	}
-	requireNonEmpty(errs, prefix+".endpoint", sink.Endpoint, "set the remote endpoint that should receive the machine-readable cleanr result payload")
+	switch strings.TrimSpace(sink.Type) {
+	case "http":
+		requireNonEmpty(errs, prefix+".endpoint", sink.Endpoint, "set the remote endpoint that should receive the machine-readable cleanr result payload")
+	case "braintrust":
+		if strings.TrimSpace(sink.Endpoint) == "" && strings.TrimSpace(sink.Project) == "" {
+			errs.Add(prefix, "must set endpoint or project", "set endpoint for a Braintrust-compatible webhook, or set project to use the native Braintrust API connector")
+		}
+		if strings.TrimSpace(sink.Project) == "" && strings.TrimSpace(sink.Endpoint) != "" {
+			// Legacy webhook mode is allowed for backward compatibility.
+		}
+	case "langfuse":
+		requireNonEmpty(errs, prefix+".public_key_env", sink.PublicKeyEnv, "set the env var that contains the Langfuse public key")
+		requireNonEmpty(errs, prefix+".secret_key_env", sink.SecretKeyEnv, "set the env var that contains the Langfuse secret key")
+	}
 	if rawURL := strings.TrimSpace(sink.Endpoint); rawURL != "" {
 		parsed, err := url.Parse(rawURL)
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			errs.Add(prefix+".endpoint", "must be an absolute http(s) URL", "use a value such as https://example.internal/cleanr/runs")
+		}
+	}
+	if rawURL := strings.TrimSpace(sink.BaseURL); rawURL != "" {
+		parsed, err := url.Parse(rawURL)
+		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+			errs.Add(prefix+".base_url", "must be an absolute http(s) URL", "use a value such as https://api.braintrust.dev, https://cloud.langfuse.com, or your self-hosted provider base URL")
 		}
 	}
 	if sink.TimeoutMS < 0 {
@@ -509,14 +528,25 @@ func validateTrendSource(errs *ValidationErrors, prefix string, source core.Tren
 				errs.Add(prefix+".url", "must be an absolute http(s) URL", "use a value such as https://example.internal/cleanr/history.json")
 			}
 		}
+	case "braintrust":
+		requireNonEmpty(errs, prefix+".project", source.Project, "set the Braintrust project name that stores cleanr release-gate experiments")
+		if rawURL := strings.TrimSpace(source.BaseURL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add(prefix+".base_url", "must be an absolute http(s) URL", "use a value such as https://api.braintrust.dev or your Braintrust data plane URL")
+			}
+		}
 	default:
-		errs.Add(prefix+".type", "must be one of file or http", "use file for a retained local artifact or http for a remote history endpoint")
+		errs.Add(prefix+".type", "must be one of file, http, or braintrust", "use file for a retained local artifact, http for a remote history endpoint, or braintrust for native Braintrust experiment history")
 	}
 	if strings.TrimSpace(source.ViewURL) != "" {
 		parsed, err := url.Parse(strings.TrimSpace(source.ViewURL))
 		if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 			errs.Add(prefix+".view_url", "must be an absolute http(s) URL", "use a direct dashboard URL that reviewers can open when triaging the linked remote experiment")
 		}
+	}
+	if source.HistoryLimit < 0 {
+		errs.Add(prefix+".history_limit", "must be >= 0", "use 0 to keep the default remote history window, or set a positive retained-run limit")
 	}
 	if source.TimeoutMS < 0 {
 		errs.Add(prefix+".timeout_ms", "must be >= 0", "use a non-negative timeout in milliseconds")

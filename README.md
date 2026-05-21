@@ -128,7 +128,7 @@ For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-start
 - Provenance-aware context attacks that originate from untrusted retrieved, tool, memory, or approval content
 - Approval-bypass and sink-restriction checks for tool-calling agents
 - Trend history across builds so drift and failure deltas are comparable over time
-- Optional best-effort external result publishing, remote trend comparisons, and PR or release summaries
+- Optional best-effort external result publishing, including native Braintrust and Langfuse publishing, remote trend comparisons, and PR or release summaries
 - Dataset promotion flows for turning reviewed failures into reusable regression scenarios
 - Token budgets, duplication, and output-efficiency regressions
 - CI-friendly reporting in text, JSON, and JUnit formats

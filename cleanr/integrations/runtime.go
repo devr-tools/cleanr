@@ -197,12 +197,20 @@ func loadTrendSource(ctx context.Context, source core.TrendSourceConfig, baseDir
 			return trendspkg.HistoryFile{}, fmt.Errorf("load trend source %s: %s", displayName(source.Name, source.Type), compactHTTPError(resp.StatusCode, data))
 		}
 		return trendspkg.LoadData(data, source.URL)
+	case "braintrust":
+		return loadBraintrustTrendSource(ctx, source)
 	default:
 		return trendspkg.HistoryFile{}, fmt.Errorf("unsupported trend source type %q", source.Type)
 	}
 }
 
 func postSinkPayload(ctx context.Context, sink core.ResultSinkConfig, payload SinkPayload) (string, error) {
+	if useNativeBraintrustSink(sink) {
+		return postBraintrustSinkPayload(ctx, sink, payload)
+	}
+	if useNativeLangfuseSink(sink) {
+		return postLangfuseSinkPayload(ctx, sink, payload)
+	}
 	data, err := json.Marshal(payload)
 	if err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)

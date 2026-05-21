@@ -166,16 +166,17 @@ To attach optional remote publishing and PR summaries, add an `integrations` blo
 integrations:
   trend_sources:
     - name: approved-history
-      type: http
-      url: https://example.internal/cleanr/history.yaml
+      type: braintrust
+      project: qa-gates
+      experiment: release-gate
       view_url: https://braintrust.example/runs/approved-history
-      api_key_env: CLEANR_REMOTE_HISTORY_TOKEN
+      api_key_env: CLEANR_BRAINTRUST_TOKEN
   result_sinks:
     - name: braintrust
       type: braintrust
-      endpoint: https://example.internal/cleanr/publish
-      api_key_env: CLEANR_BRAINTRUST_TOKEN
+      project: qa-gates
       experiment: release-gate
+      api_key_env: CLEANR_BRAINTRUST_TOKEN
       include_replay_artifact: true
       include_attestation: true
   summaries:
@@ -185,6 +186,25 @@ integrations:
 ```
 
 That gives CI a durable local gate plus add-on remote triage links without turning `cleanr` into the system of record for hosted observability.
+
+For Braintrust Cloud EU or self-hosted deployments, set `base_url` on the sink and source to your data plane URL.
+
+If you prefer Langfuse as the remote sink companion, a minimal native sink looks like this:
+
+```yaml
+integrations:
+  result_sinks:
+    - name: langfuse
+      type: langfuse
+      base_url: https://cloud.langfuse.com
+      public_key_env: LANGFUSE_PUBLIC_KEY
+      secret_key_env: LANGFUSE_SECRET_KEY
+      experiment: release-gate
+      include_replay_artifact: true
+      run_url_template: https://cloud.langfuse.com/project/demo/traces/{{trace_id}}
+```
+
+That mode publishes the local CI result as a Langfuse trace plus numeric scores such as pass or fail, failed suite count, and failed case count.
 
 To summarize the retained window for dashboards or release notes, run:
 

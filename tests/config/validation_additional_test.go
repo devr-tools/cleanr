@@ -274,6 +274,26 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "integrations.result_sinks[0].endpoint",
 		},
 		{
+			name: "langfuse sink requires public key env",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+					Type:         "langfuse",
+					SecretKeyEnv: "LANGFUSE_SECRET_KEY",
+				}}
+			},
+			wantSub: "integrations.result_sinks[0].public_key_env",
+		},
+		{
+			name: "langfuse sink requires secret key env",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+					Type:         "langfuse",
+					PublicKeyEnv: "LANGFUSE_PUBLIC_KEY",
+				}}
+			},
+			wantSub: "integrations.result_sinks[0].secret_key_env",
+		},
+		{
 			name: "trend source validates required selector",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
@@ -349,6 +369,44 @@ reporting:
 	}
 	if cfg.Reporting.TrendGates.MaxSemanticDriftDelta == nil || *cfg.Reporting.TrendGates.MaxSemanticDriftDelta != 0.08 {
 		t.Fatalf("expected preset defaults to fill missing fields, got %+v", cfg.Reporting.TrendGates)
+	}
+}
+
+func TestValidateConfigAcceptsNativeBraintrustIntegrationConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+		Type:       "braintrust",
+		Project:    "qa-gates",
+		Experiment: "release-gate",
+		APIKeyEnv:  "CLEANR_BRAINTRUST_TOKEN",
+	}}
+	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+		Type:       "braintrust",
+		Project:    "qa-gates",
+		Experiment: "release-gate",
+	}}
+
+	if err := cleanr.ValidateConfig(cfg); err != nil {
+		t.Fatalf("expected native Braintrust config to validate, got %v", err)
+	}
+}
+
+func TestValidateConfigAcceptsNativeLangfuseIntegrationConfig(t *testing.T) {
+	t.Parallel()
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+		Type:         "langfuse",
+		BaseURL:      "https://cloud.langfuse.com",
+		PublicKeyEnv: "LANGFUSE_PUBLIC_KEY",
+		SecretKeyEnv: "LANGFUSE_SECRET_KEY",
+		Experiment:   "release-gate",
+	}}
+
+	if err := cleanr.ValidateConfig(cfg); err != nil {
+		t.Fatalf("expected native Langfuse config to validate, got %v", err)
 	}
 }
 

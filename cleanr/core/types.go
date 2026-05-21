@@ -255,8 +255,11 @@ type IntegrationsConfig struct {
 type ResultSinkConfig struct {
 	Name           string            `json:"name,omitempty"`
 	Type           string            `json:"type"`
+	BaseURL        string            `json:"base_url,omitempty"`
 	Endpoint       string            `json:"endpoint,omitempty"`
 	APIKeyEnv      string            `json:"api_key_env,omitempty"`
+	PublicKeyEnv   string            `json:"public_key_env,omitempty"`
+	SecretKeyEnv   string            `json:"secret_key_env,omitempty"`
 	Headers        map[string]string `json:"headers,omitempty"`
 	Project        string            `json:"project,omitempty"`
 	Experiment     string            `json:"experiment,omitempty"`
@@ -267,14 +270,18 @@ type ResultSinkConfig struct {
 }
 
 type TrendSourceConfig struct {
-	Name      string            `json:"name,omitempty"`
-	Type      string            `json:"type"`
-	Path      string            `json:"path,omitempty"`
-	URL       string            `json:"url,omitempty"`
-	APIKeyEnv string            `json:"api_key_env,omitempty"`
-	Headers   map[string]string `json:"headers,omitempty"`
-	ViewURL   string            `json:"view_url,omitempty"`
-	TimeoutMS int               `json:"timeout_ms,omitempty"`
+	Name         string            `json:"name,omitempty"`
+	Type         string            `json:"type"`
+	BaseURL      string            `json:"base_url,omitempty"`
+	Path         string            `json:"path,omitempty"`
+	URL          string            `json:"url,omitempty"`
+	APIKeyEnv    string            `json:"api_key_env,omitempty"`
+	Headers      map[string]string `json:"headers,omitempty"`
+	Project      string            `json:"project,omitempty"`
+	Experiment   string            `json:"experiment,omitempty"`
+	HistoryLimit int               `json:"history_limit,omitempty"`
+	ViewURL      string            `json:"view_url,omitempty"`
+	TimeoutMS    int               `json:"timeout_ms,omitempty"`
 }
 
 type SummaryConfig struct {

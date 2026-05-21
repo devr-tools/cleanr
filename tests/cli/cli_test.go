@@ -351,6 +351,341 @@ func TestRunCommandSupportsExternalIntegrations(t *testing.T) {
 	}
 }
 
+func TestRunCommandSupportsNativeBraintrustConnector(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Reporting.Format = "json"
+	cfg.Reporting.BuildID = "build-2"
+	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+		Name:       "approved-history",
+		Type:       "braintrust",
+		Project:    "qa-gates",
+		Experiment: "release-gate",
+		ViewURL:    "https://braintrust.dev/app/release-gate/build-1",
+	}}
+	cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+		Name:          "braintrust",
+		Type:          "braintrust",
+		Project:       "qa-gates",
+		Experiment:    "release-gate",
+		APIKeyEnv:     "CLEANR_BRAINTRUST_TOKEN",
+		IncludeReplay: true,
+	}}
+	cfg.Integrations.Summaries = []cleanr.SummaryConfig{{
+		Name:   "pr",
+		Format: "markdown",
+		Output: "reports/summary.md",
+	}}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("CLEANR_BRAINTRUST_TOKEN", "bt-secret")
+
+	remoteRun := cleanr.TrendHistoryRun{
+		BuildID:      "build-1",
+		GeneratedAt:  time.Date(2026, 5, 19, 12, 0, 0, 0, time.UTC),
+		Passed:       true,
+		Duration:     time.Second,
+		FailedSuites: 0,
+		FailedCases:  0,
+		Metadata: &cleanr.RunMetadata{
+			BuildID:       "build-1",
+			TargetType:    "http",
+			ProviderModel: "gpt-4.1-mini",
+		},
+	}
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment":
+			if req.URL.Query().Get("project_name") != "qa-gates" {
+				t.Fatalf("unexpected project query: %s", req.URL.RawQuery)
+			}
+			if !strings.Contains(req.URL.Query().Get("metadata"), "release-gate") {
+				t.Fatalf("expected family filter in metadata query: %s", req.URL.RawQuery)
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"objects":[{"id":"exp-1","project_id":"proj-1","name":"release-gate/build-1","created":"2026-05-19T12:00:00Z"}]}`)),
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/btql":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read btql body: %v", err)
+			}
+			if !bytes.Contains(body, []byte("metadata.cleanr.history_run")) {
+				t.Fatalf("unexpected btql query: %s", string(body))
+			}
+			raw, err := json.Marshal(map[string]any{"data": []map[string]any{{"history_run": remoteRun}}})
+			if err != nil {
+				t.Fatalf("marshal btql response: %v", err)
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(bytes.NewReader(raw)),
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/project":
+			if got := req.Header.Get("Authorization"); got != "Bearer bt-secret" {
+				t.Fatalf("unexpected auth header: %s", got)
+			}
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read project body: %v", err)
+			}
+			if !bytes.Contains(body, []byte(`"name":"qa-gates"`)) {
+				t.Fatalf("unexpected project payload: %s", string(body))
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"proj-1","name":"qa-gates"}`)),
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/experiment":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read experiment body: %v", err)
+			}
+			for _, want := range []string{`"project_id":"proj-1"`, `"name":"release-gate/build-2"`, `"family":"release-gate"`} {
+				if !bytes.Contains(body, []byte(want)) {
+					t.Fatalf("expected %q in experiment payload: %s", want, string(body))
+				}
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"id":"exp-2","project_id":"proj-1","name":"release-gate/build-2"}`)),
+			}, nil
+		case req.Method == http.MethodPost && req.URL.Path == "/v1/experiment/exp-2/insert":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read insert body: %v", err)
+			}
+			for _, want := range []string{`"record_type":"run"`, `"history_run"`, `"replay_artifact"`} {
+				if !bytes.Contains(body, []byte(want)) {
+					t.Fatalf("expected %q in insert payload: %s", want, string(body))
+				}
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{}`)),
+			}, nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment/exp-2/summarize":
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"experiment_url":"https://braintrust.dev/app/release-gate/build-2"}`)),
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"run", "-config", configPath, "-format", "json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", exitCode, stderr.String())
+	}
+
+	var report cleanr.Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode report: %v\n%s", err, stdout.String())
+	}
+	if report.Integrations == nil {
+		t.Fatalf("expected integrations in report")
+	}
+	if len(report.Integrations.TrendSources) != 1 || report.Integrations.TrendSources[0].Status != "compared" {
+		t.Fatalf("unexpected trend source report: %+v", report.Integrations.TrendSources)
+	}
+	if len(report.Integrations.ResultSinks) != 1 || !report.Integrations.ResultSinks[0].Published {
+		t.Fatalf("unexpected result sink report: %+v", report.Integrations.ResultSinks)
+	}
+	if got := report.Integrations.ResultSinks[0].RunURL; got != "https://braintrust.dev/app/release-gate/build-2" {
+		t.Fatalf("unexpected run url: %s", got)
+	}
+
+	summaryPath := filepath.Join(dir, "reports", "summary.md")
+	summaryBody, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	for _, want := range []string{
+		"cleanr Release Summary",
+		"Local gate: `PASS`",
+		"approved-history",
+		"Remote Views",
+		"https://braintrust.dev/app/release-gate/build-2",
+	} {
+		if !strings.Contains(string(summaryBody), want) {
+			t.Fatalf("expected %q in summary:\n%s", want, string(summaryBody))
+		}
+	}
+}
+
+func TestRunCommandSupportsNativeLangfuseConnector(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Reporting.Format = "json"
+	cfg.Reporting.BuildID = "build-2"
+	cfg.Integrations.ResultSinks = []cleanr.ResultSinkConfig{{
+		Name:           "langfuse",
+		Type:           "langfuse",
+		BaseURL:        "https://cloud.langfuse.com",
+		PublicKeyEnv:   "LANGFUSE_PUBLIC_KEY",
+		SecretKeyEnv:   "LANGFUSE_SECRET_KEY",
+		Experiment:     "release-gate",
+		IncludeReplay:  true,
+		RunURLTemplate: "https://cloud.langfuse.com/project/demo/traces/{{trace_id}}",
+	}}
+	cfg.Integrations.Summaries = []cleanr.SummaryConfig{{
+		Name:   "pr",
+		Format: "markdown",
+		Output: "reports/langfuse-summary.md",
+	}}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	t.Setenv("LANGFUSE_PUBLIC_KEY", "pk-test")
+	t.Setenv("LANGFUSE_SECRET_KEY", "sk-test")
+
+	var traceID string
+	scorePosts := 0
+	wantAuth := "Basic " + base64.StdEncoding.EncodeToString([]byte("pk-test:sk-test"))
+
+	originalTransport := http.DefaultTransport
+	http.DefaultTransport = cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		if got := req.Header.Get("Authorization"); got != wantAuth {
+			t.Fatalf("unexpected auth header: %s", got)
+		}
+		switch {
+		case req.Method == http.MethodPost && req.URL.String() == "https://cloud.langfuse.com/api/public/ingestion":
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read langfuse ingestion body: %v", err)
+			}
+			var payload map[string]any
+			if err := json.Unmarshal(body, &payload); err != nil {
+				t.Fatalf("decode langfuse ingestion body: %v\n%s", err, string(body))
+			}
+			batch, ok := payload["batch"].([]any)
+			if !ok || len(batch) != 1 {
+				t.Fatalf("unexpected batch payload: %s", string(body))
+			}
+			event, ok := batch[0].(map[string]any)
+			if !ok || event["type"] != "trace-create" {
+				t.Fatalf("unexpected trace event: %s", string(body))
+			}
+			eventBody, ok := event["body"].(map[string]any)
+			if !ok {
+				t.Fatalf("missing event body: %s", string(body))
+			}
+			gotTraceID, _ := eventBody["id"].(string)
+			if gotTraceID == "" {
+				t.Fatalf("missing trace id in event body: %s", string(body))
+			}
+			traceID = gotTraceID
+			for _, want := range []string{`"type":"trace-create"`, `"name":"release-gate"`, `"sessionId":"build-2"`, `"replay_artifact"`} {
+				if !bytes.Contains(body, []byte(want)) {
+					t.Fatalf("expected %q in ingestion payload: %s", want, string(body))
+				}
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"success":true}`)),
+			}, nil
+		case req.Method == http.MethodPost && req.URL.String() == "https://cloud.langfuse.com/api/public/scores":
+			scorePosts++
+			body, err := io.ReadAll(req.Body)
+			if err != nil {
+				t.Fatalf("read langfuse score body: %v", err)
+			}
+			if traceID == "" {
+				t.Fatalf("score posted before trace ingestion: %s", string(body))
+			}
+			for _, want := range []string{`"traceId":"` + traceID + `"`, `"dataType":"NUMERIC"`} {
+				if !bytes.Contains(body, []byte(want)) {
+					t.Fatalf("expected %q in score payload: %s", want, string(body))
+				}
+			}
+			return &http.Response{
+				StatusCode: 200,
+				Header:     http.Header{"Content-Type": []string{"application/json"}},
+				Body:       io.NopCloser(strings.NewReader(`{"success":true}`)),
+			}, nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	})
+	defer func() { http.DefaultTransport = originalTransport }()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"run", "-config", configPath, "-format", "json"}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d stderr=%s", exitCode, stderr.String())
+	}
+	if scorePosts < 3 {
+		t.Fatalf("expected at least 3 score posts, got %d", scorePosts)
+	}
+
+	var report cleanr.Report
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil {
+		t.Fatalf("decode report: %v\n%s", err, stdout.String())
+	}
+	if report.Integrations == nil {
+		t.Fatalf("expected integrations in report")
+	}
+	if len(report.Integrations.ResultSinks) != 1 || !report.Integrations.ResultSinks[0].Published {
+		t.Fatalf("unexpected result sink report: %+v", report.Integrations.ResultSinks)
+	}
+	wantRunURL := "https://cloud.langfuse.com/project/demo/traces/" + traceID
+	if got := report.Integrations.ResultSinks[0].RunURL; got != wantRunURL {
+		t.Fatalf("unexpected run url: %s", got)
+	}
+
+	summaryPath := filepath.Join(dir, "reports", "langfuse-summary.md")
+	summaryBody, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read summary: %v", err)
+	}
+	for _, want := range []string{
+		"cleanr Release Summary",
+		"Local gate: `PASS`",
+		"Remote Views",
+		wantRunURL,
+	} {
+		if !strings.Contains(string(summaryBody), want) {
+			t.Fatalf("expected %q in summary:\n%s", want, string(summaryBody))
+		}
+	}
+}
+
 func TestDatasetExportAndImportCommands(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Scenarios = []cleanr.Scenario{

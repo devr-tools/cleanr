@@ -834,27 +834,46 @@ That exact pattern is also available as a copyable file in `examples/openai-resp
 Each entry describes a remote machine-readable result publisher.
 
 - `name`: optional display label in reports
-- `type`: `http` or `braintrust`
+- `type`: `http`, `braintrust`, or `langfuse`
+- `base_url`: optional API base URL for native Braintrust or Langfuse publishing, for example `https://api.braintrust.dev` or `https://cloud.langfuse.com`
 - `endpoint`: absolute HTTP or HTTPS endpoint that receives the JSON run payload
 - `api_key_env`: optional env var whose value is sent as a bearer token
+- `public_key_env`: Langfuse public key env var for native Langfuse publishing
+- `secret_key_env`: Langfuse secret key env var for native Langfuse publishing
 - `headers`: optional static request headers
-- `project`: optional remote project name
-- `experiment`: optional remote experiment name
-- `run_url_template`: optional fallback URL template using `{{project}}`, `{{experiment}}`, `{{build_id}}`, and `{{target}}`
+- `project`: optional remote project name, and required for the native Braintrust connector
+- `experiment`: optional remote experiment family name
+- `run_url_template`: optional fallback URL template using `{{project}}`, `{{experiment}}`, `{{build_id}}`, `{{target}}`, and `{{trace_id}}`
 - `include_replay_artifact`: include the replay artifact payload in the POST body
 - `include_attestation`: include the signed attestation payload in the POST body
 - `timeout_ms`: optional request timeout
+
+For `type: braintrust`, there are two supported modes:
+
+- native Braintrust API mode: set `project`, optionally `experiment`, and optionally `base_url`
+- Braintrust-compatible webhook mode: set `endpoint` and leave `project` empty
+
+For `type: langfuse`, use the native Langfuse API mode:
+
+- set `public_key_env` and `secret_key_env`
+- optionally set `base_url` for Langfuse Cloud EU or self-hosted deployments
+- optionally set `experiment` to control the trace name for cleanr CI runs
+- optionally set `run_url_template` if you want reports and summaries to link directly to the Langfuse UI
 
 ### `trend_sources`
 
 Each entry describes a non-blocking comparison source for approved prior histories.
 
 - `name`: optional display label in reports
-- `type`: `file` or `http`
+- `type`: `file`, `http`, or `braintrust`
+- `base_url`: optional API base URL for native Braintrust history loading
 - `path`: retained local history file when `type: file`
 - `url`: remote history endpoint when `type: http`
 - `api_key_env`: optional env var whose value is sent as a bearer token for HTTP sources
 - `headers`: optional static request headers for HTTP sources
+- `project`: Braintrust project name when `type: braintrust`
+- `experiment`: optional Braintrust experiment family name when `type: braintrust`
+- `history_limit`: optional number of retained remote runs to load when `type: braintrust`
 - `view_url`: optional human-facing dashboard link shown in reports and summaries
 - `timeout_ms`: optional request timeout for HTTP sources
 
