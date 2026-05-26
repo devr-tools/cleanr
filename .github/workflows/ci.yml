@@ -17,6 +17,9 @@ env:
   GOVULNCHECK_MODE: required
   GOVULNCHECK_VERSION: v1.3.0
   GOCYCLO_VERSION: v0.6.0
+  SCC_VERSION: v3.7.0
+  MAX_GO_FILE_CODE_LINES: "400"
+  GOLANGCI_LINT_VERSION: v2.12.2
   MIN_INTERNAL_COVERAGE: "65.0"
 
 concurrency:
@@ -146,11 +149,57 @@ jobs:
             exit 1
           fi
 
+  scc:
+    name: scc
+    needs: vet
+    runs-on: ubuntu-latest
+    env:
+      PR_BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Fetch base branch
+        run: git fetch origin "${PR_BASE_REF}" --depth=1
+
+      - name: Enforce god-file size budget
+        run: go run ./cmd/cleanr-dev ci-scc -base-ref "origin/${PR_BASE_REF}"
+
+  golangci-lint:
+    name: golangci-lint
+    needs: vet
+    runs-on: ubuntu-latest
+    env:
+      PR_BASE_REF: ${{ github.base_ref }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Fetch base branch
+        run: git fetch origin "${PR_BASE_REF}" --depth=1
+
+      - name: Enforce maintainability lint budget
+        run: go run ./cmd/cleanr-dev ci-golangci-lint -base-ref "origin/${PR_BASE_REF}"
+
   test:
     name: test (${{ matrix.label }})
     needs:
       - vet
       - gocyclo
+      - scc
+      - golangci-lint
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -176,6 +225,8 @@ jobs:
     needs:
       - vet
       - gocyclo
+      - scc
+      - golangci-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -199,6 +250,8 @@ jobs:
     needs:
       - vet
       - gocyclo
+      - scc
+      - golangci-lint
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -230,6 +283,8 @@ jobs:
     needs:
       - vet
       - gocyclo
+      - scc
+      - golangci-lint
     runs-on: ubuntu-latest
     env:
       PR_BASE_REF: ${{ github.base_ref }}

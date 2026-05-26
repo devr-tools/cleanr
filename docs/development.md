@@ -33,6 +33,8 @@ make release VERSION=v0.1.0
 - `gofmt` drift checks
 - `go vet`
 - `gocyclo` with the repository complexity budget
+- `scc` to flag changed non-test Go files that grow past `400` code lines
+- `golangci-lint` with `funlen`, `gocognit`, and `maintidx` for new maintainability issues
 - `go test ./...` on the current OS
 - the Linux amd64 snapshot build
 - the internal coverage gate
@@ -45,6 +47,8 @@ Local behavior differs from hosted GitHub Actions in two places:
 - the test suite runs only on your current OS instead of the GitHub Ubuntu and macOS matrix
 - PR-only checks use a local Git base ref, resolved from `CLEANR_CI_BASE_REF`, `PR_BASE_REF`, your upstream branch, or common `origin/*` defaults
 - the `gocyclo` gate compares changed files against the base ref and fails only on new or worsened complexity violations, so existing baseline debt on the target branch does not block local pre-commit checks
+- the `scc` gate compares changed files against the base ref and fails only on new or worsened god-file size regressions
+- the `golangci-lint` gate uses [.golangci.yml](../.golangci.yml) and reports only new issues against the merge-base of your base ref and `HEAD`
 - the `semgrep` step is skipped with a warning when the `semgrep` binary is not installed locally
 
 Set `CI_BASE_REF=<ref>` when you want to force the comparison target, for example `make ci CI_BASE_REF=origin/develop`.

@@ -42,6 +42,9 @@ func run(args []string) int {
 		govulncheckMode := fs.String("govulncheck-mode", "", "govulncheck mode: required or off")
 		govulncheckVersion := fs.String("govulncheck-version", "", "govulncheck version to install")
 		gocycloVersion := fs.String("gocyclo-version", "", "gocyclo version to install")
+		sccVersion := fs.String("scc-version", "", "scc version to install")
+		maxFileCodeLines := fs.Int("max-file-code-lines", 0, "Maximum Go code lines allowed in a changed file before it is treated as a god file")
+		golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
 		minCoverage := fs.Float64("min-internal-coverage", 0, "Minimum internal coverage percentage")
 		semgrepCommand := fs.String("semgrep-command", "", "Semgrep executable name or path")
 		if err := fs.Parse(args[1:]); err != nil {
@@ -53,10 +56,47 @@ func run(args []string) int {
 			GovulncheckMode:     *govulncheckMode,
 			GovulncheckVersion:  *govulncheckVersion,
 			GocycloVersion:      *gocycloVersion,
+			SCCVersion:          *sccVersion,
+			MaxFileCodeLines:    *maxFileCodeLines,
+			GolangCILintVersion: *golangciLintVersion,
 			MinInternalCoverage: *minCoverage,
 			SemgrepCommand:      *semgrepCommand,
 		}); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "ci failed: %v\n", err)
+			return 1
+		}
+		return 0
+	case "ci-scc":
+		fs := flag.NewFlagSet("ci-scc", flag.ContinueOnError)
+		fs.SetOutput(os.Stderr)
+		baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
+		sccVersion := fs.String("scc-version", "", "scc version to install")
+		maxFileCodeLines := fs.Int("max-file-code-lines", 0, "Maximum Go code lines allowed in a changed file before it is treated as a god file")
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if err := runner.CISCC(ctx, devtools.CIOptions{
+			BaseRef:          *baseRef,
+			SCCVersion:       *sccVersion,
+			MaxFileCodeLines: *maxFileCodeLines,
+		}); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "ci-scc failed: %v\n", err)
+			return 1
+		}
+		return 0
+	case "ci-golangci-lint":
+		fs := flag.NewFlagSet("ci-golangci-lint", flag.ContinueOnError)
+		fs.SetOutput(os.Stderr)
+		baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
+		golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if err := runner.CIGolangCILint(ctx, devtools.CIOptions{
+			BaseRef:             *baseRef,
+			GolangCILintVersion: *golangciLintVersion,
+		}); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "ci-golangci-lint failed: %v\n", err)
 			return 1
 		}
 		return 0
@@ -169,5 +209,5 @@ func run(args []string) int {
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
 }

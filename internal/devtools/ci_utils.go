@@ -115,3 +115,18 @@ func resolveCICoverageThreshold(explicit float64) float64 {
 	}
 	return value
 }
+
+func resolveCIMaxFileCodeLines(explicit int) int {
+	if explicit > 0 {
+		return explicit
+	}
+	raw := strings.TrimSpace(os.Getenv("MAX_GO_FILE_CODE_LINES"))
+	if raw == "" {
+		return defaultCIMaxFileCodeLines
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return defaultCIMaxFileCodeLines
+	}
+	return value
+}

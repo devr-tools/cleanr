@@ -11,6 +11,9 @@ const (
 	defaultCIGovulncheckMode    = "required"
 	defaultCIGovulncheckVersion = "v1.3.0"
 	defaultCIGocycloVersion     = "v0.6.0"
+	defaultCISCCVersion         = "v3.7.0"
+	defaultCIMaxFileCodeLines   = 400
+	defaultCIGolangciVersion    = "v2.12.2"
 	defaultCIMinCoverage        = 65.0
 	defaultCISemgrepCommand     = "semgrep"
 )
@@ -29,6 +32,8 @@ func (r Runner) CI(ctx context.Context, opts CIOptions) error {
 		{name: "fmt", fn: func() error { return r.FormatCheck(ctx) }},
 		{name: "vet", fn: func() error { return r.Lint(ctx) }},
 		{name: "gocyclo", fn: func() error { return r.runCIGocyclo(ctx, resolved.BaseRef, resolved.GocycloVersion) }},
+		{name: "scc", fn: func() error { return r.runCISCC(ctx, resolved.BaseRef, resolved.SCCVersion, resolved.MaxFileCodeLines) }},
+		{name: "golangci-lint", fn: func() error { return r.runCIGolangCILint(ctx, resolved.BaseRef, resolved.GolangCILintVersion) }},
 		{name: "test", fn: func() error { return r.Test(ctx) }},
 		{name: "build", fn: func() error { return r.runCIBuild(ctx, resolved.BuildOutput) }},
 		{name: "coverage", fn: func() error { return r.runCICoverage(ctx, resolved.MinInternalCoverage) }},
@@ -82,9 +87,28 @@ func (r Runner) resolveCIOptions(ctx context.Context, opts CIOptions) (CIOptions
 		GovulncheckMode:     resolveCIString(opts.GovulncheckMode, "GOVULNCHECK_MODE", defaultCIGovulncheckMode),
 		GovulncheckVersion:  resolveCIString(opts.GovulncheckVersion, "GOVULNCHECK_VERSION", defaultCIGovulncheckVersion),
 		GocycloVersion:      resolveCIString(opts.GocycloVersion, "GOCYCLO_VERSION", defaultCIGocycloVersion),
+		SCCVersion:          resolveCIString(opts.SCCVersion, "SCC_VERSION", defaultCISCCVersion),
+		MaxFileCodeLines:    resolveCIMaxFileCodeLines(opts.MaxFileCodeLines),
+		GolangCILintVersion: resolveCIString(opts.GolangCILintVersion, "GOLANGCI_LINT_VERSION", defaultCIGolangciVersion),
 		MinInternalCoverage: resolveCICoverageThreshold(opts.MinInternalCoverage),
 		SemgrepCommand:      resolveCIString(opts.SemgrepCommand, "SEMGREP", defaultCISemgrepCommand),
 	}, nil
+}
+
+func (r Runner) CISCC(ctx context.Context, opts CIOptions) error {
+	resolved, err := r.resolveCIOptions(ctx, opts)
+	if err != nil {
+		return err
+	}
+	return r.runCISCC(ctx, resolved.BaseRef, resolved.SCCVersion, resolved.MaxFileCodeLines)
+}
+
+func (r Runner) CIGolangCILint(ctx context.Context, opts CIOptions) error {
+	resolved, err := r.resolveCIOptions(ctx, opts)
+	if err != nil {
+		return err
+	}
+	return r.runCIGolangCILint(ctx, resolved.BaseRef, resolved.GolangCILintVersion)
 }
 
 func (r Runner) checkTestPresence(ctx context.Context, baseRef string) error {

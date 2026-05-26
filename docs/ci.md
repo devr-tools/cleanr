@@ -144,9 +144,11 @@ Release and branch-publishing details live in [release-automation.md](release-au
 
 Use `make ci` before committing when you want a local approximation of `.github/workflows/ci.yml`.
 
-It runs the same main gates locally: test presence, formatting, `go vet`, `gocyclo`, `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
+It runs the same main gates locally: test presence, formatting, `go vet`, `gocyclo`, `scc`, `golangci-lint`, `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
 
 For `gocyclo`, the local command compares changed files to the resolved base ref and fails only on new or worsened over-limit findings. That keeps `make ci` usable when the base branch already carries complexity debt.
+For `scc`, the local command treats changed non-test Go files above `400` code lines as god files, but only fails on new or worsened size debt compared with the base ref.
+For `golangci-lint`, the local command uses [.golangci.yml](../.golangci.yml) and reports only new maintainability findings against the merge-base with the target branch.
 If `semgrep` is not installed locally, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 
 The local command compares your working tree against a Git base ref. Resolution order is:
@@ -165,7 +167,7 @@ make ci CI_BASE_REF=origin/develop
 Install or make available these local dependencies if you want full parity:
 
 - Go toolchain from `go.mod`
-- network access for `go install` of `gocyclo` and `govulncheck`
+- network access for `go install` of `gocyclo`, `scc`, `golangci-lint`, and `govulncheck`
 - `semgrep` on your `PATH`
 
 ## Connected Secrets Workflow

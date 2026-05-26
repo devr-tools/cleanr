@@ -19,6 +19,9 @@ type CIOptions struct {
 	GovulncheckMode     string
 	GovulncheckVersion  string
 	GocycloVersion      string
+	SCCVersion          string
+	MaxFileCodeLines    int
+	GolangCILintVersion string
 	MinInternalCoverage float64
 	SemgrepCommand      string
 }
