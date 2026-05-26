@@ -49,63 +49,107 @@ func scenarioAssertions(scenario core.Scenario) []core.Assertion {
 }
 
 func evaluateAssertion(assertion core.Assertion, view map[string]any, resp core.Response) (core.Finding, bool) {
-	assertionType := strings.TrimSpace(assertion.Type)
-	switch assertionType {
+	switch strings.TrimSpace(assertion.Type) {
 	case "contains":
-		path := defaultAssertionPath(assertion)
-		actual, ok := resolveAssertionPath(view, path)
-		if !ok || !strings.Contains(strings.ToLower(renderAssertionValue(actual)), strings.ToLower(assertion.Value)) {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s to contain %q", path, assertion.Value)), true
-		}
+		return evaluateContainsAssertion(assertion, view)
 	case "not_contains":
-		path := defaultAssertionPath(assertion)
-		actual, ok := resolveAssertionPath(view, path)
-		if ok && strings.Contains(strings.ToLower(renderAssertionValue(actual)), strings.ToLower(assertion.Value)) {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s not to contain %q", path, assertion.Value)), true
-		}
+		return evaluateNotContainsAssertion(assertion, view)
 	case "regex":
-		path := defaultAssertionPath(assertion)
-		actual, ok := resolveAssertionPath(view, path)
-		if !ok {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: %s was not present", path)), true
-		}
-		matched, err := regexp.MatchString(assertion.Pattern, renderAssertionValue(actual))
-		if err != nil || !matched {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s to match %q", path, assertion.Pattern)), true
-		}
+		return evaluateRegexAssertion(assertion, view)
 	case "json_path":
-		actual, ok := resolveAssertionPath(view, assertion.Path)
-		if !ok {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: %s was not present", assertion.Path)), true
-		}
-		if strings.TrimSpace(assertion.Value) != "" && renderAssertionValue(actual) != assertion.Value {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s to equal %q, got %q", assertion.Path, assertion.Value, renderAssertionValue(actual))), true
-		}
+		return evaluateJSONPathAssertion(assertion, view)
 	case "status_code":
-		if assertion.IntValue != nil && resp.StatusCode != *assertion.IntValue {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected status code %d, got %d", *assertion.IntValue, resp.StatusCode)), true
-		}
+		return evaluateStatusCodeAssertion(assertion, resp)
 	case "latency_ms":
-		if assertion.IntValue != nil && resp.Latency.Milliseconds() > int64(*assertion.IntValue) {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected latency <= %dms, got %dms", *assertion.IntValue, resp.Latency.Milliseconds())), true
-		}
+		return evaluateLatencyAssertion(assertion, resp)
 	case "finish_reason":
-		if resp.Normalized.FinishReason != assertion.Value {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected finish reason %q, got %q", assertion.Value, resp.Normalized.FinishReason)), true
-		}
+		return evaluateFinishReasonAssertion(assertion, resp)
 	case "tool_call_count":
-		if assertion.IntValue != nil && len(resp.Normalized.ToolCalls) != *assertion.IntValue {
-			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %d tool calls, got %d", *assertion.IntValue, len(resp.Normalized.ToolCalls))), true
-		}
+		return evaluateToolCallCountAssertion(assertion, resp)
 	case "tool_call_name":
-		for _, toolCall := range resp.Normalized.ToolCalls {
-			if toolCall.Name == assertion.Value {
-				return core.Finding{}, false
-			}
-		}
-		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected tool call %q", assertion.Value)), true
+		return evaluateToolCallNameAssertion(assertion, resp)
 	}
 	return core.Finding{}, false
+}
+
+func evaluateContainsAssertion(assertion core.Assertion, view map[string]any) (core.Finding, bool) {
+	path := defaultAssertionPath(assertion)
+	actual, ok := resolveAssertionPath(view, path)
+	if !ok || !strings.Contains(strings.ToLower(renderAssertionValue(actual)), strings.ToLower(assertion.Value)) {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s to contain %q", path, assertion.Value)), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateNotContainsAssertion(assertion core.Assertion, view map[string]any) (core.Finding, bool) {
+	path := defaultAssertionPath(assertion)
+	actual, ok := resolveAssertionPath(view, path)
+	if ok && strings.Contains(strings.ToLower(renderAssertionValue(actual)), strings.ToLower(assertion.Value)) {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s not to contain %q", path, assertion.Value)), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateRegexAssertion(assertion core.Assertion, view map[string]any) (core.Finding, bool) {
+	path := defaultAssertionPath(assertion)
+	actual, ok := resolveAssertionPath(view, path)
+	if !ok {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: %s was not present", path)), true
+	}
+	matched, err := regexp.MatchString(assertion.Pattern, renderAssertionValue(actual))
+	if err != nil || !matched {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s to match %q", path, assertion.Pattern)), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateJSONPathAssertion(assertion core.Assertion, view map[string]any) (core.Finding, bool) {
+	actual, ok := resolveAssertionPath(view, assertion.Path)
+	if !ok {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: %s was not present", assertion.Path)), true
+	}
+	actualValue := renderAssertionValue(actual)
+	if strings.TrimSpace(assertion.Value) != "" && actualValue != assertion.Value {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s to equal %q, got %q", assertion.Path, assertion.Value, actualValue)), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateStatusCodeAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if assertion.IntValue != nil && resp.StatusCode != *assertion.IntValue {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected status code %d, got %d", *assertion.IntValue, resp.StatusCode)), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateLatencyAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if assertion.IntValue != nil && resp.Latency.Milliseconds() > int64(*assertion.IntValue) {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected latency <= %dms, got %dms", *assertion.IntValue, resp.Latency.Milliseconds())), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateFinishReasonAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if resp.Normalized.FinishReason != assertion.Value {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected finish reason %q, got %q", assertion.Value, resp.Normalized.FinishReason)), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateToolCallCountAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if assertion.IntValue != nil && len(resp.Normalized.ToolCalls) != *assertion.IntValue {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %d tool calls, got %d", *assertion.IntValue, len(resp.Normalized.ToolCalls))), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateToolCallNameAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	for _, toolCall := range resp.Normalized.ToolCalls {
+		if toolCall.Name == assertion.Value {
+			return core.Finding{}, false
+		}
+	}
+	return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected tool call %q", assertion.Value)), true
 }
 
 func defaultAssertionPath(assertion core.Assertion) string {

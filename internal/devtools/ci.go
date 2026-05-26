@@ -11,7 +11,7 @@ const (
 	defaultCIGovulncheckMode    = "required"
 	defaultCIGovulncheckVersion = "v1.3.0"
 	defaultCIGocycloVersion     = "v0.6.0"
-	defaultCISCCVersion         = "v3.7.0"
+	defaultCISCCVersion         = "v3.6.0"
 	defaultCIMaxFileCodeLines   = 400
 	defaultCIGolangciVersion    = "v2.12.2"
 	defaultCIMinCoverage        = 65.0

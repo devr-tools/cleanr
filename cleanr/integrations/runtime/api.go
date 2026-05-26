@@ -250,78 +250,105 @@ func renderSummary(report core.Report, cfg core.SummaryConfig) ([]byte, error) {
 
 func renderMarkdownSummary(report core.Report) string {
 	var b strings.Builder
+	writeMarkdownSummaryHeader(&b, report)
+	writeMarkdownFailureSummary(&b, report)
+	writeMarkdownRemoteComparisons(&b, report)
+	writeMarkdownRemoteViews(&b, report)
+	writeMarkdownRecommendations(&b, report)
+	return b.String()
+}
+
+func writeMarkdownSummaryHeader(b *strings.Builder, report core.Report) {
 	status := "PASS"
 	if !report.Passed {
 		status = "FAIL"
 	}
-	fmt.Fprintf(&b, "# cleanr Release Summary\n\n")
-	fmt.Fprintf(&b, "- Local gate: `%s` (blocking)\n", status)
-	fmt.Fprintf(&b, "- Target: `%s`\n", report.Name)
+	fmt.Fprintf(b, "# cleanr Release Summary\n\n")
+	fmt.Fprintf(b, "- Local gate: `%s` (blocking)\n", status)
+	fmt.Fprintf(b, "- Target: `%s`\n", report.Name)
 	if build := buildID(report.Metadata); build != "" {
-		fmt.Fprintf(&b, "- Build: `%s`\n", build)
+		fmt.Fprintf(b, "- Build: `%s`\n", build)
 	}
 	if !report.GeneratedAt.IsZero() {
-		fmt.Fprintf(&b, "- Generated: `%s`\n", report.GeneratedAt.Format(time.RFC3339))
+		fmt.Fprintf(b, "- Generated: `%s`\n", report.GeneratedAt.Format(time.RFC3339))
 	}
-	fmt.Fprintf(&b, "- Failed suites: `%d`\n", report.FailedSuites)
-	fmt.Fprintf(&b, "- Failed cases: `%d`\n", report.FailedCases)
+	fmt.Fprintf(b, "- Failed suites: `%d`\n", report.FailedSuites)
+	fmt.Fprintf(b, "- Failed cases: `%d`\n", report.FailedCases)
 	if report.Trend != nil && !report.Trend.Baseline {
-		fmt.Fprintf(&b, "- Local trend: `%+d suites`, `%+d cases`, `%s duration`\n", report.Trend.Summary.FailedSuitesDelta, report.Trend.Summary.FailedCasesDelta, report.Trend.Summary.DurationDelta.Round(time.Millisecond))
+		fmt.Fprintf(b, "- Local trend: `%+d suites`, `%+d cases`, `%s duration`\n", report.Trend.Summary.FailedSuitesDelta, report.Trend.Summary.FailedCasesDelta, report.Trend.Summary.DurationDelta.Round(time.Millisecond))
 	}
 	if report.TrendGate != nil {
-		gateStatus := "SKIPPED"
-		if report.TrendGate.Evaluated {
-			if report.TrendGate.Passed {
-				gateStatus = "PASS"
-			} else {
-				gateStatus = "FAIL"
-			}
-		}
-		fmt.Fprintf(&b, "- Trend gates: `%s`\n", gateStatus)
+		fmt.Fprintf(b, "- Trend gates: `%s`\n", markdownTrendGateStatus(*report.TrendGate))
 	}
+}
 
+func markdownTrendGateStatus(gate core.TrendGateReport) string {
+	if !gate.Evaluated {
+		return "SKIPPED"
+	}
+	if gate.Passed {
+		return "PASS"
+	}
+	return "FAIL"
+}
+
+func writeMarkdownFailureSummary(b *strings.Builder, report core.Report) {
 	failures := failureSummary(report)
-	if len(failures) > 0 {
-		fmt.Fprintf(&b, "\n## Local Failures\n\n")
-		for _, line := range failures {
-			fmt.Fprintf(&b, "- %s\n", line)
-		}
+	if len(failures) == 0 {
+		return
 	}
+	fmt.Fprintf(b, "\n## Local Failures\n\n")
+	for _, line := range failures {
+		fmt.Fprintf(b, "- %s\n", line)
+	}
+}
 
-	if report.Integrations != nil && len(report.Integrations.TrendSources) > 0 {
-		fmt.Fprintf(&b, "\n## Remote Comparisons\n\n")
-		for _, source := range report.Integrations.TrendSources {
-			line := fmt.Sprintf("`%s`: `%s`", source.Name, strings.ToUpper(emptyStatus(source.Status)))
-			if source.Summary != nil {
-				line += fmt.Sprintf(" against `%s` with `%+d` failed-case delta", emptyValue(source.LatestBuildID), source.Summary.FailedCasesDelta)
-			}
-			if source.ViewURL != "" {
-				line += fmt.Sprintf(" ([view](%s))", source.ViewURL)
-			}
-			if source.Message != "" && source.Status != "compared" {
-				line += ": " + source.Message
-			}
-			fmt.Fprintf(&b, "- %s\n", line)
-		}
+func writeMarkdownRemoteComparisons(b *strings.Builder, report core.Report) {
+	if report.Integrations == nil || len(report.Integrations.TrendSources) == 0 {
+		return
 	}
+	fmt.Fprintf(b, "\n## Remote Comparisons\n\n")
+	for _, source := range report.Integrations.TrendSources {
+		fmt.Fprintf(b, "- %s\n", markdownRemoteComparisonLine(source))
+	}
+}
 
-	if report.Integrations != nil {
-		links := remoteLinks(report.Integrations.ResultSinks)
-		if len(links) > 0 {
-			fmt.Fprintf(&b, "\n## Remote Views\n\n")
-			for _, line := range links {
-				fmt.Fprintf(&b, "- %s\n", line)
-			}
-		}
+func markdownRemoteComparisonLine(source core.ExternalTrendReport) string {
+	line := fmt.Sprintf("`%s`: `%s`", source.Name, strings.ToUpper(emptyStatus(source.Status)))
+	if source.Summary != nil {
+		line += fmt.Sprintf(" against `%s` with `%+d` failed-case delta", emptyValue(source.LatestBuildID), source.Summary.FailedCasesDelta)
 	}
+	if source.ViewURL != "" {
+		line += fmt.Sprintf(" ([view](%s))", source.ViewURL)
+	}
+	if source.Message != "" && source.Status != "compared" {
+		line += ": " + source.Message
+	}
+	return line
+}
 
-	if len(report.Recommendations) > 0 {
-		fmt.Fprintf(&b, "\n## Recommendations\n\n")
-		for _, rec := range report.Recommendations {
-			fmt.Fprintf(&b, "- %s\n", rec)
-		}
+func writeMarkdownRemoteViews(b *strings.Builder, report core.Report) {
+	if report.Integrations == nil {
+		return
 	}
-	return b.String()
+	links := remoteLinks(report.Integrations.ResultSinks)
+	if len(links) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n## Remote Views\n\n")
+	for _, line := range links {
+		fmt.Fprintf(b, "- %s\n", line)
+	}
+}
+
+func writeMarkdownRecommendations(b *strings.Builder, report core.Report) {
+	if len(report.Recommendations) == 0 {
+		return
+	}
+	fmt.Fprintf(b, "\n## Recommendations\n\n")
+	for _, rec := range report.Recommendations {
+		fmt.Fprintf(b, "- %s\n", rec)
+	}
 }
 
 func failureSummary(report core.Report) []string {
