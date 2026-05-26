@@ -1,4 +1,4 @@
-package integrations
+package runtime
 
 import (
 	"net/url"
