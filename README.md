@@ -10,119 +10,53 @@
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0 license"></a>
 </p>
 
-**cleanr** is a Go-based AI testing CLI and SDK for validating AI applications in CI. It is built for adversarial, security, load, chaos, drift, token-efficiency, and workflow-policy checks, with machine-readable outputs for release gates.
+**cleanr** is a Go-based AI testing CLI and SDK for validating AI applications in CI. Use it to generate configs, run suites against providers or HTTP targets, and emit machine-readable reports for release gates.
 
-## Quick Install
+## Install
 
-Install the CLI with Go:
+Recommended:
 
 ```bash
 go install github.com/devr-tools/cleanr/cmd/cleanr@latest
 cleanr version
 ```
 
-Install from GitHub Releases:
+Other install paths:
 
-```bash
-VERSION="$(curl -fsSL https://api.github.com/repos/devr-tools/cleanr/releases/latest | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p' | head -n 1)"
-curl -fsSLo cleanr.tar.gz "https://github.com/devr-tools/cleanr/releases/download/${VERSION}/cleanr_${VERSION}_darwin_arm64.tar.gz"
-tar -xzf cleanr.tar.gz
-sudo install -m 0755 ./cleanr /usr/local/bin/cleanr
-cleanr version
-```
+- GitHub Releases: tagged binaries for direct download
+- Homebrew: `brew install devr-tools/tap/cleanr`
+- Source build: `make build`
 
-Build from source:
-
-```bash
-make build
-./dist/cleanr version
-sudo install -m 0755 ./dist/cleanr /usr/local/bin/cleanr
-```
-
-Homebrew:
-
-```bash
-brew tap devr-tools/tap
-brew install cleanr
-cleanr version
-```
-
-```bash
-brew install devr-tools/tap/cleanr
-cleanr version
-```
-
-`cleanr` is not in `homebrew/core` yet. For tap and formula details, see [docs/homebrew.md](docs/homebrew.md).
+Install details and packaging notes live in [docs/getting-started.md](docs/getting-started.md) and [docs/homebrew.md](docs/homebrew.md).
 
 ## Quickstart
 
-### CLI
+Generate a config, validate it, and run your first suite:
 
 ```bash
-make build
-./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
-./dist/cleanr validate -config cleanr.yaml
-./dist/cleanr generate -config cleanr.yaml
-./dist/cleanr dataset import -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output cleanr.generated.yaml -approve-generated
-./dist/cleanr run -config cleanr.generated.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
+cleanr validate -config cleanr.yaml
+cleanr run -config cleanr.yaml
 ```
 
-For an interactive local setup flow, use:
+If you prefer an interactive local flow:
 
 ```bash
-./dist/cleanr setup
-./dist/cleanr snapshot -config cleanr.yaml
-./dist/cleanr trends -config cleanr.yaml
+cleanr setup
+cleanr snapshot -config cleanr.yaml
 ```
 
-For staged CI profiles, use:
+For staged CI configs:
 
 ```bash
-./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output cleanr-pr.yaml
-./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output cleanr-main.yaml
-./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output cleanr-release.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output cleanr-pr.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output cleanr-main.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output cleanr-release.yaml
 ```
 
-For AI-assisted scenario synthesis, configure `scenario_generation` in your config, run:
+For scenario generation and dataset import flows, start with [docs/getting-started.md](docs/getting-started.md).
 
-```bash
-./dist/cleanr generate -config cleanr.yaml
-```
-
-That writes a reviewable scenario dataset artifact. Import it only after review:
-
-```bash
-./dist/cleanr dataset import -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output cleanr.generated.yaml -approve-generated
-```
-
-### SDK
-
-Use the root module path for embedding:
-
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-
-	cleanr "github.com/devr-tools/cleanr"
-)
-
-func main() {
-	cfg, err := cleanr.LoadConfigFile("cleanr.yaml")
-	if err != nil {
-		panic(err)
-	}
-
-	report := cleanr.NewHTTPRunner(cfg).Run(context.Background())
-	fmt.Print(cleanr.TextReport(report))
-}
-```
-
-### Docker Pipeline
-
-Use the published GitHub Container Registry image:
+## CI Example
 
 ```yaml
 jobs:
@@ -135,21 +69,7 @@ jobs:
       - run: cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml
 ```
 
-For fuller SDK, Docker, CI, and release patterns, see [docs/sdk.md](docs/sdk.md), [docs/docker.md](docs/docker.md), [docs/ci.md](docs/ci.md), and [docs/release-automation.md](docs/release-automation.md).
-
-## Uninstall
-
-Remove the installed binary:
-
-```bash
-sudo rm -f /usr/local/bin/cleanr
-```
-
-Remove the local profile and cached credentials if you used `cleanr setup`:
-
-```bash
-rm -rf ~/.cleanr
-```
+More CI, Docker, SDK, and release patterns are in [docs/ci.md](docs/ci.md), [docs/docker.md](docs/docker.md), [docs/sdk.md](docs/sdk.md), and [docs/release-automation.md](docs/release-automation.md).
 
 ## Docs
 
@@ -173,9 +93,3 @@ rm -rf ~/.cleanr
 - [Containerized Assistant](examples/containerized-assistant/README.md)
 - [Best Practice Profiles](examples/best-practices/cleanr-pr.yaml)
 - [Stateful Support Agent](examples/stateful-support-agent/README.md)
-
-## Exit Codes
-
-- `0`: all suites passed
-- `1`: one or more tests failed
-- `2`: invalid configuration or runtime error
