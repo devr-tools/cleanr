@@ -27,6 +27,40 @@ jobs:
       - run: cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml
 ```
 
+### Use a job container plus an app service container
+
+Best when your application under test runs in its own container and talks to the provider internally:
+
+```yaml
+jobs:
+  cleanr:
+    runs-on: ubuntu-latest
+    container: ghcr.io/devr-tools/cleanr:<tag>
+    services:
+      app:
+        image: ghcr.io/your-org/assistant-api:latest
+        env:
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+        options: >-
+          --health-cmd "curl -fsS http://localhost:8080/healthz || exit 1"
+          --health-interval 10s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+      - run: cleanr validate -config examples/containerized-assistant/cleanr.yaml
+      - run: cleanr run -config examples/containerized-assistant/cleanr.yaml -format junit -output cleanr-junit.xml
+```
+
+In that model:
+
+- the app container owns `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`
+- `cleanr` talks to the app with `target.type: http`
+- the app is reachable from the `cleanr` container at `http://app:8080`
+- `cleanr` only needs its own provider secret if you enable `scenario_generation` or test a native provider target directly
+
+The checked-in example lives in [examples/containerized-assistant](../examples/containerized-assistant/README.md).
+
 ### Use `go install`
 
 Best when you want a simple host-runner install path:
@@ -111,6 +145,9 @@ Release and branch-publishing details live in [release-automation.md](release-au
 Use `make ci` before committing when you want a local approximation of `.github/workflows/ci.yml`.
 
 It runs the same main gates locally: test presence, formatting, `go vet`, `gocyclo`, `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
+
+For `gocyclo`, the local command compares changed files to the resolved base ref and fails only on new or worsened over-limit findings. That keeps `make ci` usable when the base branch already carries complexity debt.
+If `semgrep` is not installed locally, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 
 The local command compares your working tree against a Git base ref. Resolution order is:
 

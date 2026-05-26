@@ -1,0 +1,51 @@
+services:
+  app:
+    image: ghcr.io/your-org/assistant-api:latest
+    environment:
+      PORT: "8080"
+      OPENAI_API_KEY: ${OPENAI_API_KEY:?set OPENAI_API_KEY for the app container}
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+    networks:
+      - cleanr
+
+  cleanr:
+    image: ghcr.io/devr-tools/cleanr:${CLEANR_TAG:-v0.1.0}
+    depends_on:
+      app:
+        condition: service_healthy
+    command:
+      - run
+      - -config
+      - /workspace/examples/containerized-assistant/cleanr.yaml
+      - -format
+      - junit
+      - -output
+      - /tmp/cleanr-junit.xml
+      - -replay-artifact
+      - /tmp/cleanr.replay.json
+    working_dir: /workspace
+    volumes:
+      - ../..:/workspace:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    pids_limit: 256
+    mem_limit: 512m
+    cpus: 1.0
+    user: "65532:65532"
+    networks:
+      - cleanr
+
+networks:
+  cleanr:
+    driver: bridge

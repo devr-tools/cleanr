@@ -98,6 +98,26 @@ func TestDevtoolsCIDevelopChecksDCO(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCIToleratesBaselineGocycloDebt(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/gocyclo-baseline")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n\nconst gocycloBaseline = true\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	t.Setenv("GOCYCLO_OUTPUT_CURRENT", "21 cleanr Value cleanr/app.go:3:1")
+	t.Setenv("GOCYCLO_OUTPUT_BASE", "21 cleanr Value cleanr/app.go:3:1")
+
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected baseline gocyclo debt to be tolerated, got %v\n%s", err, stdout.String())
+	}
+}
+
 func initGitRepo(t *testing.T, branch string) string {
 	t.Helper()
 
@@ -164,6 +184,7 @@ exit "${SEMGREP_EXIT:-0}"
 	t.Setenv("FAKE_COVERAGE_TOTAL", "70.0")
 	t.Setenv("SEMGREP_LOG", filepath.Join(repo, ".semgrep.log"))
 	t.Setenv("GOCACHE", filepath.Join(repo, ".gocache"))
+	t.Setenv("WORKTREE_DIR", repo)
 }
 
 func fakeGoScript() string {
@@ -183,8 +204,18 @@ case "$1" in
       github.com/fzipp/gocyclo/cmd/gocyclo@*)
         cat > "$FAKE_GOPATH/bin/gocyclo" <<'EOF'
 #!/bin/sh
-if [ -n "$GOCYCLO_OUTPUT" ]; then
-  printf '%s\n' "$GOCYCLO_OUTPUT"
+if [ "$PWD" = "$WORKTREE_DIR" ]; then
+  if [ -n "$GOCYCLO_OUTPUT_CURRENT" ]; then
+    printf '%s\n' "$GOCYCLO_OUTPUT_CURRENT"
+  elif [ -n "$GOCYCLO_OUTPUT" ]; then
+    printf '%s\n' "$GOCYCLO_OUTPUT"
+  fi
+else
+  if [ -n "$GOCYCLO_OUTPUT_BASE" ]; then
+    printf '%s\n' "$GOCYCLO_OUTPUT_BASE"
+  elif [ -n "$GOCYCLO_OUTPUT" ]; then
+    printf '%s\n' "$GOCYCLO_OUTPUT"
+  fi
 fi
 exit 0
 EOF

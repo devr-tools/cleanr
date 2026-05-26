@@ -37,6 +37,7 @@ If you prefer to start from checked-in examples instead of the setup flow, use o
 - `examples/openai-responses.yaml`
 - `examples/openai-chat-completions.yaml`
 - `examples/anthropic-messages.yaml`
+- `examples/containerized-assistant/cleanr.yaml`
 - `examples/openai-responses-tuned.yaml`
 - `examples/best-practices/cleanr-pr.yaml`
 - `examples/best-practices/cleanr-main.yaml`

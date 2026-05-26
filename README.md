@@ -170,6 +170,7 @@ rm -rf ~/.cleanr
 - [OpenAI Responses](examples/openai-responses.yaml)
 - [OpenAI Chat Completions](examples/openai-chat-completions.yaml)
 - [Anthropic Messages](examples/anthropic-messages.yaml)
+- [Containerized Assistant](examples/containerized-assistant/README.md)
 - [Best Practice Profiles](examples/best-practices/cleanr-pr.yaml)
 - [Stateful Support Agent](examples/stateful-support-agent/README.md)
 
