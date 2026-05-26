@@ -1,4 +1,16 @@
-dist/
-.gocache/
+/dist/
+/.gocache/
 /reports/
+
+# Local configuration
 /cleanr.connected.yaml
+
+# Coverage and test artifacts
+/coverage.out
+/.coverage*.out
+*.test
+
+# Editor and OS metadata
+/.vscode/
+/.idea/
+.DS_Store
