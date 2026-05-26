@@ -18,6 +18,20 @@ type goTestEvent struct {
 	Output  string `json:"Output"`
 }
 
+type testKey struct {
+	pkg  string
+	test string
+}
+
+type goTestCollector struct {
+	passCount              int
+	failCount              int
+	testOutput             map[testKey][]string
+	packageOutput          map[string][]string
+	packageHasNamedFailure map[string]bool
+	failureSections        []string
+}
+
 func (r Runner) runGoTestFiltered(ctx context.Context, args ...string) error {
 	path, err := exec.LookPath("go")
 	if err != nil {
@@ -38,17 +52,7 @@ func (r Runner) runGoTestFiltered(ctx context.Context, args ...string) error {
 		return fmt.Errorf("go %s: %w", strings.Join(cmdArgs, " "), err)
 	}
 
-	type testKey struct {
-		pkg  string
-		test string
-	}
-
-	var passCount int
-	var failCount int
-	testOutput := make(map[testKey][]string)
-	packageOutput := make(map[string][]string)
-	packageHasNamedFailure := make(map[string]bool)
-	var failureSections []string
+	collector := newGoTestCollector()
 
 	dec := json.NewDecoder(stdout)
 	for {
@@ -61,69 +65,93 @@ func (r Runner) runGoTestFiltered(ctx context.Context, args ...string) error {
 			return fmt.Errorf("decode go test json: %w", err)
 		}
 		if event.Test != "" {
-			key := testKey{pkg: event.Package, test: event.Test}
-			switch event.Action {
-			case "output":
-				testOutput[key] = append(testOutput[key], event.Output)
-			case "pass":
-				passCount++
-				delete(testOutput, key)
-			case "fail":
-				failCount++
-				packageHasNamedFailure[event.Package] = true
-				var section strings.Builder
-				fmt.Fprintf(&section, "[%s] %s\n", event.Package, event.Test)
-				for _, line := range testOutput[key] {
-					_, _ = io.WriteString(&section, line)
-				}
-				failureSections = append(failureSections, section.String())
-				delete(testOutput, key)
-			case "skip":
-				delete(testOutput, key)
-			}
-			continue
-		}
-
-		switch event.Action {
-		case "output":
-			if strings.Contains(event.Output, "[no test files]") {
-				continue
-			}
-			packageOutput[event.Package] = append(packageOutput[event.Package], event.Output)
-		case "pass", "skip":
-			delete(packageOutput, event.Package)
-		case "fail":
-			lines := filterPackageFailureOutput(packageOutput[event.Package])
-			if !packageHasNamedFailure[event.Package] && len(lines) > 0 {
-				var section strings.Builder
-				fmt.Fprintf(&section, "[%s]\n", event.Package)
-				for _, line := range lines {
-					_, _ = io.WriteString(&section, line)
-				}
-				failureSections = append(failureSections, section.String())
-			}
-			delete(packageOutput, event.Package)
+			collector.handleTestEvent(event)
+		} else {
+			collector.handlePackageEvent(event)
 		}
 	}
 
 	waitErr := cmd.Wait()
-	if len(failureSections) > 0 {
+	if len(collector.failureSections) > 0 {
 		if _, err := fmt.Fprintln(r.Stdout, "failed tests:"); err != nil {
 			return err
 		}
-		for _, section := range failureSections {
+		for _, section := range collector.failureSections {
 			if _, err := fmt.Fprintf(r.Stdout, "\n%s", section); err != nil {
 				return err
 			}
 		}
 	}
-	if _, err := fmt.Fprintf(r.Stdout, "test summary: %d passed, %d failed\n", passCount, failCount); err != nil {
+	if _, err := fmt.Fprintf(r.Stdout, "test summary: %d passed, %d failed\n", collector.passCount, collector.failCount); err != nil {
 		return err
 	}
 	if waitErr != nil {
 		return fmt.Errorf("go %s: %w", strings.Join(cmdArgs, " "), waitErr)
 	}
 	return nil
+}
+
+func newGoTestCollector() *goTestCollector {
+	return &goTestCollector{
+		testOutput:             make(map[testKey][]string),
+		packageOutput:          make(map[string][]string),
+		packageHasNamedFailure: make(map[string]bool),
+	}
+}
+
+func (c *goTestCollector) handleTestEvent(event goTestEvent) {
+	key := testKey{pkg: event.Package, test: event.Test}
+	switch event.Action {
+	case "output":
+		c.testOutput[key] = append(c.testOutput[key], event.Output)
+	case "pass":
+		c.passCount++
+		delete(c.testOutput, key)
+	case "fail":
+		c.recordNamedFailure(event.Package, event.Test, c.testOutput[key])
+		delete(c.testOutput, key)
+	case "skip":
+		delete(c.testOutput, key)
+	}
+}
+
+func (c *goTestCollector) recordNamedFailure(pkg, test string, lines []string) {
+	c.failCount++
+	c.packageHasNamedFailure[pkg] = true
+	var section strings.Builder
+	fmt.Fprintf(&section, "[%s] %s\n", pkg, test)
+	for _, line := range lines {
+		_, _ = io.WriteString(&section, line)
+	}
+	c.failureSections = append(c.failureSections, section.String())
+}
+
+func (c *goTestCollector) handlePackageEvent(event goTestEvent) {
+	switch event.Action {
+	case "output":
+		if strings.Contains(event.Output, "[no test files]") {
+			return
+		}
+		c.packageOutput[event.Package] = append(c.packageOutput[event.Package], event.Output)
+	case "pass", "skip":
+		delete(c.packageOutput, event.Package)
+	case "fail":
+		c.recordPackageFailure(event.Package)
+		delete(c.packageOutput, event.Package)
+	}
+}
+
+func (c *goTestCollector) recordPackageFailure(pkg string) {
+	lines := filterPackageFailureOutput(c.packageOutput[pkg])
+	if c.packageHasNamedFailure[pkg] || len(lines) == 0 {
+		return
+	}
+	var section strings.Builder
+	fmt.Fprintf(&section, "[%s]\n", pkg)
+	for _, line := range lines {
+		_, _ = io.WriteString(&section, line)
+	}
+	c.failureSections = append(c.failureSections, section.String())
 }
 
 func filterPackageFailureOutput(lines []string) []string {

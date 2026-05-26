@@ -5,7 +5,7 @@
 - stable-release automation that updates `Formula/cleanr.rb` in `devr-tools/homebrew-tap`
 - a local generator for producing a source-build formula suitable as a starting point for `homebrew/core`
 
-The repository also has a pull-request Homebrew validation workflow at `.github/workflows/homebrew-validation.yml`. That workflow generates a temporary `Formula/cleanr.rb` from the current checkout, taps the repository locally, and verifies that `brew install --build-from-source` and `brew test` both pass on Ubuntu and macOS.
+The repository also has a pull-request Homebrew validation workflow at `.github/workflows/homebrew-validation.yml`. That workflow clones `devr-tools/homebrew-tap`, replaces `Formula/cleanr.rb` in that temporary checkout with a source-build formula generated from the current checkout, taps the temporary clone as `devr-tools/tap`, and verifies that `brew install --build-from-source devr-tools/tap/cleanr` and `brew test devr-tools/tap/cleanr` both pass on Ubuntu and macOS.
 
 ## Tap Sync
 

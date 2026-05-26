@@ -9,112 +9,136 @@ import (
 
 func RenderAnalysisText(analysis Analysis) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "Trend Summary\n")
-	fmt.Fprintf(&b, "=============\n")
-	fmt.Fprintf(&b, "Target        %s\n", analysis.Target)
-	fmt.Fprintf(&b, "RetainedRuns  %d\n", analysis.TotalRetainedRuns)
-	fmt.Fprintf(&b, "WindowSize    %d\n", analysis.WindowSize)
+	writeAnalysisHeader(&b, analysis)
+	writeAnalysisDelta(&b, analysis)
+	writeAnalysisBuildDiff(&b, analysis)
+	writeAnalysisDrift(&b, analysis)
+	writeSuiteTrendSection(&b, "Regressions", analysis.Regressions)
+	writeCaseTrendSection(&b, "Case Regressions", analysis.CaseRegressions)
+	writeSuiteTrendSection(&b, "Improvements", analysis.Improvements)
+	writeCaseTrendSection(&b, "Case Improvements", analysis.CaseImprovements)
+	writeFailureBucketSection(&b, analysis.FailureBuckets)
+	writeRecentRunsSection(&b, analysis.RecentRuns)
+	return b.String()
+}
+
+func writeAnalysisHeader(b *strings.Builder, analysis Analysis) {
+	fmt.Fprintf(b, "Trend Summary\n")
+	fmt.Fprintf(b, "=============\n")
+	fmt.Fprintf(b, "Target        %s\n", analysis.Target)
+	fmt.Fprintf(b, "RetainedRuns  %d\n", analysis.TotalRetainedRuns)
+	fmt.Fprintf(b, "WindowSize    %d\n", analysis.WindowSize)
 	if !analysis.OldestAt.IsZero() {
-		fmt.Fprintf(&b, "WindowStart   %s\n", analysis.OldestAt.Format("2006-01-02T15:04:05Z07:00"))
+		fmt.Fprintf(b, "WindowStart   %s\n", analysis.OldestAt.Format("2006-01-02T15:04:05Z07:00"))
 	}
 	if !analysis.Latest.GeneratedAt.IsZero() {
-		fmt.Fprintf(&b, "LatestRun     %s", analysis.Latest.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
+		fmt.Fprintf(b, "LatestRun     %s", analysis.Latest.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
 		if analysis.Latest.BuildID != "" {
-			fmt.Fprintf(&b, " (%s)", analysis.Latest.BuildID)
+			fmt.Fprintf(b, " (%s)", analysis.Latest.BuildID)
 		}
-		fmt.Fprintln(&b)
+		fmt.Fprintln(b)
 	}
-	fmt.Fprintf(&b, "PassRate      %.2f\n", analysis.PassRate)
-	fmt.Fprintf(&b, "FailedRuns    %d\n", analysis.FailedRuns)
-	fmt.Fprintf(&b, "AvgDuration   %s\n", analysis.AverageDuration.Round(0).String())
-	fmt.Fprintf(&b, "LatestStatus  %s | failed_suites=%d | failed_cases=%d\n", passLabel(analysis.Latest.Passed), analysis.Latest.FailedSuites, analysis.Latest.FailedCases)
+	fmt.Fprintf(b, "PassRate      %.2f\n", analysis.PassRate)
+	fmt.Fprintf(b, "FailedRuns    %d\n", analysis.FailedRuns)
+	fmt.Fprintf(b, "AvgDuration   %s\n", analysis.AverageDuration.Round(0).String())
+	fmt.Fprintf(b, "LatestStatus  %s | failed_suites=%d | failed_cases=%d\n", passLabel(analysis.Latest.Passed), analysis.Latest.FailedSuites, analysis.Latest.FailedCases)
+}
 
-	if analysis.Previous != nil {
-		fmt.Fprintf(&b, "\nLatest Delta\n")
-		fmt.Fprintf(&b, "------------\n")
-		fmt.Fprintf(&b, "Previous     %s", analysis.Previous.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
-		if analysis.Previous.BuildID != "" {
-			fmt.Fprintf(&b, " (%s)", analysis.Previous.BuildID)
-		}
-		fmt.Fprintln(&b)
-		if analysis.Delta != nil {
-			fmt.Fprintf(&b, "FailedSuites %+d\n", analysis.Delta.FailedSuitesDelta)
-			fmt.Fprintf(&b, "FailedCases  %+d\n", analysis.Delta.FailedCasesDelta)
-			fmt.Fprintf(&b, "Duration     %s\n", analysis.Delta.DurationDelta.Round(0).String())
-			fmt.Fprintf(&b, "Regressions  %d\n", analysis.Delta.RegressedSuites)
-			fmt.Fprintf(&b, "Improvements %d\n", analysis.Delta.ImprovedSuites)
-		}
+func writeAnalysisDelta(b *strings.Builder, analysis Analysis) {
+	if analysis.Previous == nil {
+		return
 	}
-	if analysis.BuildDiff != nil {
-		fmt.Fprintf(&b, "\nBuild Changes\n")
-		fmt.Fprintf(&b, "-------------\n")
-		if line := buildDiffHeaderLine(*analysis.BuildDiff); line != "" {
-			fmt.Fprintf(&b, "%s\n", line)
-		}
-		for _, change := range analysis.BuildDiff.ScenarioChanges {
-			fmt.Fprintf(&b, "- %s\n", scenarioDiffLine(change))
-		}
+	fmt.Fprintf(b, "\nLatest Delta\n")
+	fmt.Fprintf(b, "------------\n")
+	fmt.Fprintf(b, "Previous     %s", analysis.Previous.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
+	if analysis.Previous.BuildID != "" {
+		fmt.Fprintf(b, " (%s)", analysis.Previous.BuildID)
 	}
+	fmt.Fprintln(b)
+	if analysis.Delta == nil {
+		return
+	}
+	fmt.Fprintf(b, "FailedSuites %+d\n", analysis.Delta.FailedSuitesDelta)
+	fmt.Fprintf(b, "FailedCases  %+d\n", analysis.Delta.FailedCasesDelta)
+	fmt.Fprintf(b, "Duration     %s\n", analysis.Delta.DurationDelta.Round(0).String())
+	fmt.Fprintf(b, "Regressions  %d\n", analysis.Delta.RegressedSuites)
+	fmt.Fprintf(b, "Improvements %d\n", analysis.Delta.ImprovedSuites)
+}
 
-	if analysis.Drift != nil {
-		fmt.Fprintf(&b, "\nDrift Window\n")
-		fmt.Fprintf(&b, "------------\n")
-		fmt.Fprintf(&b, "AvgNormalizedDrift %.3f\n", analysis.Drift.AverageNormalizedDrift)
-		fmt.Fprintf(&b, "AvgSemanticDrift   %.3f\n", analysis.Drift.AverageSemanticDrift)
-		fmt.Fprintf(&b, "MaxNormalizedDrift %.3f\n", analysis.Drift.MaxNormalizedDrift)
-		fmt.Fprintf(&b, "MaxSemanticDrift   %.3f\n", analysis.Drift.MaxSemanticDrift)
-		fmt.Fprintf(&b, "LatestSemantic     %.3f\n", analysis.Drift.LatestSemanticDrift)
+func writeAnalysisBuildDiff(b *strings.Builder, analysis Analysis) {
+	if analysis.BuildDiff == nil {
+		return
 	}
+	fmt.Fprintf(b, "\nBuild Changes\n")
+	fmt.Fprintf(b, "-------------\n")
+	if line := buildDiffHeaderLine(*analysis.BuildDiff); line != "" {
+		fmt.Fprintf(b, "%s\n", line)
+	}
+	for _, change := range analysis.BuildDiff.ScenarioChanges {
+		fmt.Fprintf(b, "- %s\n", scenarioDiffLine(change))
+	}
+}
 
-	if len(analysis.Regressions) > 0 {
-		fmt.Fprintf(&b, "\nRegressions\n")
-		fmt.Fprintf(&b, "-----------\n")
-		for _, suite := range analysis.Regressions {
-			fmt.Fprintf(&b, "- %s\n", suiteLine(suite))
-		}
+func writeAnalysisDrift(b *strings.Builder, analysis Analysis) {
+	if analysis.Drift == nil {
+		return
 	}
-	if len(analysis.CaseRegressions) > 0 {
-		fmt.Fprintf(&b, "\nCase Regressions\n")
-		fmt.Fprintf(&b, "----------------\n")
-		for _, c := range analysis.CaseRegressions {
-			fmt.Fprintf(&b, "- %s\n", caseLine(c))
-		}
-	}
-	if len(analysis.Improvements) > 0 {
-		fmt.Fprintf(&b, "\nImprovements\n")
-		fmt.Fprintf(&b, "------------\n")
-		for _, suite := range analysis.Improvements {
-			fmt.Fprintf(&b, "- %s\n", suiteLine(suite))
-		}
-	}
-	if len(analysis.CaseImprovements) > 0 {
-		fmt.Fprintf(&b, "\nCase Improvements\n")
-		fmt.Fprintf(&b, "-----------------\n")
-		for _, c := range analysis.CaseImprovements {
-			fmt.Fprintf(&b, "- %s\n", caseLine(c))
-		}
-	}
-	if len(analysis.FailureBuckets) > 0 {
-		fmt.Fprintf(&b, "\nFailure Buckets\n")
-		fmt.Fprintf(&b, "---------------\n")
-		for _, bucket := range analysis.FailureBuckets {
-			fmt.Fprintf(&b, "- %s\n", failureBucketLine(bucket))
-		}
-	}
+	fmt.Fprintf(b, "\nDrift Window\n")
+	fmt.Fprintf(b, "------------\n")
+	fmt.Fprintf(b, "AvgNormalizedDrift %.3f\n", analysis.Drift.AverageNormalizedDrift)
+	fmt.Fprintf(b, "AvgSemanticDrift   %.3f\n", analysis.Drift.AverageSemanticDrift)
+	fmt.Fprintf(b, "MaxNormalizedDrift %.3f\n", analysis.Drift.MaxNormalizedDrift)
+	fmt.Fprintf(b, "MaxSemanticDrift   %.3f\n", analysis.Drift.MaxSemanticDrift)
+	fmt.Fprintf(b, "LatestSemantic     %.3f\n", analysis.Drift.LatestSemanticDrift)
+}
 
-	if len(analysis.RecentRuns) > 0 {
-		fmt.Fprintf(&b, "\nRecent Runs\n")
-		fmt.Fprintf(&b, "----------\n")
-		for _, run := range analysis.RecentRuns {
-			fmt.Fprintf(&b, "- %s", run.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
-			if run.BuildID != "" {
-				fmt.Fprintf(&b, " %s", run.BuildID)
-			}
-			fmt.Fprintf(&b, " %s failed_suites=%d failed_cases=%d duration=%s\n", passLabel(run.Passed), run.FailedSuites, run.FailedCases, run.Duration.Round(0).String())
-		}
+func writeSuiteTrendSection(b *strings.Builder, title string, suites []core.SuiteTrend) {
+	if len(suites) == 0 {
+		return
 	}
+	writeAnalysisSectionHeader(b, title)
+	for _, suite := range suites {
+		fmt.Fprintf(b, "- %s\n", suiteLine(suite))
+	}
+}
 
-	return b.String()
+func writeCaseTrendSection(b *strings.Builder, title string, cases []core.CaseTrend) {
+	if len(cases) == 0 {
+		return
+	}
+	writeAnalysisSectionHeader(b, title)
+	for _, c := range cases {
+		fmt.Fprintf(b, "- %s\n", caseLine(c))
+	}
+}
+
+func writeFailureBucketSection(b *strings.Builder, buckets []core.FailureBucket) {
+	if len(buckets) == 0 {
+		return
+	}
+	writeAnalysisSectionHeader(b, "Failure Buckets")
+	for _, bucket := range buckets {
+		fmt.Fprintf(b, "- %s\n", failureBucketLine(bucket))
+	}
+}
+
+func writeRecentRunsSection(b *strings.Builder, runs []RunSnapshot) {
+	if len(runs) == 0 {
+		return
+	}
+	writeAnalysisSectionHeader(b, "Recent Runs")
+	for _, run := range runs {
+		fmt.Fprintf(b, "- %s", run.GeneratedAt.Format("2006-01-02T15:04:05Z07:00"))
+		if run.BuildID != "" {
+			fmt.Fprintf(b, " %s", run.BuildID)
+		}
+		fmt.Fprintf(b, " %s failed_suites=%d failed_cases=%d duration=%s\n", passLabel(run.Passed), run.FailedSuites, run.FailedCases, run.Duration.Round(0).String())
+	}
+}
+
+func writeAnalysisSectionHeader(b *strings.Builder, title string) {
+	fmt.Fprintf(b, "\n%s\n", title)
+	fmt.Fprintf(b, "%s\n", strings.Repeat("-", len(title)))
 }
 
 func passLabel(passed bool) string {

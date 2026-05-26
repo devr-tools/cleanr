@@ -27,18 +27,32 @@ jobs:
       - name: Set up Homebrew
         uses: Homebrew/actions/setup-homebrew@main
 
-      - name: Generate local formula
+      - name: Clone Homebrew tap
+        shell: bash
+        env:
+          TAP_REPOSITORY: devr-tools/homebrew-tap
+        run: |
+          set -euo pipefail
+          git clone --depth 1 "https://github.com/${TAP_REPOSITORY}.git" "$RUNNER_TEMP/homebrew-tap"
+
+      - name: Patch tap formula for current checkout
         shell: bash
         run: |
           set -euo pipefail
 
-          mkdir -p Formula
-          version="$(sed -n 's/^const Number = "\(.*\)"/\1/p' internal/version/version.go)"
+          version="$(awk -F'\"' '/^const Number = / { print $2; exit }' internal/version/version.go)"
           archive_path="$RUNNER_TEMP/cleanr-src.tar.gz"
+          tap_dir="$RUNNER_TEMP/homebrew-tap"
+          formula_path="$RUNNER_TEMP/homebrew-tap/Formula/cleanr.rb"
           git archive --format=tar.gz --output "$archive_path" HEAD
           sha256="$(shasum -a 256 "$archive_path" | awk '{print $1}')"
 
-          cat > Formula/cleanr.rb <<EOF
+          if [ -z "$version" ]; then
+            echo "failed to extract cleanr version from internal/version/version.go"
+            exit 1
+          fi
+
+          cat > "$formula_path" <<EOF
           class Cleanr < Formula
             desc "AI testing SDK and CLI for CI validation"
             homepage "https://github.com/devr-tools/cleanr"
@@ -59,11 +73,16 @@ jobs:
           end
           EOF
 
-      - name: Tap current repository
+          git -C "$tap_dir" config user.name "github-actions[bot]"
+          git -C "$tap_dir" config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C "$tap_dir" add Formula/cleanr.rb
+          git -C "$tap_dir" commit -m "test: patch cleanr formula for validation"
+
+      - name: Tap current formula checkout
         shell: bash
         run: |
           set -euo pipefail
-          brew tap devr-tools/tap "$GITHUB_WORKSPACE"
+          brew tap devr-tools/tap "$RUNNER_TEMP/homebrew-tap"
 
       - name: Build formula from source
         shell: bash

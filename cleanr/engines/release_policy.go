@@ -3,7 +3,6 @@ package engines
 import (
 	"context"
 	"fmt"
-	"sort"
 	"strings"
 	"time"
 
@@ -96,62 +95,104 @@ func evaluateReleasePolicyRules(cfg core.ReleasePolicyConfig, scenario core.Scen
 	allowToolRules := collectPolicyRules(cfg.Rules, "tool", "allow")
 	allowStateRules := collectPolicyRules(cfg.Rules, "state_change", "allow")
 
-	for _, call := range resp.Normalized.ToolCalls {
-		if len(allowToolRules) > 0 && !matchesAnyToolRule(call, allowToolRules) {
-			findings = append(findings, newPolicyFinding("", "high", fmt.Sprintf("tool call %q was not allowed by release policy", call.Name)))
-		}
-		for _, rule := range cfg.Rules {
-			if !policyRuleMatchesTool(rule, call) {
-				continue
-			}
-			switch rule.Type + ":" + rule.Mode {
-			case "tool:deny":
-				findings = append(findings, newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("tool call %q was denied by release policy", call.Name)))
-			case "tool:require_approval":
-				if !approved {
-					findings = append(findings, newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("tool call %q required approval evidence", call.Name)))
-				}
-			case "tool:read_only":
-				findings = append(findings, evaluateReadOnlyToolRule(cfg, rule, call)...)
-			}
-		}
-	}
-
-	for _, change := range resp.Normalized.StateChanges {
-		if len(allowStateRules) > 0 && !matchesAnyStateRule(change, allowStateRules) {
-			findings = append(findings, newPolicyFinding("", "high", fmt.Sprintf("state change %q on %q was not allowed by release policy", stateChangeIdentity(change), change.Target)))
-		}
-		for _, rule := range cfg.Rules {
-			if !policyRuleMatchesStateChange(rule, change) {
-				continue
-			}
-			switch rule.Type + ":" + rule.Mode {
-			case "state_change:deny":
-				findings = append(findings, newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("state change %q on %q was denied by release policy", stateChangeIdentity(change), change.Target)))
-			case "state_change:require_approval":
-				if !approved {
-					findings = append(findings, newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("state change %q on %q required approval evidence", stateChangeIdentity(change), change.Target)))
-				}
-			}
-		}
-	}
-
-	for _, rule := range cfg.Rules {
-		switch rule.Type + ":" + rule.Mode {
-		case "trust:deny":
-			if trustRuleTriggered(rule, scenario, resp) {
-				findings = append(findings, newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("trust boundary violated for trusts %s", strings.Join(rule.Trusts, ", "))))
-			}
-		case "trust:require_approval":
-			if trustRuleTriggered(rule, scenario, resp) && !approved {
-				findings = append(findings, newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("trust boundary action required approval for trusts %s", strings.Join(rule.Trusts, ", "))))
-			}
-		case "sink:approved_only":
-			findings = append(findings, evaluateSinkRule(cfg, rule, scenario, resp)...)
-		}
-	}
-
+	findings = append(findings, evaluatePolicyToolCalls(cfg, resp.Normalized.ToolCalls, allowToolRules, approved)...)
+	findings = append(findings, evaluatePolicyStateChanges(cfg, resp.Normalized.StateChanges, allowStateRules, approved)...)
+	findings = append(findings, evaluatePolicyScenarioRules(cfg, scenario, resp, approved)...)
 	return findings
+}
+
+func evaluatePolicyToolCalls(cfg core.ReleasePolicyConfig, calls []core.ToolCall, allowToolRules []core.PolicyRule, approved bool) []core.Finding {
+	findings := make([]core.Finding, 0)
+	for _, call := range calls {
+		findings = append(findings, evaluatePolicyToolCall(cfg, call, allowToolRules, approved)...)
+	}
+	return findings
+}
+
+func evaluatePolicyToolCall(cfg core.ReleasePolicyConfig, call core.ToolCall, allowToolRules []core.PolicyRule, approved bool) []core.Finding {
+	findings := make([]core.Finding, 0)
+	if len(allowToolRules) > 0 && !matchesAnyToolRule(call, allowToolRules) {
+		findings = append(findings, newPolicyFinding("", "high", fmt.Sprintf("tool call %q was not allowed by release policy", call.Name)))
+	}
+	for _, rule := range cfg.Rules {
+		if !policyRuleMatchesTool(rule, call) {
+			continue
+		}
+		findings = append(findings, evaluateToolPolicyRuleFinding(cfg, rule, call, approved)...)
+	}
+	return findings
+}
+
+func evaluateToolPolicyRuleFinding(cfg core.ReleasePolicyConfig, rule core.PolicyRule, call core.ToolCall, approved bool) []core.Finding {
+	switch rule.Type + ":" + rule.Mode {
+	case "tool:deny":
+		return []core.Finding{newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("tool call %q was denied by release policy", call.Name))}
+	case "tool:require_approval":
+		if !approved {
+			return []core.Finding{newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("tool call %q required approval evidence", call.Name))}
+		}
+	case "tool:read_only":
+		return evaluateReadOnlyToolRule(cfg, rule, call)
+	}
+	return nil
+}
+
+func evaluatePolicyStateChanges(cfg core.ReleasePolicyConfig, changes []core.StateChange, allowStateRules []core.PolicyRule, approved bool) []core.Finding {
+	findings := make([]core.Finding, 0)
+	for _, change := range changes {
+		findings = append(findings, evaluatePolicyStateChange(cfg, change, allowStateRules, approved)...)
+	}
+	return findings
+}
+
+func evaluatePolicyStateChange(cfg core.ReleasePolicyConfig, change core.StateChange, allowStateRules []core.PolicyRule, approved bool) []core.Finding {
+	findings := make([]core.Finding, 0)
+	if len(allowStateRules) > 0 && !matchesAnyStateRule(change, allowStateRules) {
+		findings = append(findings, newPolicyFinding("", "high", fmt.Sprintf("state change %q on %q was not allowed by release policy", stateChangeIdentity(change), change.Target)))
+	}
+	for _, rule := range cfg.Rules {
+		if !policyRuleMatchesStateChange(rule, change) {
+			continue
+		}
+		findings = append(findings, evaluateStateChangePolicyRuleFinding(rule, change, approved)...)
+	}
+	return findings
+}
+
+func evaluateStateChangePolicyRuleFinding(rule core.PolicyRule, change core.StateChange, approved bool) []core.Finding {
+	switch rule.Type + ":" + rule.Mode {
+	case "state_change:deny":
+		return []core.Finding{newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("state change %q on %q was denied by release policy", stateChangeIdentity(change), change.Target))}
+	case "state_change:require_approval":
+		if !approved {
+			return []core.Finding{newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("state change %q on %q required approval evidence", stateChangeIdentity(change), change.Target))}
+		}
+	}
+	return nil
+}
+
+func evaluatePolicyScenarioRules(cfg core.ReleasePolicyConfig, scenario core.Scenario, resp core.Response, approved bool) []core.Finding {
+	findings := make([]core.Finding, 0)
+	for _, rule := range cfg.Rules {
+		findings = append(findings, evaluateScenarioPolicyRule(cfg, rule, scenario, resp, approved)...)
+	}
+	return findings
+}
+
+func evaluateScenarioPolicyRule(cfg core.ReleasePolicyConfig, rule core.PolicyRule, scenario core.Scenario, resp core.Response, approved bool) []core.Finding {
+	switch rule.Type + ":" + rule.Mode {
+	case "trust:deny":
+		if trustRuleTriggered(rule, scenario, resp) {
+			return []core.Finding{newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("trust boundary violated for trusts %s", strings.Join(rule.Trusts, ", ")))}
+		}
+	case "trust:require_approval":
+		if trustRuleTriggered(rule, scenario, resp) && !approved {
+			return []core.Finding{newPolicyFinding(rule.Message, policySeverity(rule, "critical"), fmt.Sprintf("trust boundary action required approval for trusts %s", strings.Join(rule.Trusts, ", ")))}
+		}
+	case "sink:approved_only":
+		return evaluateSinkRule(cfg, rule, scenario, resp)
+	}
+	return nil
 }
 
 func collectPolicyRules(rules []core.PolicyRule, ruleType, mode string) []core.PolicyRule {
@@ -344,123 +385,4 @@ func hasApprovedApprovalArtifact(approvals []core.ApprovalArtifact) bool {
 		}
 	}
 	return false
-}
-
-func matchExpectedStateChanges(expected []core.ExpectedStateChange, observed []core.StateChange) ([]string, []string, []string) {
-	if len(expected) == 0 {
-		return nil, nil, nil
-	}
-	used := make([]bool, len(observed))
-	matched := make([]string, 0, len(expected))
-	missing := make([]string, 0)
-
-	for _, want := range expected {
-		matchIndex := -1
-		for i, got := range observed {
-			if used[i] {
-				continue
-			}
-			if expectedStateChangeMatches(want, got) {
-				matchIndex = i
-				break
-			}
-		}
-		if matchIndex == -1 {
-			missing = append(missing, renderExpectedStateChange(want))
-			continue
-		}
-		used[matchIndex] = true
-		matched = append(matched, renderExpectedStateChange(want))
-	}
-
-	unexpected := make([]string, 0)
-	for i, got := range observed {
-		if used[i] {
-			continue
-		}
-		unexpected = append(unexpected, renderObservedStateChange(got))
-	}
-
-	sort.Strings(matched)
-	sort.Strings(missing)
-	sort.Strings(unexpected)
-	return matched, missing, unexpected
-}
-
-func expectedStateChangeMatches(expected core.ExpectedStateChange, observed core.StateChange) bool {
-	if expected.Kind != "" && !strings.EqualFold(strings.TrimSpace(expected.Kind), strings.TrimSpace(observed.Kind)) {
-		return false
-	}
-	if expected.Target != "" && !strings.EqualFold(strings.TrimSpace(expected.Target), strings.TrimSpace(observed.Target)) {
-		return false
-	}
-	if expected.Action != "" && !strings.EqualFold(strings.TrimSpace(expected.Action), strings.TrimSpace(observed.Action)) {
-		return false
-	}
-	if expected.Status != "" && !strings.EqualFold(strings.TrimSpace(expected.Status), strings.TrimSpace(observed.Status)) {
-		return false
-	}
-	if expected.SummaryContains != "" && !strings.Contains(strings.ToLower(observed.Summary), strings.ToLower(expected.SummaryContains)) {
-		return false
-	}
-	return true
-}
-
-func renderExpectedStateChanges(expected []core.ExpectedStateChange) []string {
-	out := make([]string, 0, len(expected))
-	for _, change := range expected {
-		out = append(out, renderExpectedStateChange(change))
-	}
-	sort.Strings(out)
-	return out
-}
-
-func renderExpectedStateChange(change core.ExpectedStateChange) string {
-	parts := make([]string, 0, 5)
-	if strings.TrimSpace(change.Kind) != "" {
-		parts = append(parts, "kind="+change.Kind)
-	}
-	if strings.TrimSpace(change.Target) != "" {
-		parts = append(parts, "target="+change.Target)
-	}
-	if strings.TrimSpace(change.Action) != "" {
-		parts = append(parts, "action="+change.Action)
-	}
-	if strings.TrimSpace(change.Status) != "" {
-		parts = append(parts, "status="+change.Status)
-	}
-	if strings.TrimSpace(change.SummaryContains) != "" {
-		parts = append(parts, "summary_contains="+change.SummaryContains)
-	}
-	return strings.Join(parts, " ")
-}
-
-func renderObservedStateChange(change core.StateChange) string {
-	parts := make([]string, 0, 4)
-	if strings.TrimSpace(change.Kind) != "" {
-		parts = append(parts, "kind="+change.Kind)
-	}
-	if strings.TrimSpace(change.Target) != "" {
-		parts = append(parts, "target="+change.Target)
-	}
-	if strings.TrimSpace(change.Action) != "" {
-		parts = append(parts, "action="+change.Action)
-	}
-	if strings.TrimSpace(change.Status) != "" {
-		parts = append(parts, "status="+change.Status)
-	}
-	if strings.TrimSpace(change.Summary) != "" {
-		parts = append(parts, "summary="+trimForReport(change.Summary))
-	}
-	return strings.Join(parts, " ")
-}
-
-func stateChangeIdentity(change core.StateChange) string {
-	if strings.TrimSpace(change.Action) != "" {
-		return strings.TrimSpace(change.Action)
-	}
-	if strings.TrimSpace(change.Kind) != "" {
-		return strings.TrimSpace(change.Kind)
-	}
-	return "state_change"
 }

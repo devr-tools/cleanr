@@ -4,11 +4,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 )
+
+const sccReleaseBaseURLEnv = "CLEANR_SCC_RELEASE_BASE_URL"
+const sccArchivePathEnv = "CLEANR_SCC_ARCHIVE_PATH"
+
+type sccReleaseAsset struct {
+	Name               string `json:"name"`
+	BrowserDownloadURL string `json:"browser_download_url"`
+}
+
+type sccRelease struct {
+	Assets []sccReleaseAsset `json:"assets"`
+}
 
 type sccLanguageReport struct {
 	Files []sccFileReport `json:"Files"`
@@ -21,7 +36,7 @@ type sccFileReport struct {
 }
 
 func (r Runner) runCISCC(ctx context.Context, baseRef, version string, maxCodeLines int) error {
-	sccPath, err := r.ensureGoTool(ctx, "scc", "github.com/boyter/scc/v3", version)
+	sccPath, err := r.ensureSCC(ctx, version)
 	if err != nil {
 		return err
 	}
@@ -63,6 +78,161 @@ func (r Runner) runCISCC(ctx context.Context, baseRef, version string, maxCodeLi
 		return err
 	}
 	return nil
+}
+
+func (r Runner) ensureSCC(ctx context.Context, version string) (string, error) {
+	gopath, err := r.runOutputCommand(ctx, nil, "go", "env", "GOPATH")
+	if err != nil {
+		return "", err
+	}
+	toolPath := filepath.Join(strings.TrimSpace(gopath), "bin", "scc")
+	if info, err := os.Stat(toolPath); err == nil && info.Mode().IsRegular() && info.Mode()&0o111 != 0 {
+		if _, err := fmt.Fprintf(r.Stdout, "using existing scc at %s\n", toolPath); err != nil {
+			return "", err
+		}
+		return toolPath, nil
+	}
+
+	if _, err := fmt.Fprintf(r.Stdout, "installing scc %s\n", version); err != nil {
+		return "", err
+	}
+	if _, err := r.runOutputCommand(ctx, nil, "go", "install", "github.com/boyter/scc/v3@"+version); err == nil {
+		return toolPath, nil
+	} else if !shouldFallbackToPrebuiltSCC(err) {
+		return "", err
+	} else {
+		if _, printErr := fmt.Fprintln(r.Stdout, "falling back to prebuilt scc binary"); printErr != nil {
+			return "", printErr
+		}
+		if err := r.downloadSCC(ctx, toolPath, version); err != nil {
+			return "", err
+		}
+	}
+	return toolPath, nil
+}
+
+func shouldFallbackToPrebuiltSCC(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "invalid go version") ||
+		strings.Contains(message, "unknown block type: ignore") ||
+		strings.Contains(message, "unknown directive: ignore")
+}
+
+func (r Runner) downloadSCC(ctx context.Context, toolPath, version string) error {
+	if archivePath := strings.TrimSpace(os.Getenv(sccArchivePathEnv)); archivePath != "" {
+		return installBinaryFromArchivePath(archivePath, toolPath, "scc")
+	}
+
+	versionTag := strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if versionTag == "" {
+		return fmt.Errorf("empty scc version")
+	}
+	baseURL := strings.TrimSpace(os.Getenv(sccReleaseBaseURLEnv))
+	if baseURL == "" {
+		baseURL = "https://api.github.com/repos/boyter/scc/releases/tags"
+	}
+
+	releaseURL := fmt.Sprintf("%s/v%s", strings.TrimRight(baseURL, "/"), versionTag)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, releaseURL, nil)
+	if err != nil {
+		return fmt.Errorf("build scc release request: %w", err)
+	}
+	req.Header.Set("Accept", "application/vnd.github+json")
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("fetch scc release %s: %w", version, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		return fmt.Errorf("fetch scc release %s: unexpected status %s: %s", version, resp.Status, strings.TrimSpace(string(body)))
+	}
+	var release sccRelease
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return fmt.Errorf("decode scc release %s: %w", version, err)
+	}
+	archiveURL, err := findSCCReleaseAssetURL(release.Assets)
+	if err != nil {
+		return err
+	}
+
+	downloadReq, err := http.NewRequestWithContext(ctx, http.MethodGet, archiveURL, nil)
+	if err != nil {
+		return fmt.Errorf("build scc download request: %w", err)
+	}
+	downloadResp, err := http.DefaultClient.Do(downloadReq)
+	if err != nil {
+		return fmt.Errorf("download scc %s: %w", version, err)
+	}
+	defer downloadResp.Body.Close()
+	if downloadResp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(io.LimitReader(downloadResp.Body, 4096))
+		return fmt.Errorf("download scc %s: unexpected status %s: %s", version, downloadResp.Status, strings.TrimSpace(string(body)))
+	}
+
+	if err := os.MkdirAll(filepath.Dir(toolPath), 0o755); err != nil {
+		return fmt.Errorf("create scc bin dir: %w", err)
+	}
+	tmpPath := toolPath + ".tmp"
+	if err := extractBinaryFromTarGz(downloadResp.Body, tmpPath, "scc"); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("chmod scc binary: %w", err)
+	}
+	if err := os.Rename(tmpPath, toolPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("install scc binary: %w", err)
+	}
+	return nil
+}
+
+func findSCCReleaseAssetURL(assets []sccReleaseAsset) (string, error) {
+	goosTerms := []string{strings.ToLower(runtime.GOOS)}
+	switch runtime.GOOS {
+	case "darwin":
+		goosTerms = append(goosTerms, "macos", "osx")
+	}
+
+	goarchTerms := []string{strings.ToLower(runtime.GOARCH)}
+	switch runtime.GOARCH {
+	case "amd64":
+		goarchTerms = append(goarchTerms, "x86_64")
+	case "386":
+		goarchTerms = append(goarchTerms, "i386", "x86")
+	case "arm64":
+		goarchTerms = append(goarchTerms, "aarch64")
+	}
+
+	for _, asset := range assets {
+		name := strings.ToLower(asset.Name)
+		if !strings.HasSuffix(name, ".tar.gz") {
+			continue
+		}
+		if !containsAny(name, goosTerms) || !containsAny(name, goarchTerms) {
+			continue
+		}
+		if strings.TrimSpace(asset.BrowserDownloadURL) == "" {
+			continue
+		}
+		return asset.BrowserDownloadURL, nil
+	}
+
+	return "", fmt.Errorf("no scc release asset found for %s/%s", runtime.GOOS, runtime.GOARCH)
+}
+
+func containsAny(value string, terms []string) bool {
+	for _, term := range terms {
+		if strings.Contains(value, strings.ToLower(term)) {
+			return true
+		}
+	}
+	return false
 }
 
 func (r Runner) runSCCReport(ctx context.Context, sccPath, workDir string, targets []string) (map[string]sccFileReport, error) {

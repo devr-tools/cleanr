@@ -31,123 +31,146 @@ func (ShadowStateEngine) Run(ctx context.Context, runCtx *core.RunContext) core.
 
 	cases := make([]core.CaseResult, 0, len(runCtx.Config.Scenarios))
 	for _, scenario := range runCtx.Config.Scenarios {
-		start := time.Now()
-		findings := make([]core.Finding, 0)
-		expected, err := normalizeExpectedMutations(scenario.ExpectedMutations)
-		if err != nil {
-			findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("normalize expected mutations: %v", err)})
-		}
-
-		before, err := captureObservedFiles(roots)
-		if err != nil {
-			findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("capture pre-run file state: %v", err)})
-		}
-
-		resp := runCtx.Target.Invoke(ctx, core.Request{
-			Scenario: scenario,
-			System:   scenario.System,
-			Prompt:   scenario.Input,
-			Timeout:  runCtx.Config.Target.Timeout(),
-		})
-		findings = append(findings, responseFindings(resp, nil)...)
-
-		after, err := captureObservedFiles(roots)
-		if err != nil {
-			findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("capture post-run file state: %v", err)})
-		}
-
-		changes := diffObservedFiles(before, after)
-		approved := make([]string, 0, len(changes))
-		unexpected := make([]string, 0, len(changes))
-		approvedObserved := make([]observedChange, 0, len(changes))
-		for _, change := range changes {
-			summary := formatObservedChange(change)
-			if pathAllowed(change.Path, allowed) {
-				approved = append(approved, summary)
-				approvedObserved = append(approvedObserved, change)
-				continue
-			}
-			unexpected = append(unexpected, summary)
-		}
-
-		if len(unexpected) > 0 {
-			findings = append(findings, core.Finding{
-				Severity: "critical",
-				Message:  fmt.Sprintf("observed file mutations outside approved locations: %s", strings.Join(unexpected, ", ")),
-			})
-		}
-
-		matchedExpected, missingExpected, undeclaredApproved := matchExpectedMutations(expected, approvedObserved)
-		if len(missingExpected) > 0 {
-			findings = append(findings, core.Finding{
-				Severity: "high",
-				Message:  fmt.Sprintf("expected file mutations did not occur: %s", strings.Join(missingExpected, ", ")),
-			})
-		}
-		if len(undeclaredApproved) > 0 {
-			findings = append(findings, core.Finding{
-				Severity: "high",
-				Message:  fmt.Sprintf("approved but undeclared file mutations occurred: %s", strings.Join(undeclaredApproved, ", ")),
-			})
-		}
-		for _, check := range matchedExpected {
-			if strings.TrimSpace(check.ContentContains) == "" || check.Kind == "deleted" {
-				continue
-			}
-			content, readErr := os.ReadFile(check.Path)
-			if readErr != nil {
-				findings = append(findings, core.Finding{
-					Severity: "high",
-					Message:  fmt.Sprintf("read expected mutation target %s: %v", shortenObservedPath(check.Path), readErr),
-				})
-				continue
-			}
-			if !strings.Contains(string(content), check.ContentContains) {
-				findings = append(findings, core.Finding{
-					Severity: "high",
-					Message:  fmt.Sprintf("expected %s to contain %q after %s", shortenObservedPath(check.Path), check.ContentContains, check.Kind),
-				})
-			}
-		}
-
-		details := responseDetails(resp, map[string]any{
-			"observed_change_count":   len(changes),
-			"approved_change_count":   len(approved),
-			"unexpected_change_count": len(unexpected),
-			"observed_roots":          renderObservedPaths(roots),
-		})
-		if len(changes) > 0 {
-			details["changed_files"] = renderObservedChanges(changes)
-		}
-		if len(approved) > 0 {
-			details["approved_changes"] = approved
-		}
-		if len(unexpected) > 0 {
-			details["unexpected_changes"] = unexpected
-		}
-		if len(expected) > 0 {
-			details["expected_mutations"] = renderExpectedMutationChecks(expected)
-		}
-		if len(matchedExpected) > 0 {
-			details["matched_expected_mutations"] = renderExpectedMutationChecks(matchedExpected)
-		}
-		if len(missingExpected) > 0 {
-			details["missing_expected_mutations"] = missingExpected
-		}
-		if len(undeclaredApproved) > 0 {
-			details["undeclared_approved_changes"] = undeclaredApproved
-		}
-
-		cases = append(cases, core.CaseResult{
-			Name:     scenario.Name,
-			Passed:   len(findings) == 0,
-			Duration: time.Since(start),
-			Findings: findings,
-			Details:  details,
-		})
+		cases = append(cases, runShadowStateScenario(ctx, runCtx, roots, allowed, scenario))
 	}
 
 	return core.SuiteResult{Name: "shadow-state", Passed: allPassed(cases), Cases: cases}
+}
+
+func runShadowStateScenario(ctx context.Context, runCtx *core.RunContext, roots, allowed []string, scenario core.Scenario) core.CaseResult {
+	start := time.Now()
+	findings := make([]core.Finding, 0)
+	expected, err := normalizeExpectedMutations(scenario.ExpectedMutations)
+	if err != nil {
+		findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("normalize expected mutations: %v", err)})
+	}
+	before, err := captureObservedFiles(roots)
+	if err != nil {
+		findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("capture pre-run file state: %v", err)})
+	}
+	resp := runCtx.Target.Invoke(ctx, core.Request{
+		Scenario: scenario,
+		System:   scenario.System,
+		Prompt:   scenario.Input,
+		Timeout:  runCtx.Config.Target.Timeout(),
+	})
+	findings = append(findings, responseFindings(resp, nil)...)
+	after, err := captureObservedFiles(roots)
+	if err != nil {
+		findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("capture post-run file state: %v", err)})
+	}
+	changes := diffObservedFiles(before, after)
+	approved, unexpected, approvedObserved := classifyObservedChanges(changes, allowed)
+	findings = append(findings, unexpectedObservedChangeFindings(unexpected)...)
+	matchedExpected, missingExpected, undeclaredApproved := matchExpectedMutations(expected, approvedObserved)
+	findings = append(findings, expectedMutationFindings(missingExpected, undeclaredApproved)...)
+	findings = append(findings, verifyExpectedMutationContent(matchedExpected)...)
+	details := shadowStateDetails(resp, roots, changes, approved, unexpected, expected, matchedExpected, missingExpected, undeclaredApproved)
+	return core.CaseResult{
+		Name:     scenario.Name,
+		Passed:   len(findings) == 0,
+		Duration: time.Since(start),
+		Findings: findings,
+		Details:  details,
+	}
+}
+
+func classifyObservedChanges(changes []observedChange, allowed []string) ([]string, []string, []observedChange) {
+	approved := make([]string, 0, len(changes))
+	unexpected := make([]string, 0, len(changes))
+	approvedObserved := make([]observedChange, 0, len(changes))
+	for _, change := range changes {
+		summary := formatObservedChange(change)
+		if pathAllowed(change.Path, allowed) {
+			approved = append(approved, summary)
+			approvedObserved = append(approvedObserved, change)
+			continue
+		}
+		unexpected = append(unexpected, summary)
+	}
+	return approved, unexpected, approvedObserved
+}
+
+func unexpectedObservedChangeFindings(unexpected []string) []core.Finding {
+	if len(unexpected) == 0 {
+		return nil
+	}
+	return []core.Finding{{
+		Severity: "critical",
+		Message:  fmt.Sprintf("observed file mutations outside approved locations: %s", strings.Join(unexpected, ", ")),
+	}}
+}
+
+func expectedMutationFindings(missingExpected, undeclaredApproved []string) []core.Finding {
+	findings := make([]core.Finding, 0)
+	if len(missingExpected) > 0 {
+		findings = append(findings, core.Finding{
+			Severity: "high",
+			Message:  fmt.Sprintf("expected file mutations did not occur: %s", strings.Join(missingExpected, ", ")),
+		})
+	}
+	if len(undeclaredApproved) > 0 {
+		findings = append(findings, core.Finding{
+			Severity: "high",
+			Message:  fmt.Sprintf("approved but undeclared file mutations occurred: %s", strings.Join(undeclaredApproved, ", ")),
+		})
+	}
+	return findings
+}
+
+func verifyExpectedMutationContent(matchedExpected []expectedMutationCheck) []core.Finding {
+	findings := make([]core.Finding, 0)
+	for _, check := range matchedExpected {
+		if strings.TrimSpace(check.ContentContains) == "" || check.Kind == "deleted" {
+			continue
+		}
+		content, readErr := os.ReadFile(check.Path)
+		if readErr != nil {
+			findings = append(findings, core.Finding{
+				Severity: "high",
+				Message:  fmt.Sprintf("read expected mutation target %s: %v", shortenObservedPath(check.Path), readErr),
+			})
+			continue
+		}
+		if !strings.Contains(string(content), check.ContentContains) {
+			findings = append(findings, core.Finding{
+				Severity: "high",
+				Message:  fmt.Sprintf("expected %s to contain %q after %s", shortenObservedPath(check.Path), check.ContentContains, check.Kind),
+			})
+		}
+	}
+	return findings
+}
+
+func shadowStateDetails(resp core.Response, roots []string, changes []observedChange, approved, unexpected []string, expected, matchedExpected []expectedMutationCheck, missingExpected, undeclaredApproved []string) map[string]any {
+	details := responseDetails(resp, map[string]any{
+		"observed_change_count":   len(changes),
+		"approved_change_count":   len(approved),
+		"unexpected_change_count": len(unexpected),
+		"observed_roots":          renderObservedPaths(roots),
+	})
+	if len(changes) > 0 {
+		details["changed_files"] = renderObservedChanges(changes)
+	}
+	if len(approved) > 0 {
+		details["approved_changes"] = approved
+	}
+	if len(unexpected) > 0 {
+		details["unexpected_changes"] = unexpected
+	}
+	if len(expected) > 0 {
+		details["expected_mutations"] = renderExpectedMutationChecks(expected)
+	}
+	if len(matchedExpected) > 0 {
+		details["matched_expected_mutations"] = renderExpectedMutationChecks(matchedExpected)
+	}
+	if len(missingExpected) > 0 {
+		details["missing_expected_mutations"] = missingExpected
+	}
+	if len(undeclaredApproved) > 0 {
+		details["undeclared_approved_changes"] = undeclaredApproved
+	}
+	return details
 }
 
 type observedFile struct {
