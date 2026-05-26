@@ -163,6 +163,36 @@ func TestDevtoolsCIFailsOnNewSCCGodFile(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCISCCFallsBackToPrebuiltBinary(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/scc-fallback")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n\nconst sccFallback = true\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	t.Setenv("SCC_INSTALL_ERROR", "go.mod:3: invalid go version '1.25.2': must match format 1.23")
+	archivePath := filepath.Join(repo, "scc.tar.gz")
+	if err := os.WriteFile(archivePath, buildBinaryTarGz(t, "scc", runtime.GOOS, runtime.GOARCH, "#!/bin/sh\nif [ \"$(pwd)\" = \"$WORKTREE_DIR\" ]; then\n  if [ -n \"$SCC_OUTPUT_CURRENT\" ]; then\n    printf '%s\\n' \"$SCC_OUTPUT_CURRENT\"\n  else\n    printf '%s\\n' '[]'\n  fi\nelse\n  if [ -n \"$SCC_OUTPUT_BASE\" ]; then\n    printf '%s\\n' \"$SCC_OUTPUT_BASE\"\n  else\n    printf '%s\\n' '[]'\n  fi\nfi\nexit 0\n"), 0o644); err != nil {
+		t.Fatalf("write scc archive: %v", err)
+	}
+	t.Setenv("CLEANR_SCC_ARCHIVE_PATH", archivePath)
+
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CISCC(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected scc fallback download to succeed, got %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "falling back to prebuilt scc binary") {
+		t.Fatalf("expected fallback message, got: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "scc: no new file-size regressions") {
+		t.Fatalf("expected scc success output, got: %s", stdout.String())
+	}
+}
+
 func TestDevtoolsCIFailsOnNewGolangCIIssue(t *testing.T) {
 	repo := initGitRepo(t, "main")
 	writeCIBaseFiles(t, repo)
@@ -328,6 +358,10 @@ EOF
         exit 0
         ;;
       github.com/boyter/scc/v3@*)
+        if [ -n "$SCC_INSTALL_ERROR" ]; then
+          printf '%s\n' "$SCC_INSTALL_ERROR" >&2
+          exit 1
+        fi
         cat > "$FAKE_GOPATH/bin/scc" <<'EOF'
 #!/bin/sh
 if [ "$(pwd)" = "$WORKTREE_DIR" ]; then
@@ -428,12 +462,24 @@ exit 0
 func buildGolangCILintTarGz(t *testing.T) []byte {
 	t.Helper()
 
+	return buildBinaryTarGz(
+		t,
+		"golangci-lint",
+		runtime.GOOS,
+		runtime.GOARCH,
+		"#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$GOLANGCI_LINT_LOG\"\nif [ -n \"$GOLANGCI_LINT_OUTPUT\" ]; then\n  printf '%s\\n' \"$GOLANGCI_LINT_OUTPUT\"\nfi\nexit \"${GOLANGCI_LINT_EXIT:-0}\"\n",
+	)
+}
+
+func buildBinaryTarGz(t *testing.T, binaryName, goos, goarch, binaryContents string) []byte {
+	t.Helper()
+
 	var buf bytes.Buffer
 	gzw := gzip.NewWriter(&buf)
 	tw := tar.NewWriter(gzw)
 	files := map[string]string{
-		fmt.Sprintf("golangci-lint-2.12.2-%s-%s/LICENSE", runtime.GOOS, runtime.GOARCH):       "license text",
-		fmt.Sprintf("golangci-lint-2.12.2-%s-%s/golangci-lint", runtime.GOOS, runtime.GOARCH): "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$GOLANGCI_LINT_LOG\"\nif [ -n \"$GOLANGCI_LINT_OUTPUT\" ]; then\n  printf '%s\\n' \"$GOLANGCI_LINT_OUTPUT\"\nfi\nexit \"${GOLANGCI_LINT_EXIT:-0}\"\n",
+		fmt.Sprintf("%s-bundle-%s-%s/LICENSE", binaryName, goos, goarch):        "license text",
+		fmt.Sprintf("%s-bundle-%s-%s/%s", binaryName, goos, goarch, binaryName): binaryContents,
 	}
 	for name, contents := range files {
 		if err := tw.WriteHeader(&tar.Header{

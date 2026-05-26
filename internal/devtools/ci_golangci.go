@@ -1,8 +1,6 @@
 package devtools
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"fmt"
 	"io"
@@ -102,7 +100,7 @@ func shouldFallbackToPrebuiltGolangCILint(err error) bool {
 
 func (r Runner) downloadGolangCILint(ctx context.Context, toolPath, version string) error {
 	if archivePath := strings.TrimSpace(os.Getenv(golangciLintArchivePathEnv)); archivePath != "" {
-		return installGolangCILintFromArchivePath(archivePath, toolPath)
+		return installBinaryFromArchivePath(archivePath, toolPath, "golangci-lint")
 	}
 
 	versionTag := strings.TrimPrefix(strings.TrimSpace(version), "v")
@@ -140,7 +138,7 @@ func (r Runner) downloadGolangCILint(ctx context.Context, toolPath, version stri
 		return fmt.Errorf("create golangci-lint bin dir: %w", err)
 	}
 	tmpPath := toolPath + ".tmp"
-	if err := extractGolangCILintBinary(resp.Body, tmpPath); err != nil {
+	if err := extractBinaryFromTarGz(resp.Body, tmpPath, "golangci-lint"); err != nil {
 		_ = os.Remove(tmpPath)
 		return err
 	}
@@ -153,65 +151,4 @@ func (r Runner) downloadGolangCILint(ctx context.Context, toolPath, version stri
 		return fmt.Errorf("install golangci-lint binary: %w", err)
 	}
 	return nil
-}
-
-func installGolangCILintFromArchivePath(archivePath, toolPath string) error {
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return fmt.Errorf("open golangci-lint archive %s: %w", archivePath, err)
-	}
-	defer f.Close()
-
-	if err := os.MkdirAll(filepath.Dir(toolPath), 0o755); err != nil {
-		return fmt.Errorf("create golangci-lint bin dir: %w", err)
-	}
-	tmpPath := toolPath + ".tmp"
-	if err := extractGolangCILintBinary(f, tmpPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return err
-	}
-	if err := os.Chmod(tmpPath, 0o755); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("chmod golangci-lint binary: %w", err)
-	}
-	if err := os.Rename(tmpPath, toolPath); err != nil {
-		_ = os.Remove(tmpPath)
-		return fmt.Errorf("install golangci-lint binary: %w", err)
-	}
-	return nil
-}
-
-func extractGolangCILintBinary(src io.Reader, outputPath string) error {
-	gzr, err := gzip.NewReader(src)
-	if err != nil {
-		return fmt.Errorf("open golangci-lint archive: %w", err)
-	}
-	defer gzr.Close()
-
-	tr := tar.NewReader(gzr)
-	for {
-		header, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return fmt.Errorf("read golangci-lint archive: %w", err)
-		}
-		if header.Typeflag != tar.TypeReg || filepath.Base(header.Name) != "golangci-lint" {
-			continue
-		}
-		f, err := os.OpenFile(outputPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, 0o755)
-		if err != nil {
-			return fmt.Errorf("create golangci-lint binary: %w", err)
-		}
-		if _, err := io.Copy(f, tr); err != nil {
-			_ = f.Close()
-			return fmt.Errorf("write golangci-lint binary: %w", err)
-		}
-		if err := f.Close(); err != nil {
-			return fmt.Errorf("close golangci-lint binary: %w", err)
-		}
-		return nil
-	}
-	return fmt.Errorf("golangci-lint binary not found in archive")
 }
