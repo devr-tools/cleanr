@@ -27,7 +27,39 @@ const (
 	defaultAnthropicModel     = "claude-sonnet-4-20250514"
 	defaultAnthropicKeyEnv    = "ANTHROPIC_API_KEY"
 	defaultAnthropicMaxTokens = 1024
+	defaultBraintrustKeyEnv   = "BRAINTRUST_API_KEY"
+	defaultLangfusePublicEnv  = "LANGFUSE_PUBLIC_KEY"
+	defaultLangfuseSecretEnv  = "LANGFUSE_SECRET_KEY"
+	defaultPostHogTokenEnv    = "POSTHOG_PROJECT_TOKEN"
+	defaultWebhookTokenEnv    = "CLEANR_RESULTS_WEBHOOK_TOKEN"
+	defaultAttestationKeyEnv  = "CLEANR_ATTESTATION_KEY"
+	defaultAttestationKeyID   = "ci-ed25519"
+	defaultIntegrationFamily  = "cleanr-ci"
 )
+
+type starterConfigOptions struct {
+	TrendGatePreset      string
+	WithBraintrust       bool
+	BraintrustProject    string
+	BraintrustExperiment string
+	BraintrustAPIKeyEnv  string
+	BraintrustBaseURL    string
+	WithLangfuse         bool
+	LangfusePublicKeyEnv string
+	LangfuseSecretKeyEnv string
+	LangfuseBaseURL      string
+	LangfuseExperiment   string
+	WithPostHog          bool
+	PostHogTokenEnv      string
+	PostHogBaseURL       string
+	PostHogExperiment    string
+	WithWebhook          bool
+	WebhookEndpoint      string
+	WebhookAPIKeyEnv     string
+	WithAttestation      bool
+	AttestationKeyEnv    string
+	AttestationKeyID     string
+}
 
 type setupPrompter interface {
 	ask(label, fallback string) (string, error)
@@ -63,6 +95,26 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	baseURLFlag := fs.String("base-url", "", "Optional provider base URL override")
 	maxTokensFlag := fs.Int("max-tokens", 0, "Optional Anthropic max_tokens override")
 	trendGatePreset := fs.String("trend-gate-preset", "moderate", "Trend gate preset: strict, moderate, or exploratory")
+	withBraintrust := fs.Bool("with-braintrust", false, "Include Braintrust result publishing and remote trend comparison using standard env-based secrets")
+	braintrustProject := fs.String("braintrust-project", "", "Braintrust project name for native result publishing")
+	braintrustExperiment := fs.String("braintrust-experiment", defaultIntegrationFamily, "Braintrust experiment family name")
+	braintrustAPIKeyEnv := fs.String("braintrust-api-key-env", defaultBraintrustKeyEnv, "Environment variable name used for the Braintrust API key")
+	braintrustBaseURL := fs.String("braintrust-base-url", "", "Optional Braintrust base URL override")
+	withLangfuse := fs.Bool("with-langfuse", false, "Include Langfuse result publishing using standard env-based secrets")
+	langfusePublicKeyEnv := fs.String("langfuse-public-key-env", defaultLangfusePublicEnv, "Environment variable name used for the Langfuse public key")
+	langfuseSecretKeyEnv := fs.String("langfuse-secret-key-env", defaultLangfuseSecretEnv, "Environment variable name used for the Langfuse secret key")
+	langfuseBaseURL := fs.String("langfuse-base-url", "", "Optional Langfuse base URL override")
+	langfuseExperiment := fs.String("langfuse-experiment", defaultIntegrationFamily, "Langfuse trace family name")
+	withPostHog := fs.Bool("with-posthog", false, "Include PostHog result publishing using standard env-based secrets")
+	posthogTokenEnv := fs.String("posthog-project-token-env", defaultPostHogTokenEnv, "Environment variable name used for the PostHog project token")
+	posthogBaseURL := fs.String("posthog-base-url", "", "Optional PostHog base URL override")
+	posthogExperiment := fs.String("posthog-experiment", defaultIntegrationFamily, "PostHog event family name")
+	withWebhook := fs.Bool("with-webhook", false, "Include generic webhook result publishing")
+	webhookEndpoint := fs.String("webhook-endpoint", "", "Webhook endpoint URL for generic result publishing")
+	webhookAPIKeyEnv := fs.String("webhook-api-key-env", defaultWebhookTokenEnv, "Environment variable name used for the optional webhook bearer token")
+	withAttestation := fs.Bool("with-attestation", false, "Enable signed release-gate attestations using a key from an environment variable")
+	attestationKeyEnv := fs.String("attestation-key-env", defaultAttestationKeyEnv, "Environment variable name used for the attestation signing key")
+	attestationKeyID := fs.String("attestation-key-id", defaultAttestationKeyID, "Stable key identifier embedded in generated attestations")
 	ciMode := fs.Bool("ci", false, "Generate config non-interactively for CI and do not store credentials locally")
 	browserMode := fs.Bool("browser", false, "Open the provider browser dashboard automatically during interactive setup")
 	if err := fs.Parse(args); err != nil {
@@ -84,6 +136,34 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		MaxTokens: *maxTokensFlag,
 	}
 
+	options, err := resolveStarterConfigOptions(starterConfigOptions{
+		TrendGatePreset:      *trendGatePreset,
+		WithBraintrust:       *withBraintrust,
+		BraintrustProject:    *braintrustProject,
+		BraintrustExperiment: *braintrustExperiment,
+		BraintrustAPIKeyEnv:  *braintrustAPIKeyEnv,
+		BraintrustBaseURL:    *braintrustBaseURL,
+		WithLangfuse:         *withLangfuse,
+		LangfusePublicKeyEnv: *langfusePublicKeyEnv,
+		LangfuseSecretKeyEnv: *langfuseSecretKeyEnv,
+		LangfuseBaseURL:      *langfuseBaseURL,
+		LangfuseExperiment:   *langfuseExperiment,
+		WithPostHog:          *withPostHog,
+		PostHogTokenEnv:      *posthogTokenEnv,
+		PostHogBaseURL:       *posthogBaseURL,
+		PostHogExperiment:    *posthogExperiment,
+		WithWebhook:          *withWebhook,
+		WebhookEndpoint:      *webhookEndpoint,
+		WebhookAPIKeyEnv:     *webhookAPIKeyEnv,
+		WithAttestation:      *withAttestation,
+		AttestationKeyEnv:    *attestationKeyEnv,
+		AttestationKeyID:     *attestationKeyID,
+	}, *ciMode)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "setup error: %v\n", err)
+		return 2
+	}
+
 	prompter := newSetupPrompter(stdin, stdout, *ciMode)
 	provider, err := gatherProviderProfile(prompter, providerOverride, *ciMode, *browserMode)
 	if err != nil {
@@ -98,7 +178,7 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 		}
 	}
 
-	if err := writeGeneratedConfig(*output, starterConfigForProvider(provider, *trendGatePreset)); err != nil {
+	if err := writeGeneratedConfig(*output, starterConfigForProvider(provider, options)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "setup error: write config: %v\n", err)
 		return 2
 	}
@@ -135,6 +215,26 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	baseURLFlag := fs.String("base-url", "", "Optional provider base URL override")
 	maxTokensFlag := fs.Int("max-tokens", 0, "Optional Anthropic max_tokens override")
 	trendGatePreset := fs.String("trend-gate-preset", "moderate", "Trend gate preset: strict, moderate, or exploratory")
+	withBraintrust := fs.Bool("with-braintrust", false, "Include Braintrust result publishing and remote trend comparison using standard env-based secrets")
+	braintrustProject := fs.String("braintrust-project", "", "Braintrust project name for native result publishing")
+	braintrustExperiment := fs.String("braintrust-experiment", defaultIntegrationFamily, "Braintrust experiment family name")
+	braintrustAPIKeyEnv := fs.String("braintrust-api-key-env", defaultBraintrustKeyEnv, "Environment variable name used for the Braintrust API key")
+	braintrustBaseURL := fs.String("braintrust-base-url", "", "Optional Braintrust base URL override")
+	withLangfuse := fs.Bool("with-langfuse", false, "Include Langfuse result publishing using standard env-based secrets")
+	langfusePublicKeyEnv := fs.String("langfuse-public-key-env", defaultLangfusePublicEnv, "Environment variable name used for the Langfuse public key")
+	langfuseSecretKeyEnv := fs.String("langfuse-secret-key-env", defaultLangfuseSecretEnv, "Environment variable name used for the Langfuse secret key")
+	langfuseBaseURL := fs.String("langfuse-base-url", "", "Optional Langfuse base URL override")
+	langfuseExperiment := fs.String("langfuse-experiment", defaultIntegrationFamily, "Langfuse trace family name")
+	withPostHog := fs.Bool("with-posthog", false, "Include PostHog result publishing using standard env-based secrets")
+	posthogTokenEnv := fs.String("posthog-project-token-env", defaultPostHogTokenEnv, "Environment variable name used for the PostHog project token")
+	posthogBaseURL := fs.String("posthog-base-url", "", "Optional PostHog base URL override")
+	posthogExperiment := fs.String("posthog-experiment", defaultIntegrationFamily, "PostHog event family name")
+	withWebhook := fs.Bool("with-webhook", false, "Include generic webhook result publishing")
+	webhookEndpoint := fs.String("webhook-endpoint", "", "Webhook endpoint URL for generic result publishing")
+	webhookAPIKeyEnv := fs.String("webhook-api-key-env", defaultWebhookTokenEnv, "Environment variable name used for the optional webhook bearer token")
+	withAttestation := fs.Bool("with-attestation", false, "Enable signed release-gate attestations using a key from an environment variable")
+	attestationKeyEnv := fs.String("attestation-key-env", defaultAttestationKeyEnv, "Environment variable name used for the attestation signing key")
+	attestationKeyID := fs.String("attestation-key-id", defaultAttestationKeyID, "Stable key identifier embedded in generated attestations")
 	ciMode := fs.Bool("ci", false, "Generate config non-interactively for CI and do not store credentials locally")
 	browserMode := fs.Bool("browser", false, "Open the provider browser dashboard automatically during interactive setup")
 	if err := fs.Parse(args); err != nil {
@@ -156,6 +256,34 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		MaxTokens: *maxTokensFlag,
 	}
 
+	options, err := resolveStarterConfigOptions(starterConfigOptions{
+		TrendGatePreset:      *trendGatePreset,
+		WithBraintrust:       *withBraintrust,
+		BraintrustProject:    *braintrustProject,
+		BraintrustExperiment: *braintrustExperiment,
+		BraintrustAPIKeyEnv:  *braintrustAPIKeyEnv,
+		BraintrustBaseURL:    *braintrustBaseURL,
+		WithLangfuse:         *withLangfuse,
+		LangfusePublicKeyEnv: *langfusePublicKeyEnv,
+		LangfuseSecretKeyEnv: *langfuseSecretKeyEnv,
+		LangfuseBaseURL:      *langfuseBaseURL,
+		LangfuseExperiment:   *langfuseExperiment,
+		WithPostHog:          *withPostHog,
+		PostHogTokenEnv:      *posthogTokenEnv,
+		PostHogBaseURL:       *posthogBaseURL,
+		PostHogExperiment:    *posthogExperiment,
+		WithWebhook:          *withWebhook,
+		WebhookEndpoint:      *webhookEndpoint,
+		WebhookAPIKeyEnv:     *webhookAPIKeyEnv,
+		WithAttestation:      *withAttestation,
+		AttestationKeyEnv:    *attestationKeyEnv,
+		AttestationKeyID:     *attestationKeyID,
+	}, *ciMode)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "setup error: %v\n", err)
+		return 2
+	}
+
 	prompter := newSetupPrompter(stdin, stdout, *ciMode)
 	provider, err := resolveAgentProvider(prompter, providerOverride, *ciMode, *browserMode)
 	if err != nil {
@@ -169,7 +297,7 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 		return 2
 	}
 
-	if err := writeGeneratedConfig(*output, starterAgentConfig(provider, agentName, systemPrompt, userPrompt, *trendGatePreset)); err != nil {
+	if err := writeGeneratedConfig(*output, starterAgentConfig(provider, agentName, systemPrompt, userPrompt, options)); err != nil {
 		_, _ = fmt.Fprintf(stderr, "setup error: write config: %v\n", err)
 		return 2
 	}
@@ -448,7 +576,53 @@ func normalizedOpenAIAPIMode(value string) string {
 	return mode
 }
 
-func starterConfigForProvider(provider profilepkg.Provider, trendGatePreset string) cleanr.Config {
+func resolveStarterConfigOptions(initial starterConfigOptions, ciMode bool) (starterConfigOptions, error) {
+	opts := initial
+	if ciMode {
+		opts.WithBraintrust = opts.WithBraintrust || truthyEnv("CLEANR_WITH_BRAINTRUST")
+		opts.BraintrustProject = firstNonEmpty(opts.BraintrustProject, os.Getenv("CLEANR_BRAINTRUST_PROJECT"))
+		opts.BraintrustExperiment = firstNonEmpty(opts.BraintrustExperiment, os.Getenv("CLEANR_BRAINTRUST_EXPERIMENT"), defaultIntegrationFamily)
+		opts.BraintrustAPIKeyEnv = firstNonEmpty(opts.BraintrustAPIKeyEnv, os.Getenv("CLEANR_BRAINTRUST_API_KEY_ENV"), defaultBraintrustKeyEnv)
+		opts.BraintrustBaseURL = firstNonEmpty(opts.BraintrustBaseURL, os.Getenv("CLEANR_BRAINTRUST_BASE_URL"))
+		opts.WithLangfuse = opts.WithLangfuse || truthyEnv("CLEANR_WITH_LANGFUSE")
+		opts.LangfusePublicKeyEnv = firstNonEmpty(opts.LangfusePublicKeyEnv, os.Getenv("CLEANR_LANGFUSE_PUBLIC_KEY_ENV"), defaultLangfusePublicEnv)
+		opts.LangfuseSecretKeyEnv = firstNonEmpty(opts.LangfuseSecretKeyEnv, os.Getenv("CLEANR_LANGFUSE_SECRET_KEY_ENV"), defaultLangfuseSecretEnv)
+		opts.LangfuseBaseURL = firstNonEmpty(opts.LangfuseBaseURL, os.Getenv("CLEANR_LANGFUSE_BASE_URL"))
+		opts.LangfuseExperiment = firstNonEmpty(opts.LangfuseExperiment, os.Getenv("CLEANR_LANGFUSE_EXPERIMENT"), defaultIntegrationFamily)
+		opts.WithPostHog = opts.WithPostHog || truthyEnv("CLEANR_WITH_POSTHOG")
+		opts.PostHogTokenEnv = firstNonEmpty(opts.PostHogTokenEnv, os.Getenv("CLEANR_POSTHOG_PROJECT_TOKEN_ENV"), defaultPostHogTokenEnv)
+		opts.PostHogBaseURL = firstNonEmpty(opts.PostHogBaseURL, os.Getenv("CLEANR_POSTHOG_BASE_URL"))
+		opts.PostHogExperiment = firstNonEmpty(opts.PostHogExperiment, os.Getenv("CLEANR_POSTHOG_EXPERIMENT"), defaultIntegrationFamily)
+		opts.WithWebhook = opts.WithWebhook || truthyEnv("CLEANR_WITH_WEBHOOK")
+		opts.WebhookEndpoint = firstNonEmpty(opts.WebhookEndpoint, os.Getenv("CLEANR_RESULTS_WEBHOOK_URL"))
+		opts.WebhookAPIKeyEnv = firstNonEmpty(opts.WebhookAPIKeyEnv, os.Getenv("CLEANR_RESULTS_WEBHOOK_TOKEN_ENV"), defaultWebhookTokenEnv)
+		opts.WithAttestation = opts.WithAttestation || truthyEnv("CLEANR_WITH_ATTESTATION")
+		opts.AttestationKeyEnv = firstNonEmpty(opts.AttestationKeyEnv, os.Getenv("CLEANR_ATTESTATION_KEY_ENV"), defaultAttestationKeyEnv)
+		opts.AttestationKeyID = firstNonEmpty(opts.AttestationKeyID, os.Getenv("CLEANR_ATTESTATION_KEY_ID"), defaultAttestationKeyID)
+	}
+
+	opts.TrendGatePreset = firstNonEmpty(opts.TrendGatePreset, "moderate")
+	opts.BraintrustExperiment = firstNonEmpty(opts.BraintrustExperiment, defaultIntegrationFamily)
+	opts.BraintrustAPIKeyEnv = firstNonEmpty(opts.BraintrustAPIKeyEnv, defaultBraintrustKeyEnv)
+	opts.LangfusePublicKeyEnv = firstNonEmpty(opts.LangfusePublicKeyEnv, defaultLangfusePublicEnv)
+	opts.LangfuseSecretKeyEnv = firstNonEmpty(opts.LangfuseSecretKeyEnv, defaultLangfuseSecretEnv)
+	opts.LangfuseExperiment = firstNonEmpty(opts.LangfuseExperiment, defaultIntegrationFamily)
+	opts.PostHogTokenEnv = firstNonEmpty(opts.PostHogTokenEnv, defaultPostHogTokenEnv)
+	opts.PostHogExperiment = firstNonEmpty(opts.PostHogExperiment, defaultIntegrationFamily)
+	opts.WebhookAPIKeyEnv = firstNonEmpty(opts.WebhookAPIKeyEnv, defaultWebhookTokenEnv)
+	opts.AttestationKeyEnv = firstNonEmpty(opts.AttestationKeyEnv, defaultAttestationKeyEnv)
+	opts.AttestationKeyID = firstNonEmpty(opts.AttestationKeyID, defaultAttestationKeyID)
+
+	if opts.WithBraintrust && strings.TrimSpace(opts.BraintrustProject) == "" {
+		return starterConfigOptions{}, fmt.Errorf("braintrust project is required when -with-braintrust is enabled")
+	}
+	if opts.WithWebhook && strings.TrimSpace(opts.WebhookEndpoint) == "" {
+		return starterConfigOptions{}, fmt.Errorf("webhook endpoint is required when -with-webhook is enabled")
+	}
+	return opts, nil
+}
+
+func starterConfigForProvider(provider profilepkg.Provider, options starterConfigOptions) cleanr.Config {
 	cfg := cleanr.ExampleConfig()
 	cfg.Target.URL = ""
 	cfg.Target.Method = ""
@@ -487,18 +661,20 @@ func starterConfigForProvider(provider profilepkg.Provider, trendGatePreset stri
 	cfg.Reporting.TrendFile = filepath.Join("reports", cfg.Target.Name+".trends.yaml")
 	cfg.Reporting.TrendLimit = 30
 	cfg.Reporting.TrendGates = cleanr.TrendGateConfig{
-		Preset: firstNonEmpty(trendGatePreset, "moderate"),
+		Preset: firstNonEmpty(options.TrendGatePreset, "moderate"),
 	}
+	applyStarterIntegrations(&cfg, options)
 
 	return cfg
 }
 
-func starterAgentConfig(provider profilepkg.Provider, agentName, systemPrompt, userPrompt, trendGatePreset string) cleanr.Config {
+func starterAgentConfig(provider profilepkg.Provider, agentName, systemPrompt, userPrompt string, options starterConfigOptions) cleanr.Config {
 	slug := slugify(agentName)
-	cfg := starterConfigForProvider(provider, trendGatePreset)
+	cfg := starterConfigForProvider(provider, options)
 	cfg.Target.Name = slug
 	cfg.Suites.Drift.BaselineFile = filepath.Join("snapshots", slug+".snapshots.yaml")
 	cfg.Reporting.TrendFile = filepath.Join("reports", slug+".trends.yaml")
+	applyStarterIntegrations(&cfg, options)
 	cfg.Scenarios = []cleanr.Scenario{
 		{
 			Name:   "happy-path",
@@ -515,6 +691,95 @@ func starterAgentConfig(provider profilepkg.Provider, agentName, systemPrompt, u
 		},
 	}
 	return cfg
+}
+
+func applyStarterIntegrations(cfg *cleanr.Config, options starterConfigOptions) {
+	resultSinks := make([]cleanr.ResultSinkConfig, 0, 4)
+	trendSources := make([]cleanr.TrendSourceConfig, 0, 1)
+
+	if options.WithBraintrust {
+		resultSinks = append(resultSinks, cleanr.ResultSinkConfig{
+			Name:           "braintrust",
+			Type:           "braintrust",
+			BaseURL:        options.BraintrustBaseURL,
+			APIKeyEnv:      options.BraintrustAPIKeyEnv,
+			Project:        options.BraintrustProject,
+			Experiment:     options.BraintrustExperiment,
+			IncludeReplay:  true,
+			IncludeAttest:  options.WithAttestation,
+			RunURLTemplate: "https://www.braintrust.dev/app/{{project}}",
+		})
+		trendSources = append(trendSources, cleanr.TrendSourceConfig{
+			Name:         "braintrust",
+			Type:         "braintrust",
+			BaseURL:      options.BraintrustBaseURL,
+			APIKeyEnv:    options.BraintrustAPIKeyEnv,
+			Project:      options.BraintrustProject,
+			Experiment:   options.BraintrustExperiment,
+			HistoryLimit: 10,
+			ViewURL:      "https://www.braintrust.dev/app/" + options.BraintrustProject,
+		})
+	}
+
+	if options.WithLangfuse {
+		resultSinks = append(resultSinks, cleanr.ResultSinkConfig{
+			Name:         "langfuse",
+			Type:         "langfuse",
+			BaseURL:      options.LangfuseBaseURL,
+			PublicKeyEnv: options.LangfusePublicKeyEnv,
+			SecretKeyEnv: options.LangfuseSecretKeyEnv,
+			Experiment:   options.LangfuseExperiment,
+		})
+	}
+
+	if options.WithPostHog {
+		resultSinks = append(resultSinks, cleanr.ResultSinkConfig{
+			Name:            "posthog",
+			Type:            "posthog",
+			BaseURL:         options.PostHogBaseURL,
+			ProjectTokenEnv: options.PostHogTokenEnv,
+			Experiment:      options.PostHogExperiment,
+		})
+	}
+
+	if options.WithWebhook {
+		resultSinks = append(resultSinks, cleanr.ResultSinkConfig{
+			Name:          "results-webhook",
+			Type:          "http",
+			Endpoint:      options.WebhookEndpoint,
+			APIKeyEnv:     options.WebhookAPIKeyEnv,
+			IncludeReplay: true,
+			IncludeAttest: options.WithAttestation,
+		})
+	}
+
+	if len(resultSinks) > 0 {
+		cfg.Integrations.ResultSinks = resultSinks
+		cfg.Integrations.Summaries = []cleanr.SummaryConfig{
+			{Name: "markdown", Format: "markdown", Output: filepath.Join("reports", cfg.Target.Name+".summary.md")},
+			{Name: "json", Format: "json", Output: filepath.Join("reports", cfg.Target.Name+".summary.json")},
+		}
+	}
+	if len(trendSources) > 0 {
+		cfg.Integrations.TrendSources = trendSources
+	}
+	if options.WithAttestation {
+		cfg.Governance.Attestation = cleanr.AttestationConfig{
+			Enabled: true,
+			Output:  filepath.Join("reports", cfg.Target.Name+".attestation.json"),
+			KeyEnv:  options.AttestationKeyEnv,
+			KeyID:   options.AttestationKeyID,
+		}
+	}
+}
+
+func truthyEnv(name string) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv(name))) {
+	case "1", "true", "yes", "on":
+		return true
+	default:
+		return false
+	}
 }
 
 func writeGeneratedConfig(path string, cfg cleanr.Config) error {

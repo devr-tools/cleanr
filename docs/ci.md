@@ -101,8 +101,63 @@ This repository already ships with:
 - `.github/workflows/cd.yml`: branch-driven prerelease and Release Please orchestration
 - `.github/workflows/release.yml`: tag-driven publishing for binaries, GHCR, and Homebrew sync
 - `.github/workflows/homebrew-validation.yml`: PR-time formula install and `brew test`
+- `.github/workflows/cleanr-smoke.yml`: manual and PR-safe smoke workflow that builds `cleanr`, runs it against a local mock target, captures a baseline, and renders trend artifacts without external model credentials
+- `.github/workflows/cleanr-connected.yml`: manual provider workflow that generates an agent config, reads standard GitHub secrets, and optionally connects Braintrust, Langfuse, PostHog, webhook sinks, and signed attestations
 
 Release and branch-publishing details live in [release-automation.md](release-automation.md).
+
+## Connected Secrets Workflow
+
+Use `.github/workflows/cleanr-connected.yml` when you want a repo owner to wire credentials once and immediately run a provider-backed `cleanr` job.
+
+The workflow expects a small fixed contract:
+
+- Repository secrets:
+  - `OPENAI_API_KEY`
+  - `ANTHROPIC_API_KEY`
+  - `BRAINTRUST_API_KEY`
+  - `LANGFUSE_PUBLIC_KEY`
+  - `LANGFUSE_SECRET_KEY`
+  - `POSTHOG_PROJECT_TOKEN`
+  - `CLEANR_RESULTS_WEBHOOK_TOKEN`
+  - `CLEANR_ATTESTATION_KEY`
+- Repository variables:
+  - `CLEANR_PROVIDER`
+  - `CLEANR_MODEL`
+  - `CLEANR_OPENAI_API_MODE`
+  - `CLEANR_AGENT_NAME`
+  - `CLEANR_SYSTEM_PROMPT`
+  - `CLEANR_USER_PROMPT`
+  - `CLEANR_TREND_GATE_PRESET`
+  - `CLEANR_BRAINTRUST_PROJECT`
+  - `CLEANR_BRAINTRUST_EXPERIMENT`
+  - `CLEANR_BRAINTRUST_BASE_URL`
+  - `CLEANR_LANGFUSE_BASE_URL`
+  - `CLEANR_LANGFUSE_EXPERIMENT`
+  - `CLEANR_POSTHOG_BASE_URL`
+  - `CLEANR_POSTHOG_EXPERIMENT`
+  - `CLEANR_RESULTS_WEBHOOK_URL`
+
+The setup command now supports the same pattern directly, for example:
+
+```bash
+cleanr setup agent --ci \
+  -provider openai \
+  -model gpt-4.1-mini \
+  -name support-agent \
+  -system-prompt "You are a concise support agent." \
+  -user-prompt "Help the customer reset their password." \
+  -with-braintrust \
+  -braintrust-project support-ai \
+  -with-langfuse \
+  -with-posthog \
+  -with-webhook \
+  -webhook-endpoint https://example.com/cleanr \
+  -with-attestation \
+  -output cleanr.agent.yaml
+```
+
+That generated config points to standard env var names instead of embedding credentials, so a user can set secrets once and run without editing the config.
 
 ## Related Docs
 

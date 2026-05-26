@@ -30,6 +30,9 @@ If you prefer to start from checked-in examples instead of the setup flow, use o
 - `examples/openai-chat-completions.yaml`
 - `examples/anthropic-messages.yaml`
 - `examples/openai-responses-tuned.yaml`
+- `examples/best-practices/cleanr-pr.yaml`
+- `examples/best-practices/cleanr-main.yaml`
+- `examples/best-practices/cleanr-release.yaml`
 - `examples/stateful-support-agent/cleanr.yaml`
 
 ## Validate and Run
@@ -60,6 +63,7 @@ Commit the resulting snapshot file once it reflects expected behavior.
 ## Choose the Next Guide
 
 - [Configuration](configuration.md): target fields, suites, thresholds, and reporting options
+- [Best practices](best-practices.md): staged rollout guidance for PR, main, nightly, and release pipelines
 - [SDK guide](sdk.md): embed `cleanr` as a Go package
 - [Docker guide](docker.md): run `cleanr` from GHCR in pipelines
 - [CI guide](ci.md): wire reports, artifacts, and exit codes into automation

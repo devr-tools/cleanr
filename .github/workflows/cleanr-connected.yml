@@ -1,0 +1,205 @@
+name: cleanr-connected.yml
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  CLEANR_PROVIDER: ${{ vars.CLEANR_PROVIDER || 'openai' }}
+  CLEANR_MODEL: ${{ vars.CLEANR_MODEL || 'gpt-4.1-mini' }}
+  CLEANR_OPENAI_API_MODE: ${{ vars.CLEANR_OPENAI_API_MODE || 'responses' }}
+  CLEANR_AGENT_NAME: ${{ vars.CLEANR_AGENT_NAME || 'github-actions-agent' }}
+  CLEANR_SYSTEM_PROMPT: ${{ vars.CLEANR_SYSTEM_PROMPT || 'You are a concise support agent that follows policy and only states verified next steps.' }}
+  CLEANR_USER_PROMPT: ${{ vars.CLEANR_USER_PROMPT || 'Help the customer reset their password and confirm the next step.' }}
+  CLEANR_TREND_GATE_PRESET: ${{ vars.CLEANR_TREND_GATE_PRESET || 'exploratory' }}
+  CLEANR_BRAINTRUST_PROJECT: ${{ vars.CLEANR_BRAINTRUST_PROJECT }}
+  CLEANR_BRAINTRUST_EXPERIMENT: ${{ vars.CLEANR_BRAINTRUST_EXPERIMENT || 'cleanr-ci' }}
+  CLEANR_BRAINTRUST_BASE_URL: ${{ vars.CLEANR_BRAINTRUST_BASE_URL }}
+  CLEANR_LANGFUSE_BASE_URL: ${{ vars.CLEANR_LANGFUSE_BASE_URL }}
+  CLEANR_LANGFUSE_EXPERIMENT: ${{ vars.CLEANR_LANGFUSE_EXPERIMENT || 'cleanr-ci' }}
+  CLEANR_POSTHOG_BASE_URL: ${{ vars.CLEANR_POSTHOG_BASE_URL }}
+  CLEANR_POSTHOG_EXPERIMENT: ${{ vars.CLEANR_POSTHOG_EXPERIMENT || 'cleanr-ci' }}
+  CLEANR_RESULTS_WEBHOOK_URL: ${{ vars.CLEANR_RESULTS_WEBHOOK_URL }}
+  OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+  ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+  BRAINTRUST_API_KEY: ${{ secrets.BRAINTRUST_API_KEY }}
+  LANGFUSE_PUBLIC_KEY: ${{ secrets.LANGFUSE_PUBLIC_KEY }}
+  LANGFUSE_SECRET_KEY: ${{ secrets.LANGFUSE_SECRET_KEY }}
+  POSTHOG_PROJECT_TOKEN: ${{ secrets.POSTHOG_PROJECT_TOKEN }}
+  CLEANR_RESULTS_WEBHOOK_TOKEN: ${{ secrets.CLEANR_RESULTS_WEBHOOK_TOKEN }}
+  CLEANR_ATTESTATION_KEY: ${{ secrets.CLEANR_ATTESTATION_KEY }}
+
+jobs:
+  connected:
+    name: connected provider run
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build cleanr
+        shell: bash
+        run: |
+          set -euo pipefail
+          make build
+
+      - name: Check provider secrets
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          case "$CLEANR_PROVIDER" in
+            openai)
+              if [ -z "${OPENAI_API_KEY:-}" ]; then
+                echo "::error title=Missing secret::Set the OPENAI_API_KEY repository secret or switch CLEANR_PROVIDER to anthropic."
+                exit 1
+              fi
+              ;;
+            anthropic)
+              if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
+                echo "::error title=Missing secret::Set the ANTHROPIC_API_KEY repository secret or switch CLEANR_PROVIDER to openai."
+                exit 1
+              fi
+              ;;
+            *)
+              echo "::error title=Invalid provider::CLEANR_PROVIDER must be openai or anthropic."
+              exit 1
+              ;;
+          esac
+
+      - name: Generate connected config
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          args=(
+            setup agent
+            --ci
+            -output cleanr.connected.yaml
+            -provider "$CLEANR_PROVIDER"
+            -model "$CLEANR_MODEL"
+            -name "$CLEANR_AGENT_NAME"
+            -system-prompt "$CLEANR_SYSTEM_PROMPT"
+            -user-prompt "$CLEANR_USER_PROMPT"
+            -trend-gate-preset "$CLEANR_TREND_GATE_PRESET"
+          )
+
+          if [ "$CLEANR_PROVIDER" = "openai" ]; then
+            args+=(-api-mode "$CLEANR_OPENAI_API_MODE")
+          fi
+
+          if [ -n "${BRAINTRUST_API_KEY:-}" ] && [ -n "${CLEANR_BRAINTRUST_PROJECT:-}" ]; then
+            args+=(-with-braintrust -braintrust-project "$CLEANR_BRAINTRUST_PROJECT" -braintrust-experiment "$CLEANR_BRAINTRUST_EXPERIMENT")
+            if [ -n "${CLEANR_BRAINTRUST_BASE_URL:-}" ]; then
+              args+=(-braintrust-base-url "$CLEANR_BRAINTRUST_BASE_URL")
+            fi
+          fi
+
+          if [ -n "${LANGFUSE_PUBLIC_KEY:-}" ] && [ -n "${LANGFUSE_SECRET_KEY:-}" ]; then
+            args+=(-with-langfuse -langfuse-experiment "$CLEANR_LANGFUSE_EXPERIMENT")
+            if [ -n "${CLEANR_LANGFUSE_BASE_URL:-}" ]; then
+              args+=(-langfuse-base-url "$CLEANR_LANGFUSE_BASE_URL")
+            fi
+          fi
+
+          if [ -n "${POSTHOG_PROJECT_TOKEN:-}" ]; then
+            args+=(-with-posthog -posthog-experiment "$CLEANR_POSTHOG_EXPERIMENT")
+            if [ -n "${CLEANR_POSTHOG_BASE_URL:-}" ]; then
+              args+=(-posthog-base-url "$CLEANR_POSTHOG_BASE_URL")
+            fi
+          fi
+
+          if [ -n "${CLEANR_RESULTS_WEBHOOK_URL:-}" ]; then
+            args+=(-with-webhook -webhook-endpoint "$CLEANR_RESULTS_WEBHOOK_URL")
+          fi
+
+          if [ -n "${CLEANR_ATTESTATION_KEY:-}" ]; then
+            args+=(-with-attestation)
+          fi
+
+          ./dist/cleanr "${args[@]}"
+
+      - name: Validate config
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr validate -config cleanr.connected.yaml
+
+      - name: Capture baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr snapshot -config cleanr.connected.yaml
+
+      - name: Run connected suite
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr run -config cleanr.connected.yaml -format junit -output reports/connected.junit.xml -build-id "$GITHUB_SHA"
+
+      - name: Render trend summary
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          trend_file="$(sed -n 's/^  trend_file: //p' cleanr.connected.yaml | head -n 1)"
+          if [ -n "$trend_file" ] && [ -f "$trend_file" ]; then
+            ./dist/cleanr trends -trend-file "$trend_file" -format json -output reports/connected.trends.json
+          fi
+
+      - name: Summarize connected services
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          {
+            echo "## Connected workflow"
+            echo
+            echo "- provider: \`$CLEANR_PROVIDER\`"
+            echo "- model: \`$CLEANR_MODEL\`"
+            if [ -n "${BRAINTRUST_API_KEY:-}" ] && [ -n "${CLEANR_BRAINTRUST_PROJECT:-}" ]; then
+              echo "- braintrust: enabled"
+            else
+              echo "- braintrust: disabled"
+            fi
+            if [ -n "${LANGFUSE_PUBLIC_KEY:-}" ] && [ -n "${LANGFUSE_SECRET_KEY:-}" ]; then
+              echo "- langfuse: enabled"
+            else
+              echo "- langfuse: disabled"
+            fi
+            if [ -n "${POSTHOG_PROJECT_TOKEN:-}" ]; then
+              echo "- posthog: enabled"
+            else
+              echo "- posthog: disabled"
+            fi
+            if [ -n "${CLEANR_RESULTS_WEBHOOK_URL:-}" ]; then
+              echo "- webhook: enabled"
+            else
+              echo "- webhook: disabled"
+            fi
+            if [ -n "${CLEANR_ATTESTATION_KEY:-}" ]; then
+              echo "- attestation: enabled"
+            else
+              echo "- attestation: disabled"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload connected artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cleanr-connected-artifacts
+          path: |
+            cleanr.connected.yaml
+            reports/
+            snapshots/

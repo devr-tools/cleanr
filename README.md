@@ -136,6 +136,7 @@ rm -rf ~/.cleanr
 - [Docker guide](docs/docker.md)
 - [Configuration](docs/configuration.md)
 - [CI guide](docs/ci.md)
+- [Best practices](docs/best-practices.md)
 - [Release automation](docs/release-automation.md)
 - [Homebrew packaging](docs/homebrew.md)
 - [MCP and MCPO](docs/mcp.md)
@@ -147,6 +148,7 @@ rm -rf ~/.cleanr
 - [OpenAI Responses](examples/openai-responses.yaml)
 - [OpenAI Chat Completions](examples/openai-chat-completions.yaml)
 - [Anthropic Messages](examples/anthropic-messages.yaml)
+- [Best Practice Profiles](examples/best-practices/cleanr-pr.yaml)
 - [Stateful Support Agent](examples/stateful-support-agent/README.md)
 
 ## Exit Codes

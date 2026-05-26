@@ -1,0 +1,143 @@
+name: cleanr-smoke.yml
+
+on:
+  workflow_dispatch:
+  pull_request:
+    branches:
+      - develop
+      - master
+      - main
+    paths:
+      - ".github/workflows/cleanr-smoke.yml"
+      - "examples/github-actions-smoke/**"
+      - "cleanr/**"
+      - "cmd/**"
+      - "internal/**"
+      - "go.mod"
+      - "go.sum"
+      - "Makefile"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cleanr-smoke-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    name: cleanr smoke
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up Go
+        uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Build cleanr
+        shell: bash
+        run: |
+          set -euo pipefail
+          make build
+
+      - name: Start mock target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p reports
+          go run ./examples/github-actions-smoke >"$RUNNER_TEMP/cleanr-smoke-server.log" 2>&1 &
+          echo $! >"$RUNNER_TEMP/cleanr-smoke-server.pid"
+
+      - name: Wait for mock target
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for _ in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/health >/dev/null; then
+              exit 0
+            fi
+            sleep 1
+          done
+
+          cat "$RUNNER_TEMP/cleanr-smoke-server.log"
+          exit 1
+
+      - name: Validate smoke config
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr validate -config examples/github-actions-smoke/cleanr.yaml
+
+      - name: Capture smoke baseline
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr snapshot -config examples/github-actions-smoke/cleanr.yaml
+
+      - name: Run first cleanr pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr run \
+            -config examples/github-actions-smoke/cleanr.yaml \
+            -format junit \
+            -output reports/github-actions-smoke.junit.xml \
+            -build-id "${GITHUB_SHA}-smoke-1"
+
+      - name: Run second cleanr pass
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr run \
+            -config examples/github-actions-smoke/cleanr.yaml \
+            -format json \
+            -output reports/github-actions-smoke.report.json \
+            -build-id "${GITHUB_SHA}-smoke-2"
+
+      - name: Render trend summary
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          ./dist/cleanr trends \
+            -trend-file reports/github-actions-smoke.trends.yaml \
+            -format json \
+            -output reports/github-actions-smoke.trends.json
+
+          {
+            echo "## cleanr smoke"
+            echo
+            echo '```json'
+            sed -n '1,120p' reports/github-actions-smoke.trends.json
+            echo '```'
+          } >>"$GITHUB_STEP_SUMMARY"
+
+      - name: Upload smoke artifacts
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: cleanr-smoke-artifacts
+          path: |
+            reports/github-actions-smoke.junit.xml
+            reports/github-actions-smoke.report.json
+            reports/github-actions-smoke.replay.json
+            reports/github-actions-smoke.trends.yaml
+            reports/github-actions-smoke.trends.json
+            reports/github-actions-smoke.snapshots.yaml
+            ${{ runner.temp }}/cleanr-smoke-server.log
+
+      - name: Stop mock target
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ -f "$RUNNER_TEMP/cleanr-smoke-server.pid" ]; then
+            kill "$(cat "$RUNNER_TEMP/cleanr-smoke-server.pid")" || true
+          fi

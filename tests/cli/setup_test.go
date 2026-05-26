@@ -171,6 +171,90 @@ func TestSetupCommandCIModeWritesConfigWithoutProfile(t *testing.T) {
 	}
 }
 
+func TestSetupCommandCIModeCanEmitIntegrationReadyConfig(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup",
+		"--ci",
+		"-output", configPath,
+		"-provider", "openai",
+		"-model", "gpt-4.1-mini",
+		"-with-braintrust",
+		"-braintrust-project", "support-ai",
+		"-with-langfuse",
+		"-with-posthog",
+		"-with-webhook",
+		"-webhook-endpoint", "https://example.com/cleanr",
+		"-with-attestation",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if len(cfg.Integrations.ResultSinks) != 4 {
+		t.Fatalf("expected 4 result sinks, got %+v", cfg.Integrations.ResultSinks)
+	}
+	if len(cfg.Integrations.TrendSources) != 1 || cfg.Integrations.TrendSources[0].Type != "braintrust" {
+		t.Fatalf("expected braintrust trend source, got %+v", cfg.Integrations.TrendSources)
+	}
+	if len(cfg.Integrations.Summaries) != 2 {
+		t.Fatalf("expected markdown and json summaries, got %+v", cfg.Integrations.Summaries)
+	}
+	if !cfg.Governance.Attestation.Enabled || cfg.Governance.Attestation.KeyEnv != "CLEANR_ATTESTATION_KEY" {
+		t.Fatalf("unexpected attestation config: %+v", cfg.Governance.Attestation)
+	}
+
+	var sawBraintrust bool
+	var sawLangfuse bool
+	var sawPostHog bool
+	var sawWebhook bool
+	for _, sink := range cfg.Integrations.ResultSinks {
+		switch sink.Type {
+		case "braintrust":
+			sawBraintrust = sink.Project == "support-ai" && sink.APIKeyEnv == "BRAINTRUST_API_KEY"
+		case "langfuse":
+			sawLangfuse = sink.PublicKeyEnv == "LANGFUSE_PUBLIC_KEY" && sink.SecretKeyEnv == "LANGFUSE_SECRET_KEY"
+		case "posthog":
+			sawPostHog = sink.ProjectTokenEnv == "POSTHOG_PROJECT_TOKEN"
+		case "http":
+			sawWebhook = sink.Endpoint == "https://example.com/cleanr" && sink.APIKeyEnv == "CLEANR_RESULTS_WEBHOOK_TOKEN"
+		}
+	}
+	if !sawBraintrust || !sawLangfuse || !sawPostHog || !sawWebhook {
+		t.Fatalf("missing expected sink wiring: %+v", cfg.Integrations.ResultSinks)
+	}
+}
+
+func TestSetupCommandRejectsBraintrustWithoutProject(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup",
+		"--ci",
+		"-output", configPath,
+		"-provider", "openai",
+		"-model", "gpt-4.1-mini",
+		"-with-braintrust",
+	}, &stdout, &stderr)
+	if exitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "braintrust project is required") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
 func TestSetupAgentCommandCIModeUsesFlags(t *testing.T) {
 	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
 	configPath := filepath.Join(t.TempDir(), "cleanr.agent.yaml")
@@ -203,6 +287,41 @@ func TestSetupAgentCommandCIModeUsesFlags(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "wrote CI agent config") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestSetupAgentCommandCIModeReadsIntegrationFlagsFromEnv(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	t.Setenv("CLEANR_WITH_BRAINTRUST", "true")
+	t.Setenv("CLEANR_BRAINTRUST_PROJECT", "agent-evals")
+	t.Setenv("CLEANR_WITH_ATTESTATION", "true")
+	configPath := filepath.Join(t.TempDir(), "cleanr.agent.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup", "agent",
+		"--ci",
+		"-output", configPath,
+		"-provider", "openai",
+		"-model", "gpt-4.1-mini",
+		"-system-prompt", "You are a safe support agent.",
+		"-user-prompt", "Reset the password and confirm the email.",
+		"-name", "support-agent",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if len(cfg.Integrations.ResultSinks) != 1 || cfg.Integrations.ResultSinks[0].Type != "braintrust" {
+		t.Fatalf("expected env-driven braintrust sink, got %+v", cfg.Integrations.ResultSinks)
+	}
+	if !cfg.Governance.Attestation.Enabled {
+		t.Fatalf("expected env-driven attestation, got %+v", cfg.Governance.Attestation)
 	}
 }
 
