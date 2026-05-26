@@ -13,6 +13,16 @@ type ReleaseOptions struct {
 	Output  string
 }
 
+type CIOptions struct {
+	BaseRef             string
+	BuildOutput         string
+	GovulncheckMode     string
+	GovulncheckVersion  string
+	GocycloVersion      string
+	MinInternalCoverage float64
+	SemgrepCommand      string
+}
+
 type HomebrewFormulaOptions struct {
 	Version      string
 	Repository   string

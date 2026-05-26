@@ -7,12 +7,13 @@ GOCACHE ?= $(CURDIR)/.gocache
 REPORT_FORMAT ?= text
 REPORT_PRESET ?= fail
 REPORT_INPUT ?=
+CI_BASE_REF ?=
 
 .DEFAULT_GOAL := menu
 
 export GOCACHE
 
-.PHONY: menu help fmt fmt-check lint test gofiles check build release homebrew-formula deploy report clean
+.PHONY: menu help fmt fmt-check lint test gofiles check ci build release homebrew-formula deploy report clean
 
 menu:
 	@printf "\ncleanr make menu\n\n"
@@ -22,6 +23,7 @@ menu:
 	@printf "  make test        Run the Go test suite\n"
 	@printf "  make gofiles     Validate and list Go file layout\n"
 	@printf "  make check       Run gofiles, fmt-check, lint, and test\n"
+	@printf "  make ci          Run the local CI parity gate used before commit\n"
 	@printf "  make build       Build the cleanr CLI to dist/cleanr\n"
 	@printf "  make release     Package release artifacts to dist/releases (use VERSION=...)\n"
 	@printf "  make homebrew-formula  Generate a Homebrew formula for a release (use VERSION=...)\n"
@@ -36,6 +38,7 @@ menu:
 	@printf "  REPORT_FORMAT=%s\n" "$(REPORT_FORMAT)"
 	@printf "  REPORT_PRESET=%s\n" "$(REPORT_PRESET)"
 	@printf "  REPORT_INPUT=%s\n" "$(REPORT_INPUT)"
+	@printf "  CI_BASE_REF=%s\n" "$(CI_BASE_REF)"
 	@printf "  GOCACHE=%s\n\n" "$(GOCACHE)"
 
 help: menu
@@ -57,6 +60,9 @@ gofiles:
 
 check:
 	$(GO) run ./cmd/cleanr-dev check
+
+ci:
+	$(GO) run ./cmd/cleanr-dev ci $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),)
 
 build:
 	$(GO) run ./cmd/cleanr-dev build -output dist/cleanr

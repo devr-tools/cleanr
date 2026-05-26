@@ -35,9 +35,13 @@ const (
 	defaultAttestationKeyEnv  = "CLEANR_ATTESTATION_KEY"
 	defaultAttestationKeyID   = "ci-ed25519"
 	defaultIntegrationFamily  = "cleanr-ci"
+	profilePR                 = "pr"
+	profileMain               = "main"
+	profileRelease            = "release"
 )
 
 type starterConfigOptions struct {
+	Profile              string
 	TrendGatePreset      string
 	WithBraintrust       bool
 	BraintrustProject    string
@@ -94,7 +98,8 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	apiModeFlag := fs.String("api-mode", "", "OpenAI API mode: responses or chat_completions")
 	baseURLFlag := fs.String("base-url", "", "Optional provider base URL override")
 	maxTokensFlag := fs.Int("max-tokens", 0, "Optional Anthropic max_tokens override")
-	trendGatePreset := fs.String("trend-gate-preset", "moderate", "Trend gate preset: strict, moderate, or exploratory")
+	profileFlag := fs.String("profile", "", "Starter profile: pr, main, or release")
+	trendGatePreset := fs.String("trend-gate-preset", "", "Optional trend gate preset override: strict, moderate, or exploratory")
 	withBraintrust := fs.Bool("with-braintrust", false, "Include Braintrust result publishing and remote trend comparison using standard env-based secrets")
 	braintrustProject := fs.String("braintrust-project", "", "Braintrust project name for native result publishing")
 	braintrustExperiment := fs.String("braintrust-experiment", defaultIntegrationFamily, "Braintrust experiment family name")
@@ -137,6 +142,7 @@ func setupProviderCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) 
 	}
 
 	options, err := resolveStarterConfigOptions(starterConfigOptions{
+		Profile:              *profileFlag,
 		TrendGatePreset:      *trendGatePreset,
 		WithBraintrust:       *withBraintrust,
 		BraintrustProject:    *braintrustProject,
@@ -214,7 +220,8 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	apiModeFlag := fs.String("api-mode", "", "OpenAI API mode override")
 	baseURLFlag := fs.String("base-url", "", "Optional provider base URL override")
 	maxTokensFlag := fs.Int("max-tokens", 0, "Optional Anthropic max_tokens override")
-	trendGatePreset := fs.String("trend-gate-preset", "moderate", "Trend gate preset: strict, moderate, or exploratory")
+	profileFlag := fs.String("profile", "", "Starter profile: pr, main, or release")
+	trendGatePreset := fs.String("trend-gate-preset", "", "Optional trend gate preset override: strict, moderate, or exploratory")
 	withBraintrust := fs.Bool("with-braintrust", false, "Include Braintrust result publishing and remote trend comparison using standard env-based secrets")
 	braintrustProject := fs.String("braintrust-project", "", "Braintrust project name for native result publishing")
 	braintrustExperiment := fs.String("braintrust-experiment", defaultIntegrationFamily, "Braintrust experiment family name")
@@ -257,6 +264,7 @@ func setupAgentCmd(args []string, stdin io.Reader, stdout, stderr io.Writer) int
 	}
 
 	options, err := resolveStarterConfigOptions(starterConfigOptions{
+		Profile:              *profileFlag,
 		TrendGatePreset:      *trendGatePreset,
 		WithBraintrust:       *withBraintrust,
 		BraintrustProject:    *braintrustProject,
@@ -579,6 +587,7 @@ func normalizedOpenAIAPIMode(value string) string {
 func resolveStarterConfigOptions(initial starterConfigOptions, ciMode bool) (starterConfigOptions, error) {
 	opts := initial
 	if ciMode {
+		opts.Profile = firstNonEmpty(opts.Profile, os.Getenv("CLEANR_PROFILE"))
 		opts.WithBraintrust = opts.WithBraintrust || truthyEnv("CLEANR_WITH_BRAINTRUST")
 		opts.BraintrustProject = firstNonEmpty(opts.BraintrustProject, os.Getenv("CLEANR_BRAINTRUST_PROJECT"))
 		opts.BraintrustExperiment = firstNonEmpty(opts.BraintrustExperiment, os.Getenv("CLEANR_BRAINTRUST_EXPERIMENT"), defaultIntegrationFamily)
@@ -599,6 +608,26 @@ func resolveStarterConfigOptions(initial starterConfigOptions, ciMode bool) (sta
 		opts.WithAttestation = opts.WithAttestation || truthyEnv("CLEANR_WITH_ATTESTATION")
 		opts.AttestationKeyEnv = firstNonEmpty(opts.AttestationKeyEnv, os.Getenv("CLEANR_ATTESTATION_KEY_ENV"), defaultAttestationKeyEnv)
 		opts.AttestationKeyID = firstNonEmpty(opts.AttestationKeyID, os.Getenv("CLEANR_ATTESTATION_KEY_ID"), defaultAttestationKeyID)
+	}
+
+	opts.Profile = normalizeStarterProfile(opts.Profile)
+	if opts.Profile != "" && !isValidStarterProfile(opts.Profile) {
+		return starterConfigOptions{}, fmt.Errorf("profile must be one of pr, main, or release")
+	}
+
+	if opts.Profile == profileRelease {
+		opts.WithAttestation = true
+	}
+
+	if strings.TrimSpace(opts.TrendGatePreset) == "" {
+		switch opts.Profile {
+		case profilePR:
+			opts.TrendGatePreset = "exploratory"
+		case profileMain, profileRelease:
+			opts.TrendGatePreset = "moderate"
+		default:
+			opts.TrendGatePreset = "moderate"
+		}
 	}
 
 	opts.TrendGatePreset = firstNonEmpty(opts.TrendGatePreset, "moderate")
@@ -663,6 +692,7 @@ func starterConfigForProvider(provider profilepkg.Provider, options starterConfi
 	cfg.Reporting.TrendGates = cleanr.TrendGateConfig{
 		Preset: firstNonEmpty(options.TrendGatePreset, "moderate"),
 	}
+	applyStarterProfile(&cfg, options)
 	applyStarterIntegrations(&cfg, options)
 
 	return cfg
@@ -674,6 +704,7 @@ func starterAgentConfig(provider profilepkg.Provider, agentName, systemPrompt, u
 	cfg.Target.Name = slug
 	cfg.Suites.Drift.BaselineFile = filepath.Join("snapshots", slug+".snapshots.yaml")
 	cfg.Reporting.TrendFile = filepath.Join("reports", slug+".trends.yaml")
+	applyStarterProfile(&cfg, options)
 	applyStarterIntegrations(&cfg, options)
 	cfg.Scenarios = []cleanr.Scenario{
 		{
@@ -691,6 +722,161 @@ func starterAgentConfig(provider profilepkg.Provider, agentName, systemPrompt, u
 		},
 	}
 	return cfg
+}
+
+func normalizeStarterProfile(value string) string {
+	return strings.ToLower(strings.TrimSpace(value))
+}
+
+func isValidStarterProfile(value string) bool {
+	switch normalizeStarterProfile(value) {
+	case "", profilePR, profileMain, profileRelease:
+		return true
+	default:
+		return false
+	}
+}
+
+func applyStarterProfile(cfg *cleanr.Config, options starterConfigOptions) {
+	switch options.Profile {
+	case profilePR:
+		cfg.Suites.Load = cleanr.LoadConfig{}
+		cfg.Suites.Chaos = cleanr.ChaosConfig{}
+		cfg.Suites.ReleasePolicy = cleanr.ReleasePolicyConfig{}
+		cfg.Suites.Drift = cleanr.DriftConfig{
+			Enabled:                     true,
+			Iterations:                  2,
+			MaxNormalizedDrift:          0.22,
+			MaxSemanticDrift:            0.16,
+			MaxSnapshotDrift:            0.12,
+			MaxSemanticSnapshotDrift:    0.10,
+			BaselineFile:                defaultBaselinePath(cfg.Target.Name),
+			StableTags:                  []string{"stable"},
+			MinConsistencyScore:         0.78,
+			MinSemanticConsistencyScore: 0.84,
+		}
+		cfg.Suites.TokenOptimization = cleanr.TokenOptimizationConfig{
+			Enabled:                     true,
+			MaxInputTokens:              700,
+			MaxOutputTokens:             220,
+			MaxTotalTokens:              850,
+			MaxOutputInputRatio:         1.1,
+			MaxPromptDuplicationRatio:   0.18,
+			MaxResponseDuplicationRatio: 0.12,
+			SuggestedMaxOutputTokens:    160,
+		}
+		cfg.Reporting.TrendFile = defaultTrendPath(cfg.Target.Name)
+		cfg.Reporting.ReplayArtifactFile = defaultReplayPath(cfg.Target.Name)
+		cfg.Reporting.TrendLimit = 20
+		cfg.Reporting.TrendGates = cleanr.TrendGateConfig{Preset: firstNonEmpty(options.TrendGatePreset, "exploratory")}
+	case profileMain:
+		cfg.Suites.Load = cleanr.LoadConfig{}
+		cfg.Suites.Chaos = cleanr.ChaosConfig{}
+		cfg.Suites.ReleasePolicy = cleanr.ReleasePolicyConfig{}
+		cfg.Suites.Drift = cleanr.DriftConfig{
+			Enabled:                     true,
+			Iterations:                  3,
+			MaxNormalizedDrift:          0.24,
+			MaxSemanticDrift:            0.18,
+			MaxSnapshotDrift:            0.14,
+			MaxSemanticSnapshotDrift:    0.12,
+			BaselineFile:                defaultBaselinePath(cfg.Target.Name),
+			StableTags:                  []string{"stable"},
+			MinConsistencyScore:         0.76,
+			MinSemanticConsistencyScore: 0.82,
+		}
+		cfg.Suites.TokenOptimization = cleanr.TokenOptimizationConfig{
+			Enabled:                     true,
+			MaxInputTokens:              700,
+			MaxOutputTokens:             240,
+			MaxTotalTokens:              880,
+			MaxOutputInputRatio:         1.2,
+			MaxPromptDuplicationRatio:   0.18,
+			MaxResponseDuplicationRatio: 0.12,
+			SuggestedMaxOutputTokens:    180,
+		}
+		cfg.Reporting.TrendFile = defaultTrendPath(cfg.Target.Name)
+		cfg.Reporting.ReplayArtifactFile = defaultReplayPath(cfg.Target.Name)
+		cfg.Reporting.TrendLimit = 30
+		cfg.Reporting.TrendGates = cleanr.TrendGateConfig{Preset: firstNonEmpty(options.TrendGatePreset, "moderate")}
+	case profileRelease:
+		cfg.Suites.Load = cleanr.LoadConfig{
+			Enabled:         true,
+			VirtualUsers:    8,
+			RequestsPerUser: 8,
+			MaxErrorRatePct: 5,
+			P95LatencyMS:    2500,
+		}
+		cfg.Suites.Chaos = cleanr.ChaosConfig{
+			Enabled:      true,
+			Faults:       []string{"tight_deadline", "context_overflow", "duplicate_turn"},
+			TimeoutScale: 0.35,
+			NoiseBytes:   1200,
+			MaxErrorRate: 35,
+		}
+		cfg.Suites.Drift = cleanr.DriftConfig{
+			Enabled:                     true,
+			Iterations:                  4,
+			MaxNormalizedDrift:          0.28,
+			MaxSemanticDrift:            0.20,
+			MaxSnapshotDrift:            0.16,
+			MaxSemanticSnapshotDrift:    0.14,
+			BaselineFile:                defaultBaselinePath(cfg.Target.Name),
+			StableTags:                  []string{"stable"},
+			MinConsistencyScore:         0.72,
+			MinSemanticConsistencyScore: 0.80,
+		}
+		cfg.Suites.TokenOptimization = cleanr.TokenOptimizationConfig{
+			Enabled:                     true,
+			MaxInputTokens:              700,
+			MaxOutputTokens:             260,
+			MaxTotalTokens:              900,
+			MaxOutputInputRatio:         1.2,
+			MaxPromptDuplicationRatio:   0.18,
+			MaxResponseDuplicationRatio: 0.12,
+			SuggestedMaxOutputTokens:    180,
+		}
+		cfg.Suites.ReleasePolicy = defaultReleasePolicyConfig()
+		cfg.Reporting.TrendFile = defaultTrendPath(cfg.Target.Name)
+		cfg.Reporting.ReplayArtifactFile = defaultReplayPath(cfg.Target.Name)
+		cfg.Reporting.TrendLimit = 30
+		cfg.Reporting.TrendGates = cleanr.TrendGateConfig{Preset: firstNonEmpty(options.TrendGatePreset, "moderate")}
+		cfg.Governance.Attestation = cleanr.AttestationConfig{
+			Enabled: true,
+			Output:  defaultAttestationPath(cfg.Target.Name),
+			KeyEnv:  firstNonEmpty(options.AttestationKeyEnv, defaultAttestationKeyEnv),
+			KeyID:   firstNonEmpty(options.AttestationKeyID, defaultAttestationKeyID),
+		}
+	}
+}
+
+func defaultBaselinePath(targetName string) string {
+	return filepath.Join("snapshots", targetName+".snapshots.yaml")
+}
+
+func defaultTrendPath(targetName string) string {
+	return filepath.Join("reports", targetName+".trends.yaml")
+}
+
+func defaultReplayPath(targetName string) string {
+	return filepath.Join("reports", targetName+".replay.json")
+}
+
+func defaultAttestationPath(targetName string) string {
+	return filepath.Join("reports", targetName+".attestation.json")
+}
+
+func defaultReleasePolicyConfig() cleanr.ReleasePolicyConfig {
+	return cleanr.ReleasePolicyConfig{
+		Enabled: true,
+		Rules: []cleanr.PolicyRule{
+			{Type: "tool", Mode: "allow", Tools: []string{"lookup_customer", "draft_email", "run_sql"}},
+			{Type: "tool", Mode: "read_only", Tools: []string{"run_sql"}},
+			{Type: "state_change", Mode: "allow", StateKinds: []string{"email", "ticket"}, StateActions: []string{"draft", "update"}},
+			{Type: "sink", Mode: "approved_only", ApprovedTools: []string{"draft_email"}},
+			{Type: "trust", Mode: "deny", Trusts: []string{"untrusted"}, Tools: []string{"send_email"}},
+		},
+	}
 }
 
 func applyStarterIntegrations(cfg *cleanr.Config, options starterConfigOptions) {

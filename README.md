@@ -73,6 +73,14 @@ For an interactive local setup flow, use:
 ./dist/cleanr trends -config cleanr.yaml
 ```
 
+For staged CI profiles, use:
+
+```bash
+./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output cleanr-pr.yaml
+./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output cleanr-main.yaml
+./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output cleanr-release.yaml
+```
+
 ### SDK
 
 Use the root module path for embedding:

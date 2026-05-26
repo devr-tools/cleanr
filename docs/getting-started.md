@@ -24,6 +24,14 @@ For CI-safe config generation:
 cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
 ```
 
+For staged pipeline scaffolding:
+
+```bash
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output cleanr-pr.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output cleanr-main.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output cleanr-release.yaml
+```
+
 If you prefer to start from checked-in examples instead of the setup flow, use one of:
 
 - `examples/openai-responses.yaml`

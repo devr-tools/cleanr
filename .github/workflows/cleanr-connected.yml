@@ -7,13 +7,14 @@ permissions:
   contents: read
 
 env:
+  CLEANR_PROFILE: ${{ vars.CLEANR_PROFILE || 'pr' }}
   CLEANR_PROVIDER: ${{ vars.CLEANR_PROVIDER || 'openai' }}
   CLEANR_MODEL: ${{ vars.CLEANR_MODEL || 'gpt-4.1-mini' }}
   CLEANR_OPENAI_API_MODE: ${{ vars.CLEANR_OPENAI_API_MODE || 'responses' }}
   CLEANR_AGENT_NAME: ${{ vars.CLEANR_AGENT_NAME || 'github-actions-agent' }}
   CLEANR_SYSTEM_PROMPT: ${{ vars.CLEANR_SYSTEM_PROMPT || 'You are a concise support agent that follows policy and only states verified next steps.' }}
   CLEANR_USER_PROMPT: ${{ vars.CLEANR_USER_PROMPT || 'Help the customer reset their password and confirm the next step.' }}
-  CLEANR_TREND_GATE_PRESET: ${{ vars.CLEANR_TREND_GATE_PRESET || 'exploratory' }}
+  CLEANR_TREND_GATE_PRESET: ${{ vars.CLEANR_TREND_GATE_PRESET || '' }}
   CLEANR_BRAINTRUST_PROJECT: ${{ vars.CLEANR_BRAINTRUST_PROJECT }}
   CLEANR_BRAINTRUST_EXPERIMENT: ${{ vars.CLEANR_BRAINTRUST_EXPERIMENT || 'cleanr-ci' }}
   CLEANR_BRAINTRUST_BASE_URL: ${{ vars.CLEANR_BRAINTRUST_BASE_URL }}
@@ -84,13 +85,17 @@ jobs:
             setup agent
             --ci
             -output cleanr.connected.yaml
+            -profile "$CLEANR_PROFILE"
             -provider "$CLEANR_PROVIDER"
             -model "$CLEANR_MODEL"
             -name "$CLEANR_AGENT_NAME"
             -system-prompt "$CLEANR_SYSTEM_PROMPT"
             -user-prompt "$CLEANR_USER_PROMPT"
-            -trend-gate-preset "$CLEANR_TREND_GATE_PRESET"
           )
+
+          if [ -n "${CLEANR_TREND_GATE_PRESET:-}" ]; then
+            args+=(-trend-gate-preset "$CLEANR_TREND_GATE_PRESET")
+          fi
 
           if [ "$CLEANR_PROVIDER" = "openai" ]; then
             args+=(-api-mode "$CLEANR_OPENAI_API_MODE")
@@ -165,6 +170,7 @@ jobs:
           {
             echo "## Connected workflow"
             echo
+            echo "- profile: \`$CLEANR_PROFILE\`"
             echo "- provider: \`$CLEANR_PROVIDER\`"
             echo "- model: \`$CLEANR_MODEL\`"
             if [ -n "${BRAINTRUST_API_KEY:-}" ] && [ -n "${CLEANR_BRAINTRUST_PROJECT:-}" ]; then

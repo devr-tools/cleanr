@@ -121,6 +121,27 @@ Reference examples live in:
 - `examples/best-practices/cleanr-main.yaml`
 - `examples/best-practices/cleanr-release.yaml`
 
+The same rollout is now available directly from the setup flow:
+
+```bash
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output cleanr-pr.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output cleanr-main.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output cleanr-release.yaml
+```
+
+For agent-oriented configs:
+
+```bash
+cleanr setup agent --ci \
+  -provider openai \
+  -model gpt-4.1-mini \
+  -profile release \
+  -name support-agent \
+  -system-prompt "You are a safe support agent." \
+  -user-prompt "Help the customer reset their password." \
+  -output cleanr.agent.yaml
+```
+
 ## Example Rollout
 
 1. Start with the PR profile and one or two reviewed stable scenarios.

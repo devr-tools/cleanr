@@ -139,6 +139,45 @@ func TestSetupCommandSupportsExploratoryTrendGatePreset(t *testing.T) {
 	}
 }
 
+func TestSetupCommandCIModePRProfileAppliesLightweightDefaults(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup",
+		"--ci",
+		"-output", configPath,
+		"-provider", "openai",
+		"-model", "gpt-4.1-mini",
+		"-profile", "pr",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if cfg.Suites.Load.Enabled || cfg.Suites.Chaos.Enabled {
+		t.Fatalf("expected pr profile to disable load and chaos, got %+v", cfg.Suites)
+	}
+	if !cfg.Suites.Drift.Enabled || cfg.Suites.Drift.Iterations != 2 {
+		t.Fatalf("expected pr profile light drift, got %+v", cfg.Suites.Drift)
+	}
+	if cfg.Suites.Drift.BaselineFile != filepath.Join("snapshots", "openai-responses.snapshots.yaml") {
+		t.Fatalf("unexpected pr baseline path: %s", cfg.Suites.Drift.BaselineFile)
+	}
+	if cfg.Reporting.TrendGates.Preset != "exploratory" {
+		t.Fatalf("expected pr profile exploratory gates, got %+v", cfg.Reporting.TrendGates)
+	}
+	if cfg.Reporting.ReplayArtifactFile != filepath.Join("reports", "openai-responses.replay.json") {
+		t.Fatalf("unexpected pr replay path: %s", cfg.Reporting.ReplayArtifactFile)
+	}
+}
+
 func TestSetupCommandCIModeWritesConfigWithoutProfile(t *testing.T) {
 	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
 	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
@@ -168,6 +207,28 @@ func TestSetupCommandCIModeWritesConfigWithoutProfile(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "wrote CI starter config") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestSetupCommandRejectsInvalidProfile(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup",
+		"--ci",
+		"-output", configPath,
+		"-provider", "openai",
+		"-model", "gpt-4.1-mini",
+		"-profile", "bad-profile",
+	}, &stdout, &stderr)
+	if exitCode != 2 {
+		t.Fatalf("expected exit code 2, got %d, stderr=%s", exitCode, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "profile must be one of pr, main, or release") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
 	}
 }
 
@@ -287,6 +348,45 @@ func TestSetupAgentCommandCIModeUsesFlags(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "wrote CI agent config") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestSetupAgentCommandCIModeReleaseProfileAppliesHeavyweightDefaults(t *testing.T) {
+	t.Setenv("CLEANR_HOME", filepath.Join(t.TempDir(), "state"))
+	configPath := filepath.Join(t.TempDir(), "cleanr.agent.yaml")
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"setup", "agent",
+		"--ci",
+		"-output", configPath,
+		"-provider", "openai",
+		"-model", "gpt-4.1-mini",
+		"-system-prompt", "You are a safe support agent.",
+		"-user-prompt", "Reset the password and confirm the email.",
+		"-name", "support-agent",
+		"-profile", "release",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	cfg, err := cleanr.LoadConfigFile(configPath)
+	if err != nil {
+		t.Fatalf("load generated config: %v", err)
+	}
+	if !cfg.Suites.Load.Enabled || !cfg.Suites.Chaos.Enabled {
+		t.Fatalf("expected release profile to enable load and chaos, got %+v", cfg.Suites)
+	}
+	if !cfg.Suites.ReleasePolicy.Enabled || len(cfg.Suites.ReleasePolicy.Rules) == 0 {
+		t.Fatalf("expected release profile release policy, got %+v", cfg.Suites.ReleasePolicy)
+	}
+	if cfg.Reporting.ReplayArtifactFile != filepath.Join("reports", "support-agent.replay.json") {
+		t.Fatalf("unexpected release replay path: %s", cfg.Reporting.ReplayArtifactFile)
+	}
+	if !cfg.Governance.Attestation.Enabled || cfg.Governance.Attestation.Output != filepath.Join("reports", "support-agent.attestation.json") {
+		t.Fatalf("expected release profile attestation, got %+v", cfg.Governance.Attestation)
 	}
 }
 

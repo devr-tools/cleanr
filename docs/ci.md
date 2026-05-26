@@ -106,6 +106,31 @@ This repository already ships with:
 
 Release and branch-publishing details live in [release-automation.md](release-automation.md).
 
+## Local Parity
+
+Use `make ci` before committing when you want a local approximation of `.github/workflows/ci.yml`.
+
+It runs the same main gates locally: test presence, formatting, `go vet`, `gocyclo`, `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
+
+The local command compares your working tree against a Git base ref. Resolution order is:
+
+- `CLEANR_CI_BASE_REF`
+- `PR_BASE_REF`
+- the current branch upstream, such as `origin/main`
+- common fallbacks like `origin/develop`, `origin/main`, `origin/master`
+
+You can override it explicitly:
+
+```bash
+make ci CI_BASE_REF=origin/develop
+```
+
+Install or make available these local dependencies if you want full parity:
+
+- Go toolchain from `go.mod`
+- network access for `go install` of `gocyclo` and `govulncheck`
+- `semgrep` on your `PATH`
+
 ## Connected Secrets Workflow
 
 Use `.github/workflows/cleanr-connected.yml` when you want a repo owner to wire credentials once and immediately run a provider-backed `cleanr` job.
@@ -122,6 +147,7 @@ The workflow expects a small fixed contract:
   - `CLEANR_RESULTS_WEBHOOK_TOKEN`
   - `CLEANR_ATTESTATION_KEY`
 - Repository variables:
+  - `CLEANR_PROFILE`
   - `CLEANR_PROVIDER`
   - `CLEANR_MODEL`
   - `CLEANR_OPENAI_API_MODE`
@@ -158,6 +184,12 @@ cleanr setup agent --ci \
 ```
 
 That generated config points to standard env var names instead of embedding credentials, so a user can set secrets once and run without editing the config.
+
+`cleanr-connected.yml` also supports staged setup profiles via `CLEANR_PROFILE`:
+
+- `pr`: light drift, security, token optimization, exploratory trend gates
+- `main`: retained trend history and moderate trend gates
+- `release`: full drift, load, chaos, replay artifacts, attestation, and starter `release_policy` rules
 
 ## Related Docs
 

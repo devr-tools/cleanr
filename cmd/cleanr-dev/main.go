@@ -34,6 +34,32 @@ func run(args []string) int {
 			return 1
 		}
 		return 0
+	case "ci":
+		fs := flag.NewFlagSet("ci", flag.ContinueOnError)
+		fs.SetOutput(os.Stderr)
+		baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
+		buildOutput := fs.String("build-output", "dist/cleanr-linux-amd64", "Output path for the Linux amd64 snapshot build")
+		govulncheckMode := fs.String("govulncheck-mode", "", "govulncheck mode: required or off")
+		govulncheckVersion := fs.String("govulncheck-version", "", "govulncheck version to install")
+		gocycloVersion := fs.String("gocyclo-version", "", "gocyclo version to install")
+		minCoverage := fs.Float64("min-internal-coverage", 0, "Minimum internal coverage percentage")
+		semgrepCommand := fs.String("semgrep-command", "", "Semgrep executable name or path")
+		if err := fs.Parse(args[1:]); err != nil {
+			return 2
+		}
+		if err := runner.CI(ctx, devtools.CIOptions{
+			BaseRef:             *baseRef,
+			BuildOutput:         *buildOutput,
+			GovulncheckMode:     *govulncheckMode,
+			GovulncheckVersion:  *govulncheckVersion,
+			GocycloVersion:      *gocycloVersion,
+			MinInternalCoverage: *minCoverage,
+			SemgrepCommand:      *semgrepCommand,
+		}); err != nil {
+			_, _ = fmt.Fprintf(os.Stderr, "ci failed: %v\n", err)
+			return 1
+		}
+		return 0
 	case "fmt":
 		if err := runner.Format(ctx); err != nil {
 			_, _ = fmt.Fprintf(os.Stderr, "fmt failed: %v\n", err)
@@ -143,5 +169,5 @@ func run(args []string) int {
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
 }
