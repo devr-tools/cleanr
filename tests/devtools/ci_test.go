@@ -1,11 +1,15 @@
 package tests
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"context"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -179,6 +183,41 @@ func TestDevtoolsCIFailsOnNewGolangCIIssue(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCIGolangCILintFallsBackToPrebuiltBinary(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/golangci-fallback")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n\nconst golangciFallback = true\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	t.Setenv("GOLANGCI_LINT_INSTALL_ERROR", "go.mod:6: invalid go version '1.25.0': must match format 1.23\ngo.mod:8: unknown block type: ignore")
+	archivePath := filepath.Join(repo, "golangci-lint.tar.gz")
+	if err := os.WriteFile(archivePath, buildGolangCILintTarGz(t), 0o644); err != nil {
+		t.Fatalf("write golangci-lint archive: %v", err)
+	}
+	t.Setenv("CLEANR_GOLANGCI_LINT_ARCHIVE_PATH", archivePath)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CIGolangCILint(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected fallback download to succeed, got %v\n%s", err, stdout.String())
+	}
+
+	logData, err := os.ReadFile(filepath.Join(repo, ".golangci-lint.log"))
+	if err != nil {
+		t.Fatalf("read golangci-lint log: %v", err)
+	}
+	logText := string(logData)
+	if !strings.Contains(logText, "--new-from-rev") || !strings.Contains(logText, "--whole-files") {
+		t.Fatalf("unexpected golangci-lint args: %s", logText)
+	}
+	if !strings.Contains(stdout.String(), "falling back to prebuilt golangci-lint binary") {
+		t.Fatalf("expected fallback message, got: %s", stdout.String())
+	}
+}
+
 func initGitRepo(t *testing.T, branch string) string {
 	t.Helper()
 
@@ -310,6 +349,10 @@ EOF
         exit 0
         ;;
       github.com/golangci/golangci-lint/v2/cmd/golangci-lint@*)
+        if [ -n "$GOLANGCI_LINT_INSTALL_ERROR" ]; then
+          printf '%s\n' "$GOLANGCI_LINT_INSTALL_ERROR" >&2
+          exit 1
+        fi
         cat > "$FAKE_GOPATH/bin/golangci-lint" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" >> "$GOLANGCI_LINT_LOG"
@@ -380,4 +423,35 @@ esac
 
 exit 0
 `
+}
+
+func buildGolangCILintTarGz(t *testing.T) []byte {
+	t.Helper()
+
+	var buf bytes.Buffer
+	gzw := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gzw)
+	files := map[string]string{
+		fmt.Sprintf("golangci-lint-2.12.2-%s-%s/LICENSE", runtime.GOOS, runtime.GOARCH):       "license text",
+		fmt.Sprintf("golangci-lint-2.12.2-%s-%s/golangci-lint", runtime.GOOS, runtime.GOARCH): "#!/bin/sh\nprintf '%s\\n' \"$*\" >> \"$GOLANGCI_LINT_LOG\"\nif [ -n \"$GOLANGCI_LINT_OUTPUT\" ]; then\n  printf '%s\\n' \"$GOLANGCI_LINT_OUTPUT\"\nfi\nexit \"${GOLANGCI_LINT_EXIT:-0}\"\n",
+	}
+	for name, contents := range files {
+		if err := tw.WriteHeader(&tar.Header{
+			Name: name,
+			Mode: 0o755,
+			Size: int64(len(contents)),
+		}); err != nil {
+			t.Fatalf("write tar header for %s: %v", name, err)
+		}
+		if _, err := tw.Write([]byte(contents)); err != nil {
+			t.Fatalf("write tar contents for %s: %v", name, err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatalf("close tar writer: %v", err)
+	}
+	if err := gzw.Close(); err != nil {
+		t.Fatalf("close gzip writer: %v", err)
+	}
+	return buf.Bytes()
 }

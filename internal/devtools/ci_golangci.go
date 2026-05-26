@@ -13,6 +13,9 @@ import (
 	"strings"
 )
 
+const golangciLintReleaseBaseURLEnv = "CLEANR_GOLANGCI_LINT_RELEASE_BASE_URL"
+const golangciLintArchivePathEnv = "CLEANR_GOLANGCI_LINT_ARCHIVE_PATH"
+
 func (r Runner) runCIGolangCILint(ctx context.Context, baseRef, version string) error {
 	golangciLintPath, err := r.ensureGolangCILint(ctx, version)
 	if err != nil {
@@ -72,7 +75,7 @@ func (r Runner) ensureGolangCILint(ctx context.Context, version string) (string,
 	if _, err := fmt.Fprintf(r.Stdout, "installing golangci-lint %s\n", version); err != nil {
 		return "", err
 	}
-	if err := r.runCommand(ctx, nil, "go", "install", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"+version); err == nil {
+	if _, err := r.runOutputCommand(ctx, nil, "go", "install", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"+version); err == nil {
 		return toolPath, nil
 	} else if !shouldFallbackToPrebuiltGolangCILint(err) {
 		return "", err
@@ -98,12 +101,21 @@ func shouldFallbackToPrebuiltGolangCILint(err error) bool {
 }
 
 func (r Runner) downloadGolangCILint(ctx context.Context, toolPath, version string) error {
+	if archivePath := strings.TrimSpace(os.Getenv(golangciLintArchivePathEnv)); archivePath != "" {
+		return installGolangCILintFromArchivePath(archivePath, toolPath)
+	}
+
 	versionTag := strings.TrimPrefix(strings.TrimSpace(version), "v")
 	if versionTag == "" {
 		return fmt.Errorf("empty golangci-lint version")
 	}
+	baseURL := strings.TrimSpace(os.Getenv(golangciLintReleaseBaseURLEnv))
+	if baseURL == "" {
+		baseURL = "https://github.com/golangci/golangci-lint/releases/download"
+	}
 	archiveURL := fmt.Sprintf(
-		"https://github.com/golangci/golangci-lint/releases/download/v%s/golangci-lint-%s-%s-%s.tar.gz",
+		"%s/v%s/golangci-lint-%s-%s-%s.tar.gz",
+		strings.TrimRight(baseURL, "/"),
 		versionTag,
 		versionTag,
 		runtime.GOOS,
@@ -129,6 +141,32 @@ func (r Runner) downloadGolangCILint(ctx context.Context, toolPath, version stri
 	}
 	tmpPath := toolPath + ".tmp"
 	if err := extractGolangCILintBinary(resp.Body, tmpPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return err
+	}
+	if err := os.Chmod(tmpPath, 0o755); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("chmod golangci-lint binary: %w", err)
+	}
+	if err := os.Rename(tmpPath, toolPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return fmt.Errorf("install golangci-lint binary: %w", err)
+	}
+	return nil
+}
+
+func installGolangCILintFromArchivePath(archivePath, toolPath string) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return fmt.Errorf("open golangci-lint archive %s: %w", archivePath, err)
+	}
+	defer f.Close()
+
+	if err := os.MkdirAll(filepath.Dir(toolPath), 0o755); err != nil {
+		return fmt.Errorf("create golangci-lint bin dir: %w", err)
+	}
+	tmpPath := toolPath + ".tmp"
+	if err := extractGolangCILintBinary(f, tmpPath); err != nil {
 		_ = os.Remove(tmpPath)
 		return err
 	}
