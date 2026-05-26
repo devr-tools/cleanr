@@ -40,12 +40,17 @@ jobs:
         run: |
           set -euo pipefail
 
-          version="$(sed -n 's/^const Number = "\(.*\)"/\1/p' internal/version/version.go)"
+          version="$(awk -F'\"' '/^const Number = / { print $2; exit }' internal/version/version.go)"
           archive_path="$RUNNER_TEMP/cleanr-src.tar.gz"
           tap_dir="$RUNNER_TEMP/homebrew-tap"
           formula_path="$RUNNER_TEMP/homebrew-tap/Formula/cleanr.rb"
           git archive --format=tar.gz --output "$archive_path" HEAD
           sha256="$(shasum -a 256 "$archive_path" | awk '{print $1}')"
+
+          if [ -z "$version" ]; then
+            echo "failed to extract cleanr version from internal/version/version.go"
+            exit 1
+          fi
 
           cat > "$formula_path" <<EOF
           class Cleanr < Formula
