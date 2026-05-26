@@ -4,8 +4,8 @@ import (
 	"context"
 	"encoding/json"
 
-	"cleanr/cleanr"
-	"cleanr/internal/mcpserver/toolkit"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/mcpserver/toolkit"
 )
 
 func RunDefinition() toolkit.Definition {

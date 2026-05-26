@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"cleanr/cleanr"
-	"cleanr/internal/cli"
-	"cleanr/internal/testutil"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/cli"
+	"github.com/devr-tools/cleanr/internal/testutil"
 )
 
 func TestAnthropicTargetParsesMessagesAPIUsage(t *testing.T) {

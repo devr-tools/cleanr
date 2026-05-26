@@ -14,9 +14,9 @@ import (
 	"testing"
 	"time"
 
-	"cleanr/cleanr"
-	"cleanr/internal/cli"
-	"cleanr/internal/testutil"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/cli"
+	"github.com/devr-tools/cleanr/internal/testutil"
 )
 
 type cliRoundTripperFunc func(*http.Request) (*http.Response, error)

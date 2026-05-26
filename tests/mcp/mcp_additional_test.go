@@ -9,8 +9,8 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
-	"cleanr/internal/mcpserver"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/mcpserver"
 )
 
 type errReader struct{}

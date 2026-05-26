@@ -3,7 +3,7 @@ package main
 import (
 	"os"
 
-	"cleanr/internal/cli"
+	"github.com/devr-tools/cleanr/internal/cli"
 )
 
 func main() {

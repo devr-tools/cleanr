@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 type LoadEngine struct{}

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/internal/mcpserver"
-	toolspkg "cleanr/internal/mcpserver/tools"
+	"github.com/devr-tools/cleanr/internal/mcpserver"
+	toolspkg "github.com/devr-tools/cleanr/internal/mcpserver/tools"
 )
 
 func TestMCPServerAdditionalRequestBranches(t *testing.T) {

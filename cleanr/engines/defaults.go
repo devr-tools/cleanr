@@ -1,6 +1,6 @@
 package engines
 
-import "cleanr/cleanr/core"
+import "github.com/devr-tools/cleanr/cleanr/core"
 
 func Default(cfg core.Config) []core.Engine {
 	var out []core.Engine

@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cleanr/cleanr"
+	"github.com/devr-tools/cleanr/cleanr"
 )
 
 func intPtr(v int) *int { return &v }

@@ -11,7 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 	"gopkg.in/yaml.v3"
 )
 

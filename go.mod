@@ -1,4 +1,4 @@
-module cleanr
+module github.com/devr-tools/cleanr
 
 go 1.20
 

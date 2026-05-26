@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/internal/devtools"
+	"github.com/devr-tools/cleanr/internal/devtools"
 )
 
 func TestDevtoolsHomebrewValidationErrors(t *testing.T) {

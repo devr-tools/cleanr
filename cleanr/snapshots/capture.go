@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func Capture(ctx context.Context, cfg core.Config, target core.Target) (File, error) {

@@ -11,8 +11,8 @@ import (
 	"strconv"
 	"strings"
 
-	"cleanr/cleanr"
-	profilepkg "cleanr/cleanr/profile"
+	"github.com/devr-tools/cleanr/cleanr"
+	profilepkg "github.com/devr-tools/cleanr/cleanr/profile"
 )
 
 const (

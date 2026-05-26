@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 const defaultPostHogBaseURL = "https://us.i.posthog.com"

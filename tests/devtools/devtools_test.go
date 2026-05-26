@@ -8,7 +8,7 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/internal/devtools"
+	"github.com/devr-tools/cleanr/internal/devtools"
 )
 
 func TestDevtoolsGoFileLayoutAndFormatting(t *testing.T) {
@@ -110,7 +110,7 @@ exit 0
 	}
 
 	badRepo := t.TempDir()
-	mustWriteFile(t, filepath.Join(badRepo, "bad.go"), "package bad\n")
+	mustWriteFile(t, filepath.Join(badRepo, "misc", "bad.go"), "package bad\n")
 	badRunner := devtools.NewRunner(badRepo, &stdout, &stdout)
 	if err := badRunner.CheckGoFiles(); err == nil || !strings.Contains(err.Error(), "unexpected Go file location") {
 		t.Fatalf("expected layout error, got %v", err)
@@ -125,7 +125,7 @@ func TestDevtoolsHomebrewFormula(t *testing.T) {
 	runner := devtools.NewRunner(repo, &stdout, &stdout)
 	if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
 		Version:      tag,
-		Repository:   "alxxjohn/cleanr",
+		Repository:   "devr-tools/cleanr",
 		SourceSHA256: "eeee5555",
 		License:      "MIT",
 		Output:       "dist/homebrew/cleanr.rb",
@@ -139,13 +139,13 @@ func TestDevtoolsHomebrewFormula(t *testing.T) {
 		t.Fatalf("read formula: %v", err)
 	}
 	formula := string(data)
-	if !strings.Contains(formula, `homepage "https://github.com/alxxjohn/cleanr"`) {
+	if !strings.Contains(formula, `homepage "https://github.com/devr-tools/cleanr"`) {
 		t.Fatalf("formula missing homepage: %s", formula)
 	}
 	if !strings.Contains(formula, `version "1.2.3"`) {
 		t.Fatalf("formula missing version: %s", formula)
 	}
-	if !strings.Contains(formula, `url "https://github.com/alxxjohn/cleanr/archive/refs/tags/v1.2.3.tar.gz"`) {
+	if !strings.Contains(formula, `url "https://github.com/devr-tools/cleanr/archive/refs/tags/v1.2.3.tar.gz"`) {
 		t.Fatalf("formula missing source url: %s", formula)
 	}
 	if !strings.Contains(formula, `sha256 "eeee5555"`) {
@@ -166,7 +166,7 @@ func TestDevtoolsHomebrewFormula(t *testing.T) {
 
 	if err := runner.HomebrewFormula(devtools.HomebrewFormulaOptions{
 		Version:    tag,
-		Repository: "alxxjohn/cleanr",
+		Repository: "devr-tools/cleanr",
 		Output:     "dist/homebrew/missing.rb",
 	}); err == nil {
 		t.Fatalf("expected missing source SHA error")

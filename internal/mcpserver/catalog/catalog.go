@@ -3,7 +3,7 @@ package catalog
 import (
 	"context"
 
-	"cleanr/internal/mcpserver/toolkit"
+	"github.com/devr-tools/cleanr/internal/mcpserver/toolkit"
 )
 
 func SuiteDefinition() toolkit.Definition {

@@ -5,14 +5,14 @@ import (
 	"io"
 	"net/http"
 
-	adapterspkg "cleanr/cleanr/adapters"
-	attestpkg "cleanr/cleanr/attest"
-	configpkg "cleanr/cleanr/config"
-	"cleanr/cleanr/core"
-	integrationspkg "cleanr/cleanr/integrations"
-	reportpkg "cleanr/cleanr/report"
-	snapshotspkg "cleanr/cleanr/snapshots"
-	trendspkg "cleanr/cleanr/trends"
+	adapterspkg "github.com/devr-tools/cleanr/cleanr/adapters"
+	attestpkg "github.com/devr-tools/cleanr/cleanr/attest"
+	configpkg "github.com/devr-tools/cleanr/cleanr/config"
+	"github.com/devr-tools/cleanr/cleanr/core"
+	integrationspkg "github.com/devr-tools/cleanr/cleanr/integrations"
+	reportpkg "github.com/devr-tools/cleanr/cleanr/report"
+	snapshotspkg "github.com/devr-tools/cleanr/cleanr/snapshots"
+	trendspkg "github.com/devr-tools/cleanr/cleanr/trends"
 )
 
 type Config = core.Config

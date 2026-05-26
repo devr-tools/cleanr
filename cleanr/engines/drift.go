@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"time"
 
-	"cleanr/cleanr/core"
-	snapshotspkg "cleanr/cleanr/snapshots"
+	"github.com/devr-tools/cleanr/cleanr/core"
+	snapshotspkg "github.com/devr-tools/cleanr/cleanr/snapshots"
 )
 
 type DriftEngine struct{}

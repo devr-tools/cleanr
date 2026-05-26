@@ -1,0 +1,6 @@
+.git
+.gocache
+dist
+coverage.out
+cleanr-dev
+reports

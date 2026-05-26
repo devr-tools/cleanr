@@ -8,8 +8,8 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
-	"cleanr/internal/devtools"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/devtools"
 )
 
 func TestDevtoolsReportSupportsPresetsAndInputFiles(t *testing.T) {

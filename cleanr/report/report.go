@@ -6,7 +6,7 @@ import (
 	"io"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func Write(w io.Writer, report core.Report, format string) error {

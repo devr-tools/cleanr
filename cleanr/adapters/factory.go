@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"net/http"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func NewTargetFromConfig(cfg core.TargetConfig, client *http.Client) core.Target {

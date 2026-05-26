@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func RenderAnalysisText(analysis Analysis) string {

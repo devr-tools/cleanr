@@ -10,8 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"cleanr/cleanr"
-	adapterspkg "cleanr/cleanr/adapters"
+	"github.com/devr-tools/cleanr/cleanr"
+	adapterspkg "github.com/devr-tools/cleanr/cleanr/adapters"
 )
 
 type invalidJSONValue struct{}

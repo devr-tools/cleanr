@@ -3,7 +3,7 @@ package trends
 import (
 	"math"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func buildSuite(suite core.SuiteResult) HistorySuite {

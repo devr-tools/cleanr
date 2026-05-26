@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr/core"
-	trendspkg "cleanr/cleanr/trends"
+	"github.com/devr-tools/cleanr/cleanr/core"
+	trendspkg "github.com/devr-tools/cleanr/cleanr/trends"
 )
 
 const defaultBraintrustBaseURL = "https://api.braintrust.dev"

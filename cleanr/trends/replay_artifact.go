@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 	"gopkg.in/yaml.v3"
 )
 

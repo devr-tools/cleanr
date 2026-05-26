@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	"cleanr/cleanr"
-	"cleanr/internal/mcpserver/toolkit"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/mcpserver/toolkit"
 )
 
 func ExampleConfigDefinition() toolkit.Definition {

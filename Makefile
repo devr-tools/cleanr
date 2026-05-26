@@ -1,6 +1,6 @@
 GO ?= go
 VERSION ?= dev
-REPOSITORY ?= alxxjohn/cleanr
+REPOSITORY ?= devr-tools/cleanr
 SOURCE_SHA256 ?=
 HOMEBREW_LICENSE ?=
 GOCACHE ?= $(CURDIR)/.gocache

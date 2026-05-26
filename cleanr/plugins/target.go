@@ -3,7 +3,7 @@ package plugins
 import (
 	"context"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 type Target struct {

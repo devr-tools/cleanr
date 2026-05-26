@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func suiteSummaryText(suite core.SuiteResult) string {

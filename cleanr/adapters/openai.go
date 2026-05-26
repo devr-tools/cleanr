@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr/core"
-	profilepkg "cleanr/cleanr/profile"
+	"github.com/devr-tools/cleanr/cleanr/core"
+	profilepkg "github.com/devr-tools/cleanr/cleanr/profile"
 )
 
 type OpenAI struct {

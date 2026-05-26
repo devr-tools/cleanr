@@ -1,8 +1,29 @@
-# Homebrew Core Prep
+# Homebrew Packaging
 
-This repository is prepared to generate a Homebrew formula shaped for `homebrew/core`.
+`cleanr` now has two Homebrew-related paths:
 
-The generated formula now:
+- stable-release automation that updates `Formula/cleanr.rb` in `devr-tools/homebrew-tap`
+- a local generator for producing a source-build formula suitable as a starting point for `homebrew/core`
+
+The repository also has a pull-request Homebrew validation workflow at `.github/workflows/homebrew-validation.yml`. That workflow generates a temporary `Formula/cleanr.rb` from the current checkout, taps the repository locally, and verifies that `brew install --build-from-source` and `brew test` both pass on Ubuntu and macOS.
+
+## Tap Sync
+
+The release workflow now mirrors the `szr` family flow for stable tags:
+
+- download the tagged GitHub source tarball
+- compute its SHA256
+- patch `Formula/cleanr.rb` in `devr-tools/homebrew-tap`
+- push an automation branch when `RELEASE_PLEASE_TOKEN` is configured
+- open or update the matching pull request automatically
+
+If the token is unavailable, the push fails, or PR creation fails, the workflow writes manual follow-up instructions to the GitHub Actions summary.
+
+That automation assumes the tap repository already contains `Formula/cleanr.rb`.
+
+## Local Formula Generation
+
+The local formula generator still emits a formula that:
 
 - downloads the tagged source tarball instead of platform-specific release binaries
 - builds `cleanr` from source with `go build`
@@ -17,14 +38,13 @@ make homebrew-formula VERSION=vX.Y.Z REPOSITORY=owner/name SOURCE_SHA256=<sha256
 If the repository has an SPDX license identifier ready, include it:
 
 ```bash
-make homebrew-formula VERSION=vX.Y.Z REPOSITORY=owner/name SOURCE_SHA256=<sha256> HOMEBREW_LICENSE=MIT
+make homebrew-formula VERSION=vX.Y.Z REPOSITORY=owner/name SOURCE_SHA256=<sha256> HOMEBREW_LICENSE=Apache-2.0
 ```
 
-The release workflow computes `SOURCE_SHA256` from the GitHub tag archive automatically and writes `dist/releases/<version>/cleanr.rb`.
+That command writes `dist/releases/<version>/cleanr.rb`.
 
 ## Remaining Submission Blockers
 
-- choose and commit an open-source license file for the repository
 - pass the SPDX identifier with `HOMEBREW_LICENSE=<identifier>` when generating the formula
 - confirm `cleanr` meets Homebrew's `homebrew/core` notability and policy requirements
 - open a formula PR against `Homebrew/homebrew-core`

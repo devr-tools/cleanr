@@ -3,7 +3,7 @@ package tests
 import (
 	"testing"
 
-	"cleanr/cleanr"
+	"github.com/devr-tools/cleanr/cleanr"
 )
 
 func TestCoreHelperAccessorsAndFacadeMarshaling(t *testing.T) {

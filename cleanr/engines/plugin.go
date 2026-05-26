@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"cleanr/cleanr/core"
-	pluginspkg "cleanr/cleanr/plugins"
+	"github.com/devr-tools/cleanr/cleanr/core"
+	pluginspkg "github.com/devr-tools/cleanr/cleanr/plugins"
 )
 
 type PluginSuiteEngine struct {

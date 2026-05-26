@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"os"
 
-	"cleanr/internal/devtools"
+	"github.com/devr-tools/cleanr/internal/devtools"
 )
 
 func main() {

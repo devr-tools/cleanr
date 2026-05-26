@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 type sarifLog struct {

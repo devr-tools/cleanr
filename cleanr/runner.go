@@ -5,9 +5,9 @@ import (
 	"net/http"
 	"time"
 
-	adapterspkg "cleanr/cleanr/adapters"
-	enginespkg "cleanr/cleanr/engines"
-	pluginspkg "cleanr/cleanr/plugins"
+	adapterspkg "github.com/devr-tools/cleanr/cleanr/adapters"
+	enginespkg "github.com/devr-tools/cleanr/cleanr/engines"
+	pluginspkg "github.com/devr-tools/cleanr/cleanr/plugins"
 )
 
 type Runner struct {

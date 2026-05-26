@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 type nativeSinkPublisher interface {

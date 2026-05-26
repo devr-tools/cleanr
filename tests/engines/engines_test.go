@@ -9,8 +9,8 @@ import (
 	"testing"
 	"time"
 
-	"cleanr/cleanr"
-	enginespkg "cleanr/cleanr/engines"
+	"github.com/devr-tools/cleanr/cleanr"
+	enginespkg "github.com/devr-tools/cleanr/cleanr/engines"
 )
 
 type sequenceTarget struct {

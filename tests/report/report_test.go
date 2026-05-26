@@ -7,7 +7,7 @@ import (
 	"testing"
 	"time"
 
-	"cleanr/cleanr"
+	"github.com/devr-tools/cleanr/cleanr"
 )
 
 func TestWriteReportSupportsAllFormats(t *testing.T) {

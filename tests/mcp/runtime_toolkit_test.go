@@ -6,11 +6,11 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
-	"cleanr/internal/mcpserver/catalog"
-	"cleanr/internal/mcpserver/runtime"
-	"cleanr/internal/mcpserver/toolkit"
-	"cleanr/internal/mcpserver/tools"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/mcpserver/catalog"
+	"github.com/devr-tools/cleanr/internal/mcpserver/runtime"
+	"github.com/devr-tools/cleanr/internal/mcpserver/toolkit"
+	"github.com/devr-tools/cleanr/internal/mcpserver/tools"
 )
 
 func TestToolkitCatalogRuntimeAndRegistryCoverage(t *testing.T) {

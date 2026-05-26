@@ -5,7 +5,7 @@ import (
 	"math"
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func EvaluateGates(report *core.Report, cfg core.TrendGateConfig) {

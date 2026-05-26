@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func buildRunMetadata(cfg Config) *core.RunMetadata {

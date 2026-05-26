@@ -5,7 +5,7 @@ import (
 	"regexp"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func inferTokenUsage(scenario core.Scenario, resp core.Response) core.TokenUsage {

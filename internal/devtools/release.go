@@ -51,7 +51,7 @@ func (r Runner) Release(ctx context.Context, opts ReleaseOptions) error {
 			"GOOS":        platform.GOOS,
 			"GOARCH":      platform.GOARCH,
 		}
-		ldflags := fmt.Sprintf("-s -w -X cleanr/internal/cli.version=%s", version)
+		ldflags := fmt.Sprintf("-s -w -X github.com/devr-tools/cleanr/internal/cli.version=%s", version)
 		if err := r.runCommand(ctx, env, "go", "build", "-trimpath", "-ldflags", ldflags, "-o", binaryPath, "./cmd/cleanr"); err != nil {
 			return fmt.Errorf("build %s/%s: %w", platform.GOOS, platform.GOARCH, err)
 		}

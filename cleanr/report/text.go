@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr/core"
-	imgpkg "cleanr/img"
+	"github.com/devr-tools/cleanr/cleanr/core"
+	imgpkg "github.com/devr-tools/cleanr/img"
 )
 
 func renderText(report core.Report, palette textPalette) string {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
-	"cleanr/internal/cli"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/cli"
 )
 
 func TestCLIRunUsageVersionAndMissingConfigPaths(t *testing.T) {

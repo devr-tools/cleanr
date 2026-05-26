@@ -11,8 +11,8 @@ import (
 	"os"
 	"strings"
 
-	mcptools "cleanr/internal/mcpserver/tools"
-	"cleanr/internal/version"
+	mcptools "github.com/devr-tools/cleanr/internal/mcpserver/tools"
+	"github.com/devr-tools/cleanr/internal/version"
 )
 
 type Server struct {

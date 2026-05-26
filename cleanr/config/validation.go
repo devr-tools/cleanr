@@ -6,7 +6,7 @@ import (
 	"regexp"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func ValidateConfig(cfg core.Config) error {

@@ -1,0 +1,19 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "24695759b918265abb6a742cfb726181cf3c388c",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "package-name": "cleanr",
+      "include-component-in-tag": false,
+      "changelog-path": "CHANGELOG.md",
+      "include-v-in-tag": true,
+      "extra-files": [
+        {
+          "type": "generic",
+          "path": "internal/version/version.go"
+        }
+      ]
+    }
+  }
+}

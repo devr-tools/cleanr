@@ -7,7 +7,7 @@ import (
 	"strconv"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func evaluateScenarioAssertions(scenario core.Scenario, resp core.Response) []core.Finding {

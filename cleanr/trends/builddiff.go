@@ -3,7 +3,7 @@ package trends
 import (
 	"sort"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func compareBuildMetadata(current, previous *core.RunMetadata) *core.BuildDiff {

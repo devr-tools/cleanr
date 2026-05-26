@@ -1,0 +1,78 @@
+name: homebrew-validation.yml
+
+on:
+  pull_request:
+    branches:
+      - develop
+      - master
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  formula-validation:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - macos-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v6
+
+      - name: Set up Homebrew
+        uses: Homebrew/actions/setup-homebrew@main
+
+      - name: Generate local formula
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mkdir -p Formula
+          version="$(sed -n 's/^const Number = "\(.*\)"/\1/p' internal/version/version.go)"
+          archive_path="$RUNNER_TEMP/cleanr-src.tar.gz"
+          git archive --format=tar.gz --output "$archive_path" HEAD
+          sha256="$(shasum -a 256 "$archive_path" | awk '{print $1}')"
+
+          cat > Formula/cleanr.rb <<EOF
+          class Cleanr < Formula
+            desc "AI testing SDK and CLI for CI validation"
+            homepage "https://github.com/devr-tools/cleanr"
+            url "file://$archive_path"
+            sha256 "$sha256"
+            version "$version"
+            license "Apache-2.0"
+            depends_on "go" => :build
+
+            def install
+              ldflags = "-s -w -X github.com/devr-tools/cleanr/internal/cli.version=#{version}"
+              system "go", "build", *std_go_args(output: bin/"cleanr", ldflags: ldflags), "./cmd/cleanr"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/cleanr version")
+            end
+          end
+          EOF
+
+      - name: Tap current repository
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew tap devr-tools/tap "$GITHUB_WORKSPACE"
+
+      - name: Build formula from source
+        shell: bash
+        run: |
+          set -euo pipefail
+          HOMEBREW_NO_AUTO_UPDATE=1 brew install --build-from-source devr-tools/tap/cleanr
+
+      - name: Run formula test
+        shell: bash
+        run: |
+          set -euo pipefail
+          brew test devr-tools/tap/cleanr

@@ -4,9 +4,9 @@ import (
 	"context"
 	"fmt"
 
-	"cleanr/internal/mcpserver/catalog"
-	"cleanr/internal/mcpserver/runtime"
-	"cleanr/internal/mcpserver/toolkit"
+	"github.com/devr-tools/cleanr/internal/mcpserver/catalog"
+	"github.com/devr-tools/cleanr/internal/mcpserver/runtime"
+	"github.com/devr-tools/cleanr/internal/mcpserver/toolkit"
 )
 
 type Definition = toolkit.Definition

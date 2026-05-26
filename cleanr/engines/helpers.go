@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func responseFindings(resp core.Response, forbidden []string) []core.Finding {

@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func AttachAndPersist(report *core.Report, path, buildID string, limit int) error {

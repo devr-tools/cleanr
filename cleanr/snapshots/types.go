@@ -3,7 +3,7 @@ package snapshots
 import (
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 type File struct {

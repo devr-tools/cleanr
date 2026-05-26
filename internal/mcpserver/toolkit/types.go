@@ -1,6 +1,6 @@
 package toolkit
 
-import "cleanr/cleanr"
+import "github.com/devr-tools/cleanr/cleanr"
 
 type Definition struct {
 	Name         string         `json:"name"`

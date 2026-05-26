@@ -59,7 +59,7 @@ func renderHomebrewFormula(tag, repo, sourceSHA256, license string) (string, err
 %s  depends_on "go" => :build
 
   def install
-    ldflags = "-s -w -X cleanr/internal/cli.version=#{version}"
+    ldflags = "-s -w -X github.com/devr-tools/cleanr/internal/cli.version=#{version}"
     system "go", "build", *std_go_args(output: bin/"cleanr", ldflags: ldflags), "./cmd/cleanr"
   end
 

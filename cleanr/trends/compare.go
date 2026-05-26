@@ -3,7 +3,7 @@ package trends
 import (
 	"math"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func Compare(current HistoryRun, previous *HistoryRun, historyLength int) *core.TrendReport {

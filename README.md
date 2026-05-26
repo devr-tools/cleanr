@@ -2,210 +2,152 @@
   <img src="img/cleanr.png" alt="cleanr logo" width="420">
 </p>
 
-**cleanr** is a Go-based AI testing SDK and CLI for validating AI applications in CI with adversarial, security, load, chaos, drift, token-efficiency, and cross-build trend reporting.
+<p align="center">
+  <a href="https://github.com/devr-tools/cleanr/actions/workflows/ci.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
+  <a href="https://github.com/devr-tools/cleanr/actions/workflows/cd.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/cd.yml/badge.svg" alt="CD status"></a>
+  <a href="https://github.com/devr-tools/cleanr/actions/workflows/release.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/release.yml/badge.svg" alt="Release status"></a>
+  <a href="https://github.com/devr-tools/cleanr/actions/workflows/homebrew-validation.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/homebrew-validation.yml/badge.svg" alt="Homebrew validation status"></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0 license"></a>
+</p>
 
-Phase 1 through Phase 4 are complete. Phase 5, external eval and data integrations, is now in place as an optional companion layer around the local-first release gate.
+**cleanr** is a Go-based AI testing CLI and SDK for validating AI applications in CI. It is built for adversarial, security, load, chaos, drift, token-efficiency, and workflow-policy checks, with machine-readable outputs for release gates.
 
-## Installation
+## Quick Install
 
-### Homebrew
-
-`cleanr` is not in `homebrew/core` yet. This repository now generates a source-based formula intended for a future `homebrew/core` submission, but users cannot install it with `brew install cleanr` until that PR is merged.
-
-Until then, install from GitHub Releases or build from source. For submission prep details, see [docs/homebrew.md](docs/homebrew.md).
-
-### Install with `curl`
+Install the CLI with Go:
 
 ```bash
-VERSION="$(curl -fsSL https://api.github.com/repos/alxxjohn/cleanr/releases/latest | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p' | head -n 1)"
-curl -fsSLo cleanr.tar.gz "https://github.com/alxxjohn/cleanr/releases/download/${VERSION}/cleanr_${VERSION}_darwin_arm64.tar.gz"
+go install github.com/devr-tools/cleanr/cmd/cleanr@latest
+cleanr version
+```
+
+Install from GitHub Releases:
+
+```bash
+VERSION="$(curl -fsSL https://api.github.com/repos/devr-tools/cleanr/releases/latest | sed -n 's/.*"tag_name": "\(v[^"]*\)".*/\1/p' | head -n 1)"
+curl -fsSLo cleanr.tar.gz "https://github.com/devr-tools/cleanr/releases/download/${VERSION}/cleanr_${VERSION}_darwin_arm64.tar.gz"
 tar -xzf cleanr.tar.gz
 sudo install -m 0755 ./cleanr /usr/local/bin/cleanr
 cleanr version
 ```
 
-Replace `darwin_arm64` with the artifact that matches your platform:
-
-- `darwin_amd64`
-- `darwin_arm64`
-- `linux_amd64`
-- `linux_arm64`
-
-### Install from GitHub Releases
-
-Download a packaged release artifact from:
-
-- `https://github.com/alxxjohn/cleanr/releases`
-
-Then unpack the file named `cleanr_<version>_<os>_<arch>.tar.gz` and install it:
-
-```bash
-tar -xzf cleanr_<version>_<os>_<arch>.tar.gz
-sudo install -m 0755 ./cleanr /usr/local/bin/cleanr
-cleanr version
-```
-
-### Build from source
+Build from source:
 
 ```bash
 make build
 ./dist/cleanr version
 sudo install -m 0755 ./dist/cleanr /usr/local/bin/cleanr
+```
+
+Homebrew:
+
+```bash
+brew tap devr-tools/tap
+brew install cleanr
 cleanr version
 ```
+
+```bash
+brew install devr-tools/tap/cleanr
+cleanr version
+```
+
+`cleanr` is not in `homebrew/core` yet. For tap and formula details, see [docs/homebrew.md](docs/homebrew.md).
 
 ## Quickstart
 
-The core `cleanr` commands are:
+### CLI
 
 ```bash
-cleanr init
-cleanr setup
-cleanr setup agent
-cleanr snapshot -config cleanr.yaml
-cleanr validate -config cleanr.yaml
-cleanr run -config cleanr.yaml
-cleanr trends -config cleanr.yaml
-cleanr dataset export -config cleanr.yaml
-cleanr dataset import -input cleanr.dataset.yaml
-cleanr version
-cleanr mcp
+make build
+./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
+./dist/cleanr validate -config cleanr.yaml
+./dist/cleanr run -config cleanr.yaml
 ```
 
-Typical first run:
+For an interactive local setup flow, use:
 
 ```bash
-cleanr setup
-cleanr snapshot -config cleanr.yaml
-cleanr validate -config cleanr.yaml
-cleanr run -config cleanr.yaml
-cleanr trends -config cleanr.yaml
+./dist/cleanr setup
+./dist/cleanr snapshot -config cleanr.yaml
+./dist/cleanr trends -config cleanr.yaml
 ```
 
-Browser-assisted local setup:
+### SDK
+
+Use the root module path for embedding:
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+
+	cleanr "github.com/devr-tools/cleanr"
+)
+
+func main() {
+	cfg, err := cleanr.LoadConfigFile("cleanr.yaml")
+	if err != nil {
+		panic(err)
+	}
+
+	report := cleanr.NewHTTPRunner(cfg).Run(context.Background())
+	fmt.Print(cleanr.TextReport(report))
+}
+```
+
+### Docker Pipeline
+
+Use the published GitHub Container Registry image:
+
+```yaml
+jobs:
+  cleanr:
+    runs-on: ubuntu-latest
+    container: ghcr.io/devr-tools/cleanr:<tag>
+    steps:
+      - uses: actions/checkout@v4
+      - run: cleanr validate -config cleanr.yaml
+      - run: cleanr run -config cleanr.yaml -format junit -output cleanr-junit.xml
+```
+
+For fuller SDK, Docker, CI, and release patterns, see [docs/sdk.md](docs/sdk.md), [docs/docker.md](docs/docker.md), [docs/ci.md](docs/ci.md), and [docs/release-automation.md](docs/release-automation.md).
+
+## Uninstall
+
+Remove the installed binary:
 
 ```bash
-cleanr setup --browser
-cleanr setup agent --browser
+sudo rm -f /usr/local/bin/cleanr
 ```
 
-Non-interactive CI setup:
+Remove the local profile and cached credentials if you used `cleanr setup`:
 
 ```bash
-cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
-cleanr setup agent --ci -provider openai -model gpt-4.1-mini -name support-agent -system-prompt "You are a safe support agent." -user-prompt "Reset the password and confirm the email."
+rm -rf ~/.cleanr
 ```
 
-What each command does:
+## Docs
 
-- `cleanr init`: generate a starter config file
-- `cleanr setup`: launch an interactive setup flow with arrow-key provider selection, optional browser-open key setup, local token storage, and starter YAML generation
-- `cleanr setup agent`: launch an interactive agent setup flow that reuses the provider profile, injects an agent prompt, and generates an agent-focused YAML config
-- `cleanr snapshot -config <file>`: capture or refresh baseline snapshots for drift regression checks
-- `cleanr validate -config <file>`: check config shape and required fields before execution
-- `cleanr run -config <file>`: execute enabled suites and emit a report
-- `cleanr run -config <file> -trend-file <file> -build-id <id>`: compare the current run to prior builds and append trend history
-- `cleanr trends -config <file>`: summarize the retained trend history window
-- `cleanr dataset export -config <file>`: convert replayed failures or all configured scenarios into a reusable scenario dataset
-- `cleanr dataset import -input <file>`: merge a reviewed scenario dataset back into a runnable `cleanr` config
-- `cleanr version`: print the installed CLI version
-- `cleanr mcp`: start the MCP server for agent and tool integrations
+- [Getting started](docs/getting-started.md)
+- [SDK guide](docs/sdk.md)
+- [Docker guide](docs/docker.md)
+- [Configuration](docs/configuration.md)
+- [CI guide](docs/ci.md)
+- [Release automation](docs/release-automation.md)
+- [Homebrew packaging](docs/homebrew.md)
+- [MCP and MCPO](docs/mcp.md)
+- [Developer guide](docs/development.md)
+- [Docs index](docs/README.md)
 
-For a step-by-step walkthrough, see [docs/getting-started.md](docs/getting-started.md).
+## Examples
 
-## What `cleanr` Tests
-
-- Prompt-injection resistance and refusal boundaries
-- Secret leakage, PII-like output, and unsafe tool instructions
-- Load behavior with concurrent virtual users and latency or error-budget assertions
-- Chaos conditions such as tight deadlines, noisy context, and duplicate turns
-- Drift across repeated runs of the same scenario, with lexical and semantic similarity checks
-- File-system shadow-state verification for observed writes inside approved locations
-- Provider-neutral workflow evidence for HTTP targets that emit normalized `trace` payloads
-- Release-policy enforcement for allowed tools, read-only tools, approval-gated actions, trust boundaries, approved sinks, and expected state changes
-- Exact expected file-mutation checks for create, modify, and delete behavior in controlled workspaces
-- Exact expected state-change checks for provider-neutral workflow surfaces such as tickets, emails, and other action traces
-- Provenance-aware context attacks that originate from untrusted retrieved, tool, memory, or approval content
-- Approval-bypass and sink-restriction checks for tool-calling agents
-- Trend history across builds so drift and failure deltas are comparable over time
-- Optional best-effort external result publishing, including native Braintrust, Langfuse, and PostHog publishing, remote trend comparisons, and PR or release summaries
-- Dataset promotion flows for turning reviewed failures into reusable regression scenarios
-- Token budgets, duplication, and output-efficiency regressions
-- CI-friendly reporting in text, JSON, and JUnit formats
-- MCP server mode for agent and tool-based integrations
-
-## Performance And Benchmark Metrics
-
-`cleanr` is built to gate concrete operational metrics instead of vague eval scores. The current suite model lets teams enforce:
-
-| Area | Metrics you can gate |
-| --- | --- |
-| Load | `virtual_users`, `requests_per_user`, `max_error_rate_pct`, `p95_latency_ms` |
-| Scenario assertions | `status_code`, `latency_ms`, `finish_reason`, tool-call checks |
-| Drift | `iterations`, `max_normalized_drift`, `max_semantic_drift`, `min_consistency_score`, `min_semantic_consistency_score` |
-| Trend reporting | `reporting.trend_file`, `reporting.trend_limit`, `reporting.build_id`, `reporting.trend_gates.*` |
-| Token efficiency | `max_input_tokens`, `max_output_tokens`, `max_total_tokens`, output/input ratio, duplication ratios |
-
-The example configs currently ship with starter thresholds such as `8` virtual users, `8` requests per user, `5%` max error rate, and `2500ms` p95 latency so teams can tune from a realistic baseline instead of starting from zero. See [docs/configuration.md](docs/configuration.md) and the [`examples/`](examples) directory.
-
-## Production Usage Examples
-
-Typical production-facing ways teams use `cleanr`:
-
-- Gate model or prompt changes in CI before merging a release.
-- Compare provider or model upgrades before switching traffic.
-- Run concurrency and latency checks against live-like staging endpoints.
-- Catch drift and token-cost regressions in nightly or pre-release runs.
-- Validate tool-using assistants for prompt injection, unsafe instructions, and boundary failures.
-- Verify that local file-writing agents changed only approved paths in a controlled workspace.
-- Assert the exact file mutations a workflow was expected to make, including content checks for created or modified files.
-- Gate workflow actions with declarative release rules such as read-only SQL, draft-not-send email, trust-boundary tool bans, and approval-required actions.
-- Verify provider-neutral state changes such as ticket updates or email drafts even when the underlying system is not file-based.
-- Test whether untrusted retrieved or tool-provided context can cross into secret disclosure, approval-bypassed actions, or unapproved sink tools.
-
-Starter configs for common targets:
-
-- [examples/openai-responses.yaml](examples/openai-responses.yaml)
-- [examples/openai-chat-completions.yaml](examples/openai-chat-completions.yaml)
-- [examples/anthropic-messages.yaml](examples/anthropic-messages.yaml)
-- [examples/openai-responses-tuned.yaml](examples/openai-responses-tuned.yaml)
-- [examples/stateful-support-agent/cleanr.yaml](examples/stateful-support-agent/cleanr.yaml)
-
-End-to-end stateful sample project:
-
-- [examples/stateful-support-agent/README.md](examples/stateful-support-agent/README.md)
-
-Those examples now use `reporting.trend_gates.preset: moderate` by default. You can switch that to `strict` or `exploratory`, or keep the preset and override one field such as `max_duration_increase_pct`.
-
-Interactive setup stores provider credentials in `~/.cleanr/profile.json` with local-only file permissions. Native provider targets automatically reuse those stored credentials when the configured API key env var is not already set in the shell.
-
-For CI or non-interactive environments, use `cleanr setup --ci` or `cleanr setup agent --ci` with flags such as `-provider`, `-model`, and `-system-prompt`. CI mode skips the TUI, skips browser launch, and writes config without persisting secrets locally.
-
-Common setup commands:
-
-```bash
-# Interactive TUI with arrow-key provider selection
-cleanr setup
-
-# Interactive TUI plus automatic browser open for provider key setup
-cleanr setup --browser
-
-# Interactive agent config generation
-cleanr setup agent
-
-# CI-safe config generation with no prompts or local credential storage
-cleanr setup --ci -provider anthropic -model claude-sonnet-4-20250514 -output cleanr.yaml
-```
-
-## Documentation
-
-- [Getting started](docs/getting-started.md): first run, validation, and report generation
-- [Configuration](docs/configuration.md): config schema, suites, assertions, and reporting
-- [CI guide](docs/ci.md): pipeline integration and release packaging
-- [Integrations](docs/integrations.md): current external sink, trend-source, and summary integration support
-- [MCP and MCPO](docs/mcp.md): expose `cleanr` as agent-callable tools
-- [Developer guide](docs/development.md): local contributor workflows and repository checks
-- [Docs index](docs/README.md): documentation map and reading order
+- [OpenAI Responses](examples/openai-responses.yaml)
+- [OpenAI Chat Completions](examples/openai-chat-completions.yaml)
+- [Anthropic Messages](examples/anthropic-messages.yaml)
+- [Stateful Support Agent](examples/stateful-support-agent/README.md)
 
 ## Exit Codes
 

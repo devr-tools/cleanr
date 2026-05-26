@@ -1,0 +1,66 @@
+version: 2
+
+project_name: cleanr
+
+builds:
+  - id: cleanr
+    main: ./cmd/cleanr
+    binary: cleanr
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+      - linux
+    goarch:
+      - amd64
+      - arm64
+    ldflags:
+      - -s -w -X github.com/devr-tools/cleanr/internal/cli.version=v{{ .Version }}
+
+archives:
+  - id: cleanr
+    ids:
+      - cleanr
+    formats:
+      - tar.gz
+    name_template: "{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - none*
+
+checksum:
+  name_template: SHA256SUMS
+
+dockers:
+  - id: cleanr-amd64
+    ids:
+      - cleanr
+    dockerfile: Dockerfile.release
+    goos: linux
+    goarch: amd64
+    use: buildx
+    image_templates:
+      - "ghcr.io/devr-tools/cleanr:{{ .Tag }}-amd64"
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/amd64"
+  - id: cleanr-arm64
+    ids:
+      - cleanr
+    dockerfile: Dockerfile.release
+    goos: linux
+    goarch: arm64
+    use: buildx
+    image_templates:
+      - "ghcr.io/devr-tools/cleanr:{{ .Tag }}-arm64"
+    build_flag_templates:
+      - "--pull"
+      - "--platform=linux/arm64"
+
+docker_manifests:
+  - name_template: "ghcr.io/devr-tools/cleanr:{{ .Tag }}"
+    image_templates:
+      - "ghcr.io/devr-tools/cleanr:{{ .Tag }}-amd64"
+      - "ghcr.io/devr-tools/cleanr:{{ .Tag }}-arm64"
+
+release:
+  prerelease: auto

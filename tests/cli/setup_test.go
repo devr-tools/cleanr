@@ -8,9 +8,9 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
-	profilepkg "cleanr/cleanr/profile"
-	"cleanr/internal/cli"
+	"github.com/devr-tools/cleanr/cleanr"
+	profilepkg "github.com/devr-tools/cleanr/cleanr/profile"
+	"github.com/devr-tools/cleanr/internal/cli"
 )
 
 func TestSetupCommandStoresProviderAndWritesConfig(t *testing.T) {

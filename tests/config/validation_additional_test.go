@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
+	"github.com/devr-tools/cleanr/cleanr"
 )
 
 func assertionIntPtr(v int) *int { return &v }

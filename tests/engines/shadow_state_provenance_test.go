@@ -7,7 +7,7 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
+	"github.com/devr-tools/cleanr/cleanr"
 )
 
 type fileWritingTarget struct {

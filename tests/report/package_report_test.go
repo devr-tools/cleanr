@@ -6,8 +6,8 @@ import (
 	"testing"
 	"time"
 
-	"cleanr/cleanr"
-	reportpkg "cleanr/cleanr/report"
+	"github.com/devr-tools/cleanr/cleanr"
+	reportpkg "github.com/devr-tools/cleanr/cleanr/report"
 )
 
 func TestReportPackageSupportsPlainAndColorText(t *testing.T) {

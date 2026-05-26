@@ -4,7 +4,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 func ExampleConfig() core.Config {

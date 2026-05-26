@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr"
+	"github.com/devr-tools/cleanr/cleanr"
 )
 
 type ReportOptions struct {

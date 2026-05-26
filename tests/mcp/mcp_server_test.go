@@ -1,13 +1,13 @@
 package tests
 
 import (
-	"cleanr/cleanr"
 	"context"
 	"encoding/json"
+	"github.com/devr-tools/cleanr/cleanr"
 	"strings"
 	"testing"
 
-	"cleanr/internal/mcpserver"
+	"github.com/devr-tools/cleanr/internal/mcpserver"
 )
 
 func TestMCPServerListsToolsAfterInitialization(t *testing.T) {

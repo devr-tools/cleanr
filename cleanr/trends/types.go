@@ -3,7 +3,7 @@ package trends
 import (
 	"time"
 
-	"cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
 type HistoryFile struct {

@@ -12,9 +12,9 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr"
-	"cleanr/internal/mcpserver"
-	versionpkg "cleanr/internal/version"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/mcpserver"
+	versionpkg "github.com/devr-tools/cleanr/internal/version"
 )
 
 var version = versionpkg.Number

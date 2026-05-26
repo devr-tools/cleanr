@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"cleanr/cleanr"
+	"github.com/devr-tools/cleanr/cleanr"
 )
 
 func DecodeArgs(args map[string]any, dest any) error {

@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	"cleanr/cleanr"
-	"cleanr/internal/testutil"
+	"github.com/devr-tools/cleanr/cleanr"
+	"github.com/devr-tools/cleanr/internal/testutil"
 )
 
 func TestConfigMarshalAndWriteSupportJSONAndYAML(t *testing.T) {
