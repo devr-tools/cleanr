@@ -7,16 +7,17 @@ import (
 )
 
 type Config struct {
-	Version         string             `json:"version"`
-	PolicyPacks     []string           `json:"policy_packs,omitempty"`
-	Plugins         []string           `json:"plugins,omitempty"`
-	Target          TargetConfig       `json:"target"`
-	Scenarios       []Scenario         `json:"scenarios"`
-	Suites          SuitesConfig       `json:"suites"`
-	Reporting       ReportingConfig    `json:"reporting"`
-	Governance      GovernanceConfig   `json:"governance"`
-	Integrations    IntegrationsConfig `json:"integrations,omitempty"`
-	ResolvedPlugins []PluginManifest   `json:"-"`
+	Version            string                   `json:"version"`
+	PolicyPacks        []string                 `json:"policy_packs,omitempty"`
+	Plugins            []string                 `json:"plugins,omitempty"`
+	Target             TargetConfig             `json:"target"`
+	ScenarioGeneration ScenarioGenerationConfig `json:"scenario_generation,omitempty"`
+	Scenarios          []Scenario               `json:"scenarios"`
+	Suites             SuitesConfig             `json:"suites"`
+	Reporting          ReportingConfig          `json:"reporting"`
+	Governance         GovernanceConfig         `json:"governance"`
+	Integrations       IntegrationsConfig       `json:"integrations,omitempty"`
+	ResolvedPlugins    []PluginManifest         `json:"-"`
 }
 
 type TargetConfig struct {
@@ -49,6 +50,22 @@ type AnthropicConfig struct {
 	BaseURL   string `json:"base_url"`
 	Version   string `json:"version"`
 	MaxTokens int    `json:"max_tokens"`
+}
+
+type ScenarioGenerationConfig struct {
+	Enabled       bool                   `json:"enabled"`
+	Provider      TargetConfig           `json:"provider"`
+	Spec          ScenarioGenerationSpec `json:"spec"`
+	OutputFile    string                 `json:"output_file,omitempty"`
+	Count         int                    `json:"count,omitempty"`
+	RequireReview bool                   `json:"require_review,omitempty"`
+}
+
+type ScenarioGenerationSpec struct {
+	AppKind      string   `json:"app_kind"`
+	Goals        []string `json:"goals,omitempty"`
+	RiskAreas    []string `json:"risk_areas,omitempty"`
+	Instructions string   `json:"instructions,omitempty"`
 }
 
 type Scenario struct {

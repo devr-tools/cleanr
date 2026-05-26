@@ -9,6 +9,7 @@ import (
 	attestpkg "github.com/devr-tools/cleanr/cleanr/attest"
 	configpkg "github.com/devr-tools/cleanr/cleanr/config"
 	"github.com/devr-tools/cleanr/cleanr/core"
+	generationpkg "github.com/devr-tools/cleanr/cleanr/generation"
 	integrationspkg "github.com/devr-tools/cleanr/cleanr/integrations"
 	reportpkg "github.com/devr-tools/cleanr/cleanr/report"
 	snapshotspkg "github.com/devr-tools/cleanr/cleanr/snapshots"
@@ -19,6 +20,8 @@ type Config = core.Config
 type TargetConfig = core.TargetConfig
 type OpenAIConfig = core.OpenAIConfig
 type AnthropicConfig = core.AnthropicConfig
+type ScenarioGenerationConfig = core.ScenarioGenerationConfig
+type ScenarioGenerationSpec = core.ScenarioGenerationSpec
 type Scenario = core.Scenario
 type ContextSource = core.ContextSource
 type MemoryReplaySession = core.MemoryReplaySession
@@ -93,6 +96,7 @@ type ReplayArtifactCase = core.ReplayArtifactCase
 type ScenarioDataset = integrationspkg.ScenarioDataset
 type ScenarioDatasetEntry = integrationspkg.ScenarioDatasetEntry
 type DatasetScenarioOrigin = integrationspkg.DatasetScenarioOrigin
+type ScenarioDatasetGenerator = integrationspkg.ScenarioDatasetGenerator
 type ReleaseGateAttestation = core.ReleaseGateAttestation
 type AttestationSubject = core.AttestationSubject
 type AttestationPredicate = core.AttestationPredicate
@@ -221,6 +225,10 @@ func WriteScenarioDatasetFile(path string, dataset ScenarioDataset) error {
 
 func ExportScenarioDataset(cfg Config, artifact ReplayArtifact, includeAll bool) ScenarioDataset {
 	return integrationspkg.ExportScenarioDataset(cfg, artifact, includeAll)
+}
+
+func GenerateScenarioDataset(ctx context.Context, cfg Config, client *http.Client) (ScenarioDataset, error) {
+	return generationpkg.GenerateDataset(ctx, cfg, client)
 }
 
 func MergeDatasetIntoConfig(base Config, dataset ScenarioDataset) Config {

@@ -187,3 +187,45 @@ scenarios:
 		t.Fatalf("expected plugin policy rules, got %+v", cfg.Suites.ReleasePolicy.Rules)
 	}
 }
+
+func TestScenarioGenerationConfigRoundTrips(t *testing.T) {
+	t.Parallel()
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = nil
+	cfg.ScenarioGeneration = cleanr.ScenarioGenerationConfig{
+		Enabled: true,
+		Provider: cleanr.TargetConfig{
+			Type: "openai",
+			OpenAI: cleanr.OpenAIConfig{
+				APIMode:   "responses",
+				Model:     "gpt-4.1-mini",
+				APIKeyEnv: "OPENAI_API_KEY",
+			},
+		},
+		Spec: cleanr.ScenarioGenerationSpec{
+			AppKind:      "support-assistant",
+			Goals:        []string{"refund policy"},
+			RiskAreas:    []string{"prompt injection"},
+			Instructions: "Focus on realistic customer prompts.",
+		},
+		OutputFile:    "generated/cleanr.dataset.yaml",
+		Count:         4,
+		RequireReview: true,
+	}
+
+	path := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	loaded, err := cleanr.LoadConfigFile(path)
+	if err != nil {
+		t.Fatalf("load config: %v", err)
+	}
+	if !loaded.ScenarioGeneration.Enabled || loaded.ScenarioGeneration.Spec.AppKind != "support-assistant" {
+		t.Fatalf("unexpected scenario generation config: %+v", loaded.ScenarioGeneration)
+	}
+	if loaded.ScenarioGeneration.Provider.OpenAI.Model != "gpt-4.1-mini" || loaded.ScenarioGeneration.OutputFile != "generated/cleanr.dataset.yaml" {
+		t.Fatalf("unexpected provider/output config: %+v", loaded.ScenarioGeneration)
+	}
+}

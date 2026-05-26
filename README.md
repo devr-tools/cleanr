@@ -62,7 +62,9 @@ cleanr version
 make build
 ./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -output cleanr.yaml
 ./dist/cleanr validate -config cleanr.yaml
-./dist/cleanr run -config cleanr.yaml
+./dist/cleanr generate -config cleanr.yaml
+./dist/cleanr dataset import -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output cleanr.generated.yaml -approve-generated
+./dist/cleanr run -config cleanr.generated.yaml
 ```
 
 For an interactive local setup flow, use:
@@ -79,6 +81,18 @@ For staged CI profiles, use:
 ./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output cleanr-pr.yaml
 ./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output cleanr-main.yaml
 ./dist/cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output cleanr-release.yaml
+```
+
+For AI-assisted scenario synthesis, configure `scenario_generation` in your config, run:
+
+```bash
+./dist/cleanr generate -config cleanr.yaml
+```
+
+That writes a reviewable scenario dataset artifact. Import it only after review:
+
+```bash
+./dist/cleanr dataset import -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output cleanr.generated.yaml -approve-generated
 ```
 
 ### SDK

@@ -12,43 +12,26 @@ import (
 func ValidateConfig(cfg core.Config) error {
 	var errs ValidationErrors
 
-	switch cfg.Target.TargetType() {
-	case "http":
-		requireNonEmpty(&errs, "target.url", cfg.Target.URL, "set target.url to the full API endpoint URL")
-		requireNonEmpty(&errs, "target.prompt_field", cfg.Target.PromptField, "set target.prompt_field to the request field that receives the prompt text")
-		requireNonEmpty(&errs, "target.response_field", cfg.Target.ResponseField, "set target.response_field to the JSON path that contains the model text response")
-		if rawURL := strings.TrimSpace(cfg.Target.URL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add("target.url", "must be an absolute http(s) URL", "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
-			}
+	validateTargetConfig(&errs, "target", cfg.Target)
+	if cfg.ScenarioGeneration.Enabled {
+		if strings.TrimSpace(cfg.ScenarioGeneration.Provider.Type) == "" {
+			errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to openai, anthropic, or http")
 		}
-	case "openai":
-		requireNonEmpty(&errs, "target.openai.model", cfg.Target.OpenAI.Model, "set the OpenAI model name, for example gpt-4o-mini or gpt-4.1-mini")
-		switch cfg.Target.OpenAI.APIModeValue() {
-		case "responses", "chat_completions":
-		default:
-			errs.Add("target.openai.api_mode", "must be one of responses or chat_completions", "use responses for new projects or chat_completions for legacy-compatible message requests")
+		validateTargetConfig(&errs, "scenario_generation.provider", cfg.ScenarioGeneration.Provider)
+		if cfg.ScenarioGeneration.Provider.TimeoutMS < 0 {
+			errs.Add("scenario_generation.provider.timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
 		}
-		if rawURL := strings.TrimSpace(cfg.Target.OpenAI.BaseURL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add("target.openai.base_url", "must be an absolute http(s) URL", "use a value such as https://api.openai.com/v1 or a compatible base URL for testing")
-			}
+		requireNonEmpty(&errs, "scenario_generation.spec.app_kind", cfg.ScenarioGeneration.Spec.AppKind, "set the app kind being tested, for example support-assistant or release-bot")
+		if len(cfg.ScenarioGeneration.Spec.Goals) == 0 {
+			errs.Add("scenario_generation.spec.goals", "at least one goal is required", "add one or more goals such as refund policy, account recovery, or release approval")
 		}
-	case "anthropic":
-		requireNonEmpty(&errs, "target.anthropic.model", cfg.Target.Anthropic.Model, "set the Anthropic model name, for example claude-sonnet-4-20250514")
-		if rawURL := strings.TrimSpace(cfg.Target.Anthropic.BaseURL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add("target.anthropic.base_url", "must be an absolute http(s) URL", "use a value such as https://api.anthropic.com/v1 or a compatible base URL for testing")
-			}
+		if len(cfg.ScenarioGeneration.Spec.RiskAreas) == 0 {
+			errs.Add("scenario_generation.spec.risk_areas", "at least one risk area is required", "add one or more risk areas such as prompt injection, pii leakage, or unsafe tool use")
 		}
-		if cfg.Target.Anthropic.MaxTokens < 0 {
-			errs.Add("target.anthropic.max_tokens", "must be >= 0", "set a positive max_tokens budget or omit the field to use the default")
+		if cfg.ScenarioGeneration.Count <= 0 {
+			errs.Add("scenario_generation.count", "must be >= 1", "set the number of generated scenarios to a positive integer")
 		}
-	default:
-		errs.Add("target.type", "must be one of http, openai, or anthropic", "omit target.type for the default HTTP adapter, or set it to openai or anthropic for a native provider adapter")
+		requireNonEmpty(&errs, "scenario_generation.output_file", cfg.ScenarioGeneration.OutputFile, "set a persisted dataset path such as generated/cleanr.dataset.yaml so generated scenarios can be reviewed")
 	}
 
 	if cfg.Target.TimeoutMS < 0 {
@@ -56,7 +39,7 @@ func ValidateConfig(cfg core.Config) error {
 	}
 
 	scenarioNames := make(map[string]int, len(cfg.Scenarios))
-	if len(cfg.Scenarios) == 0 {
+	if len(cfg.Scenarios) == 0 && !cfg.ScenarioGeneration.Enabled {
 		errs.Add("scenarios", "at least one scenario is required", "add a scenario with both name and input so cleanr has something to execute")
 	}
 	for i, scenario := range cfg.Scenarios {
@@ -303,6 +286,55 @@ func ValidateConfig(cfg core.Config) error {
 		return errs
 	}
 	return nil
+}
+
+func validateTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
+	urlHint := "set the full API endpoint URL"
+	promptHint := "set the request field that receives the prompt text"
+	responseHint := "set the JSON path that contains the model text response"
+	if prefix == "target" {
+		urlHint = "set target.url to the full API endpoint URL"
+		promptHint = "set target.prompt_field to the request field that receives the prompt text"
+		responseHint = "set target.response_field to the JSON path that contains the model text response"
+	}
+	switch cfg.TargetType() {
+	case "http":
+		requireNonEmpty(errs, prefix+".url", cfg.URL, urlHint)
+		requireNonEmpty(errs, prefix+".prompt_field", cfg.PromptField, promptHint)
+		requireNonEmpty(errs, prefix+".response_field", cfg.ResponseField, responseHint)
+		if rawURL := strings.TrimSpace(cfg.URL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add(prefix+".url", "must be an absolute http(s) URL", "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
+			}
+		}
+	case "openai":
+		requireNonEmpty(errs, prefix+".openai.model", cfg.OpenAI.Model, "set the OpenAI model name, for example gpt-4o-mini or gpt-4.1-mini")
+		switch cfg.OpenAI.APIModeValue() {
+		case "responses", "chat_completions":
+		default:
+			errs.Add(prefix+".openai.api_mode", "must be one of responses or chat_completions", "use responses for new projects or chat_completions for legacy-compatible message requests")
+		}
+		if rawURL := strings.TrimSpace(cfg.OpenAI.BaseURL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add(prefix+".openai.base_url", "must be an absolute http(s) URL", "use a value such as https://api.openai.com/v1 or a compatible base URL for testing")
+			}
+		}
+	case "anthropic":
+		requireNonEmpty(errs, prefix+".anthropic.model", cfg.Anthropic.Model, "set the Anthropic model name, for example claude-sonnet-4-20250514")
+		if rawURL := strings.TrimSpace(cfg.Anthropic.BaseURL); rawURL != "" {
+			parsed, err := url.Parse(rawURL)
+			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+				errs.Add(prefix+".anthropic.base_url", "must be an absolute http(s) URL", "use a value such as https://api.anthropic.com/v1 or a compatible base URL for testing")
+			}
+		}
+		if cfg.Anthropic.MaxTokens < 0 {
+			errs.Add(prefix+".anthropic.max_tokens", "must be >= 0", "set a positive max_tokens budget or omit the field to use the default")
+		}
+	default:
+		errs.Add(prefix+".type", "must be one of http, openai, or anthropic", "set the target type to http, openai, or anthropic")
+	}
 }
 
 func requireNonEmpty(errs *ValidationErrors, path, value, hint string) {

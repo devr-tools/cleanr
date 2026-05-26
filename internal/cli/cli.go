@@ -28,6 +28,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "run":
 		return runCmd(args[1:], stdout, stderr)
+	case "generate":
+		return generateCmd(args[1:], stdout, stderr)
 	case "trends":
 		return trendsCmd(args[1:], stdout, stderr)
 	case "dataset":
@@ -96,6 +98,10 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	if *trendLimit != 0 {
 		cfg.Reporting.TrendLimit = *trendLimit
+	}
+	if len(cfg.Scenarios) == 0 {
+		_, _ = fmt.Fprintln(stderr, "run error: config contains no scenarios; generate or import scenarios before running tests")
+		return 2
 	}
 	cfg.Suites.Drift.BaselineFile = resolveConfigRelativePath(resolvedConfigPath, cfg.Suites.Drift.BaselineFile)
 	cfg.Reporting.TrendFile = resolveConfigRelativePath(resolvedConfigPath, cfg.Reporting.TrendFile)
@@ -204,6 +210,10 @@ func snapshotCmd(args []string, stdout, stderr io.Writer) int {
 	if outputPath == "" {
 		outputPath = strings.TrimSpace(cfg.Suites.Drift.BaselineFile)
 	}
+	if len(cfg.Scenarios) == 0 {
+		_, _ = fmt.Fprintln(stderr, "snapshot error: config contains no scenarios")
+		return 2
+	}
 	if outputPath == "" {
 		outputPath = "cleanr.snapshots.yaml"
 	}
@@ -228,6 +238,67 @@ func snapshotCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	_, _ = fmt.Fprintf(stdout, "wrote %d snapshots to %s\n", len(snapshot.Scenarios), outputPath)
+	return 0
+}
+
+func generateCmd(args []string, stdout, stderr io.Writer) int {
+	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
+	fs.SetOutput(stderr)
+	configPath := fs.String("config", "", "Path to cleanr config")
+	output := fs.String("output", "", "Path to write the generated scenario dataset")
+	count := fs.Int("count", 0, "Optional override for scenario_generation.count")
+	timeout := fs.Duration("timeout", 0, "Overall execution timeout")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+
+	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "generate error: %v\n", err)
+		return 2
+	}
+	cfg, err := cleanr.LoadConfigFile(resolvedConfigPath)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "generate error: %v\n", err)
+		return 2
+	}
+	if !cfg.ScenarioGeneration.Enabled {
+		_, _ = fmt.Fprintln(stderr, "generate error: scenario_generation.enabled is false")
+		return 2
+	}
+	if *count > 0 {
+		cfg.ScenarioGeneration.Count = *count
+	}
+	outputPath := strings.TrimSpace(*output)
+	if outputPath == "" {
+		outputPath = cfg.ScenarioGeneration.OutputFile
+	}
+	outputPath = resolveConfigRelativePath(resolvedConfigPath, outputPath)
+	if strings.TrimSpace(outputPath) == "" {
+		_, _ = fmt.Fprintln(stderr, "generate error: no output path configured; set scenario_generation.output_file or pass -output")
+		return 2
+	}
+
+	ctx := context.Background()
+	if *timeout > 0 {
+		var cancel context.CancelFunc
+		ctx, cancel = context.WithTimeout(ctx, *timeout)
+		defer cancel()
+	}
+	client := &http.Client{Timeout: cfg.ScenarioGeneration.Provider.Timeout()}
+	dataset, err := cleanr.GenerateScenarioDataset(ctx, cfg, client)
+	if err != nil {
+		_, _ = fmt.Fprintf(stderr, "generate error: %v\n", err)
+		return 2
+	}
+	if err := cleanr.WriteScenarioDatasetFile(outputPath, dataset); err != nil {
+		_, _ = fmt.Fprintf(stderr, "generate error: %v\n", err)
+		return 2
+	}
+	for _, warning := range dataset.Warnings {
+		_, _ = fmt.Fprintf(stderr, "generate warning: %s\n", warning)
+	}
+	_, _ = fmt.Fprintf(stdout, "wrote %d generated scenarios to %s\n", len(dataset.Scenarios), outputPath)
 	return 0
 }
 
@@ -346,6 +417,7 @@ func datasetImportCmd(args []string, stdout, stderr io.Writer) int {
 	input := fs.String("input", "", "Path to scenario dataset file")
 	baseConfig := fs.String("base-config", "", "Optional base cleanr config to merge into")
 	output := fs.String("output", "cleanr.imported.yaml", "Path to write the merged cleanr config")
+	approveGenerated := fs.Bool("approve-generated", false, "Allow importing generated datasets that require explicit review")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -361,6 +433,10 @@ func datasetImportCmd(args []string, stdout, stderr io.Writer) int {
 	}
 	if len(dataset.Scenarios) == 0 {
 		_, _ = fmt.Fprintln(stderr, "dataset import error: dataset contains no scenarios")
+		return 2
+	}
+	if dataset.Source == "cleanr-generation" && dataset.ReviewRequired && !*approveGenerated {
+		_, _ = fmt.Fprintln(stderr, "dataset import error: generated dataset requires explicit review; rerun with -approve-generated after review")
 		return 2
 	}
 
@@ -486,7 +562,7 @@ func mcpCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|trends|dataset|plugins|snapshot|validate|init|setup|mcp|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|generate|trends|dataset|plugins|snapshot|validate|init|setup|mcp|version> [flags]")
 }
 
 func resolveConfigPath(configPath string) (string, error) {

@@ -14,12 +14,13 @@ Generate a starter config with:
 
 ## Top-Level Shape
 
-The config has seven top-level sections:
+The config has nine top-level sections:
 
 - `version`
 - `policy_packs`
 - `plugins`
 - `target`
+- `scenario_generation`
 - `scenarios`
 - `suites`
 - `reporting`
@@ -193,6 +194,51 @@ Current behavior:
 - plugin state adapter commands receive the current request and response JSON on stdin and must return additional normalized workflow evidence such as `state_changes`, `source_uses`, or `memory_operations`
 
 Use `cleanr plugins -config cleanr.yaml` to inspect the resolved plugin surface for a config.
+
+## `scenario_generation`
+
+`scenario_generation` is an optional pre-run phase that asks a generator model to synthesize candidate `cleanr` scenarios and persist them as a reviewable scenario dataset artifact.
+
+Example:
+
+```yaml
+scenario_generation:
+  enabled: true
+  provider:
+    type: openai
+    name: scenario-generator
+    openai:
+      api_mode: responses
+      model: gpt-4.1-mini
+      api_key_env: OPENAI_API_KEY
+  spec:
+    app_kind: support-assistant
+    goals: [refund policy, account recovery]
+    risk_areas: [prompt injection, pii leakage, unsafe tool use]
+    instructions: Focus on realistic customer phrasing and concise prompts.
+  output_file: generated/cleanr.dataset.yaml
+  count: 12
+  require_review: true
+```
+
+Supported fields:
+
+- `enabled`: enables the generation feature for `cleanr generate`
+- `provider`: the generator target, using the same target adapter shape as `target`
+- `spec.app_kind`: short description of the application under test
+- `spec.goals`: product behaviors or jobs-to-be-done to cover
+- `spec.risk_areas`: adversarial or safety concerns to cover
+- `spec.instructions`: optional extra guidance for scenario synthesis
+- `output_file`: where `cleanr generate` writes the scenario dataset artifact
+- `count`: requested number of generated scenarios
+- `require_review`: generated datasets must be approved with `dataset import -approve-generated` before they can be merged into a runnable config
+
+Behavior:
+
+- `cleanr generate -config cleanr.yaml` writes a persisted scenario dataset artifact instead of mutating the config directly
+- generated datasets record generator provenance such as provider, model, requested count, and prompt hash
+- `cleanr` warns when the generator provider matches the provider under test, because that weakens evaluation diversity
+- generation-only configs may omit `scenarios`, but `cleanr run` still requires imported or hand-authored scenarios before tests execute
 
 ## `target`
 

@@ -120,49 +120,17 @@ func applyDefaults(cfg *core.Config) {
 	if cfg.Version == "" {
 		cfg.Version = "v1alpha1"
 	}
-	if cfg.Target.Type == "" {
-		cfg.Target.Type = "http"
-	}
-	if cfg.Target.Method == "" {
-		cfg.Target.Method = "POST"
-	}
-	if cfg.Target.TimeoutMS == 0 {
-		cfg.Target.TimeoutMS = 5000
-	}
-	if cfg.Target.Headers == nil {
-		cfg.Target.Headers = map[string]string{
-			"Content-Type": "application/json",
+	applyTargetDefaults(&cfg.Target, false)
+	if cfg.ScenarioGeneration.Enabled {
+		applyTargetDefaults(&cfg.ScenarioGeneration.Provider, true)
+		if cfg.ScenarioGeneration.OutputFile == "" {
+			cfg.ScenarioGeneration.OutputFile = filepath.Join("generated", "cleanr.dataset.yaml")
 		}
-	}
-	if cfg.Target.TargetType() == "openai" {
-		if cfg.Target.Name == "" {
-			cfg.Target.Name = "openai"
+		if cfg.ScenarioGeneration.Count == 0 {
+			cfg.ScenarioGeneration.Count = 12
 		}
-		if cfg.Target.OpenAI.APIMode == "" {
-			cfg.Target.OpenAI.APIMode = "responses"
-		}
-		if cfg.Target.OpenAI.APIKeyEnv == "" {
-			cfg.Target.OpenAI.APIKeyEnv = "OPENAI_API_KEY"
-		}
-		if cfg.Target.OpenAI.BaseURL == "" {
-			cfg.Target.OpenAI.BaseURL = "https://api.openai.com/v1"
-		}
-	}
-	if cfg.Target.TargetType() == "anthropic" {
-		if cfg.Target.Name == "" {
-			cfg.Target.Name = "anthropic"
-		}
-		if cfg.Target.Anthropic.APIKeyEnv == "" {
-			cfg.Target.Anthropic.APIKeyEnv = "ANTHROPIC_API_KEY"
-		}
-		if cfg.Target.Anthropic.BaseURL == "" {
-			cfg.Target.Anthropic.BaseURL = "https://api.anthropic.com/v1"
-		}
-		if cfg.Target.Anthropic.Version == "" {
-			cfg.Target.Anthropic.Version = "2023-06-01"
-		}
-		if cfg.Target.Anthropic.MaxTokens == 0 {
-			cfg.Target.Anthropic.MaxTokens = 1024
+		if !cfg.ScenarioGeneration.RequireReview {
+			cfg.ScenarioGeneration.RequireReview = true
 		}
 	}
 	if cfg.Suites.PromptInjection.Enabled && len(cfg.Suites.PromptInjection.BlockIndicators) == 0 {
@@ -304,6 +272,54 @@ func applyDefaults(cfg *core.Config) {
 	applyTrendGatePreset(&cfg.Reporting.TrendGates)
 	if cfg.Reporting.TrendGates.Enabled && cfg.Reporting.TrendGates.RequiredWindow == 0 {
 		cfg.Reporting.TrendGates.RequiredWindow = 2
+	}
+}
+
+func applyTargetDefaults(target *core.TargetConfig, requireExplicitType bool) {
+	if !requireExplicitType && target.Type == "" {
+		target.Type = "http"
+	}
+	if target.Method == "" {
+		target.Method = "POST"
+	}
+	if target.TimeoutMS == 0 {
+		target.TimeoutMS = 5000
+	}
+	if target.Headers == nil {
+		target.Headers = map[string]string{
+			"Content-Type": "application/json",
+		}
+	}
+	if target.TargetType() == "openai" {
+		if target.Name == "" {
+			target.Name = "openai"
+		}
+		if target.OpenAI.APIMode == "" {
+			target.OpenAI.APIMode = "responses"
+		}
+		if target.OpenAI.APIKeyEnv == "" {
+			target.OpenAI.APIKeyEnv = "OPENAI_API_KEY"
+		}
+		if target.OpenAI.BaseURL == "" {
+			target.OpenAI.BaseURL = "https://api.openai.com/v1"
+		}
+	}
+	if target.TargetType() == "anthropic" {
+		if target.Name == "" {
+			target.Name = "anthropic"
+		}
+		if target.Anthropic.APIKeyEnv == "" {
+			target.Anthropic.APIKeyEnv = "ANTHROPIC_API_KEY"
+		}
+		if target.Anthropic.BaseURL == "" {
+			target.Anthropic.BaseURL = "https://api.anthropic.com/v1"
+		}
+		if target.Anthropic.Version == "" {
+			target.Anthropic.Version = "2023-06-01"
+		}
+		if target.Anthropic.MaxTokens == 0 {
+			target.Anthropic.MaxTokens = 1024
+		}
 	}
 }
 

@@ -14,12 +14,15 @@ import (
 )
 
 type ScenarioDataset struct {
-	Version     string                 `json:"version"`
-	Source      string                 `json:"source,omitempty"`
-	Target      string                 `json:"target,omitempty"`
-	BuildID     string                 `json:"build_id,omitempty"`
-	GeneratedAt time.Time              `json:"generated_at"`
-	Scenarios   []ScenarioDatasetEntry `json:"scenarios"`
+	Version        string                    `json:"version"`
+	Source         string                    `json:"source,omitempty"`
+	Target         string                    `json:"target,omitempty"`
+	BuildID        string                    `json:"build_id,omitempty"`
+	GeneratedAt    time.Time                 `json:"generated_at"`
+	ReviewRequired bool                      `json:"review_required,omitempty"`
+	Warnings       []string                  `json:"warnings,omitempty"`
+	Generator      *ScenarioDatasetGenerator `json:"generator,omitempty"`
+	Scenarios      []ScenarioDatasetEntry    `json:"scenarios"`
 }
 
 type ScenarioDatasetEntry struct {
@@ -33,6 +36,21 @@ type DatasetScenarioOrigin struct {
 	BuildID  string         `json:"build_id,omitempty"`
 	Findings []core.Finding `json:"findings,omitempty"`
 	Evidence map[string]any `json:"evidence,omitempty"`
+}
+
+type ScenarioDatasetGenerator struct {
+	Provider       string    `json:"provider,omitempty"`
+	ProviderID     string    `json:"provider_id,omitempty"`
+	Model          string    `json:"model,omitempty"`
+	TargetType     string    `json:"target_type,omitempty"`
+	TargetName     string    `json:"target_name,omitempty"`
+	RequestedCount int       `json:"requested_count,omitempty"`
+	ReturnedCount  int       `json:"returned_count,omitempty"`
+	AppKind        string    `json:"app_kind,omitempty"`
+	Goals          []string  `json:"goals,omitempty"`
+	RiskAreas      []string  `json:"risk_areas,omitempty"`
+	PromptHash     string    `json:"prompt_hash,omitempty"`
+	GeneratedAt    time.Time `json:"generated_at,omitempty"`
 }
 
 func LoadScenarioDatasetFile(path string) (ScenarioDataset, error) {

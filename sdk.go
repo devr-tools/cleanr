@@ -10,6 +10,8 @@ import (
 
 type Config = corepkg.Config
 type TargetConfig = corepkg.TargetConfig
+type ScenarioGenerationConfig = corepkg.ScenarioGenerationConfig
+type ScenarioGenerationSpec = corepkg.ScenarioGenerationSpec
 type Report = corepkg.Report
 type ReplayArtifact = corepkg.ReplayArtifact
 type ReleaseGateAttestation = corepkg.ReleaseGateAttestation
@@ -17,6 +19,7 @@ type TrendAnalysis = corepkg.TrendAnalysis
 type TrendGateConfig = corepkg.TrendGateConfig
 type IntegrationsConfig = corepkg.IntegrationsConfig
 type ScenarioDataset = corepkg.ScenarioDataset
+type ScenarioDatasetGenerator = corepkg.ScenarioDatasetGenerator
 type Target = corepkg.Target
 type Runner = corepkg.Runner
 
@@ -102,6 +105,10 @@ func PublishResultSinks(ctx context.Context, cfg IntegrationsConfig, report Repo
 
 func ExportScenarioDataset(cfg Config, artifact ReplayArtifact, includeAll bool) ScenarioDataset {
 	return corepkg.ExportScenarioDataset(cfg, artifact, includeAll)
+}
+
+func GenerateScenarioDataset(ctx context.Context, cfg Config, client *http.Client) (ScenarioDataset, error) {
+	return corepkg.GenerateScenarioDataset(ctx, cfg, client)
 }
 
 func MergeDatasetIntoConfig(base Config, dataset ScenarioDataset) Config {
