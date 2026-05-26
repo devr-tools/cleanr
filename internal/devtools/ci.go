@@ -9,7 +9,7 @@ import (
 
 const (
 	defaultCIGovulncheckMode    = "required"
-	defaultCIGovulncheckVersion = "v1.3.0"
+	defaultCIGovulncheckVersion = "v1.0.4"
 	defaultCIGocycloVersion     = "v0.6.0"
 	defaultCISCCVersion         = "v3.6.0"
 	defaultCIMaxFileCodeLines   = 400
