@@ -13,7 +13,7 @@ CI_BASE_REF ?=
 
 export GOCACHE
 
-.PHONY: menu help fmt fmt-check lint test gofiles check ci build release homebrew-formula deploy report clean
+.PHONY: menu help fmt fmt-check lint test gofiles check ci commit build release homebrew-formula deploy report clean
 
 menu:
 	@printf "\ncleanr make menu\n\n"
@@ -24,6 +24,7 @@ menu:
 	@printf "  make gofiles     Validate and list Go file layout\n"
 	@printf "  make check       Run gofiles, fmt-check, lint, and test\n"
 	@printf "  make ci          Run the local CI parity gate used before commit\n"
+	@printf "  make commit      Stage, commit, and push the current branch with a conventional commit message\n"
 	@printf "  make build       Build the cleanr CLI to dist/cleanr\n"
 	@printf "  make release     Package release artifacts to dist/releases (use VERSION=...)\n"
 	@printf "  make homebrew-formula  Generate a Homebrew formula for a release (use VERSION=...)\n"
@@ -63,6 +64,9 @@ check:
 
 ci:
 	$(GO) run ./cmd/cleanr-dev ci $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),)
+
+commit:
+	@./scripts/commit.sh
 
 build:
 	$(GO) run ./cmd/cleanr-dev build -output dist/cleanr
