@@ -49,7 +49,10 @@ jobs:
         run: |
           set -euo pipefail
 
-          if [ "$EVENT_NAME" = "push" ]; then
+          if [ -n "${CALL_TAG:-}" ]; then
+            raw_tag="$CALL_TAG"
+            prerelease="$CALL_PRERELEASE"
+          elif [ "$EVENT_NAME" = "push" ]; then
             tag="${GITHUB_REF_NAME}"
             if [[ "$tag" =~ ^([A-Za-z0-9._-]+-)?v[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$ ]]; then
               prerelease="true"
@@ -60,14 +63,11 @@ jobs:
             raw_tag="$DISPATCH_TAG"
             prerelease="$DISPATCH_PRERELEASE"
           else
-            raw_tag="$CALL_TAG"
-            prerelease="$CALL_PRERELEASE"
-
-            # Reusable callers already pass normalized tags, but keep the same
-            # manual-input cleanup here so both entry points behave the same.
+            echo "unable to resolve release tag from inputs or event context"
+            exit 1
           fi
 
-          if [ "$EVENT_NAME" != "push" ]; then
+          if [ -n "${raw_tag:-}" ]; then
             tag="$(printf '%s' "$raw_tag" | tr -d '[:space:]')"
             tag="${tag#refs/tags/}"
             tag="${tag#tag=}"
