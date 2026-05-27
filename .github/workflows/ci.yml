@@ -33,18 +33,27 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 50
+          fetch-depth: 0
 
       - name: Check changed code paths have test coverage updates
         shell: bash
         env:
           PR_BASE_REF: ${{ github.base_ref }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
         run: |
           set -euo pipefail
 
           git fetch origin "${PR_BASE_REF}" --depth=1 || true
-          base_ref="origin/${PR_BASE_REF}"
-          changed_files="$(git diff --name-only "${base_ref}"...HEAD)"
+          diff_base="origin/${PR_BASE_REF}"
+          if [ -n "${PR_BASE_SHA:-}" ] && git cat-file -e "${PR_BASE_SHA}^{commit}" 2>/dev/null; then
+            diff_base="${PR_BASE_SHA}"
+          fi
+          if git merge-base "$diff_base" HEAD >/dev/null 2>&1; then
+            changed_files="$(git diff --name-only "${diff_base}"...HEAD)"
+          else
+            echo "warning: no merge base between ${diff_base} and HEAD; falling back to direct diff"
+            changed_files="$(git diff --name-only "${diff_base}" HEAD)"
+          fi
 
           code_changes="$(printf '%s\n' "$changed_files" | grep -E '^(cleanr/|cmd/|internal/).+\.go$' | grep -Ev '(^|/).+_test\.go$|(^|/)doc\.go$|^internal/version/version\.go$' || true)"
           test_changes="$(printf '%s\n' "$changed_files" | grep -E '(^tests/|_test\.go$)' || true)"

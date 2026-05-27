@@ -83,6 +83,28 @@ func TestDevtoolsCIAllowsReleaseVersionBumpWithoutTestUpdate(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCIHandlesNoMergeBase(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+
+	runGit(t, repo, "checkout", "--orphan", "feature/orphan-ci")
+	writeCIBaseFiles(t, repo)
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n\nconst orphanCI = true\n")
+	gitCommitAll(t, repo, "orphan ci commit\n\nSigned-off-by: Test User <test@example.com>\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected ci to fall back when no merge base exists, got %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "warning: no merge base with main; falling back to direct diff") {
+		t.Fatalf("expected no-merge-base warning, got: %s", stdout.String())
+	}
+}
+
 func TestDevtoolsCIDevelopRequiresDocs(t *testing.T) {
 	repo := initGitRepo(t, "develop")
 	writeCIBaseFiles(t, repo)

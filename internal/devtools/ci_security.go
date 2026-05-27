@@ -40,15 +40,15 @@ func (r Runner) runCISemgrep(ctx context.Context, opts CIOptions) error {
 		return nil
 	}
 
-	mergeBase, err := r.runOutputCommand(ctx, nil, "git", "merge-base", opts.BaseRef, "HEAD")
+	baseline, hasMergeBase, err := r.gitDiffBase(ctx, opts.BaseRef)
 	if err != nil {
 		return err
 	}
-	baseline := strings.TrimSpace(mergeBase)
-	if baseline == "" {
-		return fmt.Errorf("empty merge-base for %s", opts.BaseRef)
+	label := "baseline"
+	if !hasMergeBase {
+		label = "fallback baseline"
 	}
-	if _, err := fmt.Fprintf(r.Stdout, "running semgrep against baseline %s\n", baseline); err != nil {
+	if _, err := fmt.Fprintf(r.Stdout, "running semgrep against %s %s\n", label, baseline); err != nil {
 		return err
 	}
 	return r.runCommand(ctx, nil, opts.SemgrepCommand, "scan", "--config", "auto", "--baseline-commit", baseline, "--error")
@@ -87,11 +87,11 @@ func (r Runner) runCIDocReview(ctx context.Context, baseRef string) error {
 }
 
 func (r Runner) runCIDCO(ctx context.Context, baseRef string) error {
-	mergeBase, err := r.runOutputCommand(ctx, nil, "git", "merge-base", baseRef, "HEAD")
+	baseline, _, err := r.gitDiffBase(ctx, baseRef)
 	if err != nil {
 		return err
 	}
-	commitsOut, err := r.runOutputCommand(ctx, nil, "git", "rev-list", strings.TrimSpace(mergeBase)+"..HEAD")
+	commitsOut, err := r.runOutputCommand(ctx, nil, "git", "rev-list", baseline+"..HEAD")
 	if err != nil {
 		return err
 	}
