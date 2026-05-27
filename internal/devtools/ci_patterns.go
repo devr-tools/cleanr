@@ -4,7 +4,7 @@ import "regexp"
 
 var (
 	ciCodeChangePattern    = regexp.MustCompile(`^(cleanr/|cmd/|internal/).+\.go$`)
-	ciCodeIgnorePattern    = regexp.MustCompile(`(^|/).+_test\.go$|(^|/)doc\.go$`)
+	ciCodeIgnorePattern    = regexp.MustCompile(`(^|/).+_test\.go$|(^|/)doc\.go$|^internal/version/version\.go$`)
 	ciTestChangePattern    = regexp.MustCompile(`^(tests/|.*_test\.go$)`)
 	ciCICDOnlyPattern      = regexp.MustCompile(`^(\.github/workflows/|\.github/release-please-config\.json$|\.release-please-manifest\.json$)`)
 	ciDocSensitivePattern  = regexp.MustCompile(`^(\.goreleaser\.yaml$|\.github/release-please-config\.json$|\.release-please-manifest\.json$|Formula/|README\.md$|docs/|internal/devtools/)`)
