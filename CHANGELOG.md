@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.3.0](https://github.com/devr-tools/cleanr/compare/v0.2.0...v0.3.0) (2026-05-27)
+
+
+### Features
+
+* **feat: repo folder for cleanr docs:** repo folder for cleanr docs ([cdb351b](https://github.com/devr-tools/cleanr/commit/cdb351bed9c855483e7a407c92923e5b856c047e))
+* repo folder for cleanr docs ([e4528c3](https://github.com/devr-tools/cleanr/commit/e4528c36fded95c70cbb73957ca4c686a3512fb4))
+
 ## [0.2.0](https://github.com/devr-tools/cleanr/compare/v0.1.0...v0.2.0) (2026-05-27)
 
 
