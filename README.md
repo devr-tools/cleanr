@@ -5,7 +5,9 @@
 <p align="center">
   <a href="https://github.com/devr-tools/cleanr/actions/workflows/ci.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/ci.yml/badge.svg" alt="CI status"></a>
   <a href="https://github.com/devr-tools/cleanr/actions/workflows/cd.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/cd.yml/badge.svg" alt="CD status"></a>
-  <a href="https://github.com/devr-tools/cleanr/actions/workflows/release.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/release.yml/badge.svg" alt="Release status"></a>
+  <a href="https://github.com/devr-tools/cleanr/releases">
+    <img src="https://img.shields.io/github/v/release/devr-tools/cleanr?display_name=tag&include_prereleases" alt="release version" />
+  </a>
   <a href="https://github.com/devr-tools/cleanr/actions/workflows/homebrew-validation.yml"><img src="https://github.com/devr-tools/cleanr/actions/workflows/homebrew-validation.yml/badge.svg" alt="Homebrew validation status"></a>
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/contributing-guide-brightgreen.svg" alt="Contributing guide"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache%202.0-blue.svg" alt="Apache 2.0 license"></a>
