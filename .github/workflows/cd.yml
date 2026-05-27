@@ -108,6 +108,7 @@ jobs:
     uses: ./.github/workflows/release.yml
     permissions:
       contents: write
+      packages: write
     with:
       tag: ${{ needs.prepare-prerelease.outputs.tag }}
       prerelease: true
