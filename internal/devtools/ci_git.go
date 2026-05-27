@@ -2,12 +2,18 @@ package devtools
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"strings"
 )
 
 func (r Runner) gitChangedFiles(ctx context.Context, baseRef string) ([]string, error) {
-	out, err := r.runOutputCommand(ctx, nil, "git", "diff", "--name-only", baseRef, "--")
+	diffBase, _, err := r.gitDiffBase(ctx, baseRef)
+	if err != nil {
+		return nil, err
+	}
+
+	out, err := r.runOutputCommand(ctx, nil, "git", "diff", "--name-only", diffBase, "--")
 	if err != nil {
 		return nil, err
 	}
@@ -26,7 +32,12 @@ func (r Runner) gitChangedFiles(ctx context.Context, baseRef string) ([]string, 
 }
 
 func (r Runner) gitDiff(ctx context.Context, baseRef string) (string, error) {
-	diffText, err := r.runOutputCommand(ctx, nil, "git", "diff", baseRef, "--")
+	diffBase, _, err := r.gitDiffBase(ctx, baseRef)
+	if err != nil {
+		return "", err
+	}
+
+	diffText, err := r.runOutputCommand(ctx, nil, "git", "diff", diffBase, "--")
 	if err != nil {
 		return "", err
 	}
@@ -48,6 +59,35 @@ func (r Runner) gitDiff(ctx context.Context, baseRef string) (string, error) {
 		}
 	}
 	return builder.String(), nil
+}
+
+func (r Runner) gitDiffBase(ctx context.Context, baseRef string) (string, bool, error) {
+	mergeBase, err := r.runOutputCommand(ctx, nil, "git", "merge-base", baseRef, "HEAD")
+	if err == nil {
+		baseline := strings.TrimSpace(mergeBase)
+		if baseline != "" {
+			return baseline, true, nil
+		}
+	}
+
+	baseCommit, refErr := r.runOutputCommand(ctx, nil, "git", "rev-parse", "--verify", "--quiet", baseRef)
+	if refErr != nil {
+		if err != nil {
+			return "", false, err
+		}
+		return "", false, refErr
+	}
+	baseline := strings.TrimSpace(baseCommit)
+	if baseline == "" {
+		if err != nil {
+			return "", false, err
+		}
+		return "", false, fmt.Errorf("empty baseline for %s", baseRef)
+	}
+	if _, printErr := fmt.Fprintf(r.Stdout, "warning: no merge base with %s; falling back to direct diff from %s\n", baseRef, baseline); printErr != nil {
+		return "", false, printErr
+	}
+	return baseline, false, nil
 }
 
 func (r Runner) gitRefExists(ctx context.Context, ref string) bool {

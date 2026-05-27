@@ -30,16 +30,15 @@ func (r Runner) runCIGolangCILint(ctx context.Context, baseRef, version string) 
 		return err
 	}
 
-	mergeBase, err := r.runOutputCommand(ctx, nil, "git", "merge-base", baseRef, "HEAD")
+	baseline, hasMergeBase, err := r.gitDiffBase(ctx, baseRef)
 	if err != nil {
 		return err
 	}
-	baseline := strings.TrimSpace(mergeBase)
-	if baseline == "" {
-		return fmt.Errorf("empty merge-base for %s", baseRef)
+	label := "baseline"
+	if !hasMergeBase {
+		label = "fallback baseline"
 	}
-
-	if _, err := fmt.Fprintf(r.Stdout, "running golangci-lint against baseline %s\n", baseline); err != nil {
+	if _, err := fmt.Fprintf(r.Stdout, "running golangci-lint against %s %s\n", label, baseline); err != nil {
 		return err
 	}
 
