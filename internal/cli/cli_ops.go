@@ -17,6 +17,7 @@ func trendsCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("trends", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")
+	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	trendFile := fs.String("trend-file", "", "Path to trend history file")
 	format := fs.String("format", "text", "Output format: text or json")
 	output := fs.String("output", "", "Optional output file")
@@ -29,7 +30,7 @@ func trendsCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	trendPath, err := resolveTrendPath(*configPath, *trendFile)
+	trendPath, err := resolveTrendPath(*configPath, *profile, *trendFile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "trends error: %v\n", err)
 		return 2
@@ -81,6 +82,7 @@ func datasetExportCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("dataset export", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")
+	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	replayPath := fs.String("replay-artifact", "", "Path to replay artifact file")
 	output := fs.String("output", "cleanr.dataset.yaml", "Path to write the exported scenario dataset")
 	includeAll := fs.Bool("all", false, "Include all scenarios instead of only reviewed replay failures")
@@ -88,7 +90,7 @@ func datasetExportCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	resolvedConfigPath, err := resolveConfigPath(*configPath, *profile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "dataset export error: %v\n", err)
 		return 2
@@ -173,12 +175,13 @@ func pluginsCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("plugins", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")
+	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	format := fs.String("format", "text", "Output format: text or json")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	resolvedConfigPath, err := resolveConfigPath(*configPath, *profile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "plugins error: %v\n", err)
 		return 2
@@ -224,11 +227,12 @@ func validateCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("validate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")
+	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	resolvedConfigPath, err := resolveConfigPath(*configPath, *profile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "invalid: %v\n", err)
 		return 2

@@ -224,7 +224,7 @@ cleanr setup agent --ci \
 
 That generated config points to standard env var names instead of embedding credentials, so a user can set secrets once and run without editing the config.
 
-`cleanr-connected.yml` also supports staged setup profiles via `CLEANR_PROFILE`:
+`cleanr-connected.yml` also supports staged setup profiles via `CLEANR_PROFILE`. The same variable now selects staged local configs such as `.cleanr/pr.yaml`, `.cleanr/main.yaml`, and `.cleanr/release.yaml` for CLI commands like `cleanr run`, `cleanr validate`, and `cleanr snapshot`:
 
 - `pr`: light drift, security, token optimization, exploratory trend gates
 - `main`: retained trend history and moderate trend gates

@@ -123,3 +123,110 @@ func TestCLIMCPCommandReturnsOnEOF(t *testing.T) {
 		t.Fatalf("expected mcp command to exit cleanly on EOF, got %d stderr=%s", code, stderr.String())
 	}
 }
+
+func TestCLIValidateSupportsStagedProfileConfigs(t *testing.T) {
+	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := os.MkdirAll(".cleanr", 0o755); err != nil {
+		t.Fatalf("mkdir .cleanr: %v", err)
+	}
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Target.Name = "pr-profile"
+	if err := cleanr.WriteConfigFile(filepath.Join(".cleanr", "pr.yaml"), cfg); err != nil {
+		t.Fatalf("write staged config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := cli.Run([]string{"validate", "-profile", "pr"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("expected validate to succeed, got %d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "valid config for pr-profile with 2 scenarios") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestCLIValidateSupportsStagedProfileFromEnv(t *testing.T) {
+	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	t.Setenv("CLEANR_PROFILE", "release")
+
+	if err := os.MkdirAll(".cleanr", 0o755); err != nil {
+		t.Fatalf("mkdir .cleanr: %v", err)
+	}
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Target.Name = "release-profile"
+	if err := cleanr.WriteConfigFile(filepath.Join(".cleanr", "release.yaml"), cfg); err != nil {
+		t.Fatalf("write staged config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := cli.Run([]string{"validate"}, &stdout, &stderr); code != 0 {
+		t.Fatalf("expected validate to succeed, got %d stderr=%s", code, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "valid config for release-profile with 2 scenarios") {
+		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestCLIValidateHintsWhenStagedConfigsNeedProfileSelection(t *testing.T) {
+	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	if err := os.MkdirAll(".cleanr", 0o755); err != nil {
+		t.Fatalf("mkdir .cleanr: %v", err)
+	}
+
+	cfg := cleanr.ExampleConfig()
+	if err := cleanr.WriteConfigFile(filepath.Join(".cleanr", "pr.yaml"), cfg); err != nil {
+		t.Fatalf("write pr config: %v", err)
+	}
+	if err := cleanr.WriteConfigFile(filepath.Join(".cleanr", "main.yaml"), cfg); err != nil {
+		t.Fatalf("write main config: %v", err)
+	}
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := cli.Run([]string{"validate"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("expected validate to fail, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "found staged configs under .cleanr, rerun with -profile pr|main|release or set CLEANR_PROFILE") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestCLIValidateRejectsInvalidProfile(t *testing.T) {
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	if code := cli.Run([]string{"validate", "-profile", "nightly"}, &stdout, &stderr); code != 2 {
+		t.Fatalf("expected validate to fail, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), `invalid: unsupported profile "nightly"; expected pr, main, or release`) {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}

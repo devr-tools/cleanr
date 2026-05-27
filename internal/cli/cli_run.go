@@ -15,6 +15,7 @@ import (
 
 type runOptions struct {
 	configPath         string
+	profile            string
 	format             string
 	output             string
 	trendFile          string
@@ -30,7 +31,7 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	resolvedConfigPath, err := resolveConfigPath(opts.configPath)
+	resolvedConfigPath, err := resolveConfigPath(opts.configPath, opts.profile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
 		return 2
@@ -81,6 +82,7 @@ func parseRunOptions(args []string, stderr io.Writer) (runOptions, error) {
 	fs.SetOutput(stderr)
 	opts := runOptions{}
 	fs.StringVar(&opts.configPath, "config", "", "Path to cleanr config")
+	fs.StringVar(&opts.profile, "profile", "", "Optional staged config profile: pr, main, or release")
 	fs.StringVar(&opts.format, "format", "", "Report format: text, json, junit")
 	fs.StringVar(&opts.output, "output", "", "Optional output file")
 	fs.StringVar(&opts.trendFile, "trend-file", "", "Optional trend history file")
@@ -201,13 +203,14 @@ func snapshotCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("snapshot", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")
+	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	output := fs.String("output", "", "Path to write snapshot baseline")
 	timeout := fs.Duration("timeout", 0, "Overall execution timeout")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 
-	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	resolvedConfigPath, err := resolveConfigPath(*configPath, *profile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
 		return 2
@@ -258,6 +261,7 @@ func generateCmd(args []string, stdout, stderr io.Writer) int {
 	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")
+	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	output := fs.String("output", "", "Path to write the generated scenario dataset")
 	count := fs.Int("count", 0, "Optional override for scenario_generation.count")
 	timeout := fs.Duration("timeout", 0, "Overall execution timeout")
@@ -265,7 +269,7 @@ func generateCmd(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 
-	resolvedConfigPath, err := resolveConfigPath(*configPath)
+	resolvedConfigPath, err := resolveConfigPath(*configPath, *profile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "generate error: %v\n", err)
 		return 2

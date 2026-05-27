@@ -111,9 +111,9 @@ Minimal shape:
 
 If you want the highest-value rollout, structure configs by pipeline stage:
 
-- `cleanr-pr.yaml`: assertions, security, token optimization, light drift
-- `cleanr-main.yaml`: adds trend tracking and moderate trend gates
-- `cleanr-release.yaml`: adds full drift, load, chaos, replay artifacts, attestation, and `release_policy`
+- `.cleanr/pr.yaml`: assertions, security, token optimization, light drift
+- `.cleanr/main.yaml`: adds trend tracking and moderate trend gates
+- `.cleanr/release.yaml`: adds full drift, load, chaos, replay artifacts, attestation, and `release_policy`
 
 Reference examples live in:
 
@@ -124,9 +124,17 @@ Reference examples live in:
 The same rollout is now available directly from the setup flow:
 
 ```bash
-cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output cleanr-pr.yaml
-cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output cleanr-main.yaml
-cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output cleanr-release.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile pr -output .cleanr/pr.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile main -output .cleanr/main.yaml
+cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output .cleanr/release.yaml
+```
+
+Then select the desired stage at runtime:
+
+```bash
+cleanr run -profile pr
+cleanr run -profile main
+CLEANR_PROFILE=release cleanr validate
 ```
 
 For agent-oriented configs:
