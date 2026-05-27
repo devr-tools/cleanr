@@ -46,7 +46,7 @@ jobs:
           base_ref="origin/${PR_BASE_REF}"
           changed_files="$(git diff --name-only "${base_ref}"...HEAD)"
 
-          code_changes="$(printf '%s\n' "$changed_files" | grep -E '^(cleanr/|cmd/|internal/).+\.go$' | grep -Ev '(^|/).+_test\.go$|(^|/)doc\.go$' || true)"
+          code_changes="$(printf '%s\n' "$changed_files" | grep -E '^(cleanr/|cmd/|internal/).+\.go$' | grep -Ev '(^|/).+_test\.go$|(^|/)doc\.go$|^internal/version/version\.go$' || true)"
           test_changes="$(printf '%s\n' "$changed_files" | grep -E '(^tests/|_test\.go$)' || true)"
 
           if [ -z "$code_changes" ]; then
