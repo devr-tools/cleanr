@@ -121,6 +121,9 @@ jobs:
       contents: write
       issues: write
       pull-requests: write
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
     steps:
       - name: Require release bot token
         shell: bash
@@ -142,3 +145,15 @@ jobs:
           token: ${{ secrets.RELEASE_PLEASE_TOKEN }}
           config-file: .github/release-please-config.json
           manifest-file: .release-please-manifest.json
+
+  stable-release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/release.yml
+    permissions:
+      contents: write
+      packages: write
+    with:
+      tag: ${{ needs.release-please.outputs.tag_name }}
+      prerelease: false
+    secrets: inherit
