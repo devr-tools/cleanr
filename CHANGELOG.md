@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.0](https://github.com/devr-tools/cleanr/compare/v0.2.0...v0.3.0) (2026-05-27)
+
+
+### Features
+
+* 1 ([60450cc](https://github.com/devr-tools/cleanr/commit/60450cc8f392da2d8b86920e9f28c42234fc8878))
+
 ## [0.2.0](https://github.com/devr-tools/cleanr/compare/v0.1.0...v0.2.0) (2026-05-27)
 
 
