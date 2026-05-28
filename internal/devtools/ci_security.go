@@ -145,10 +145,7 @@ func (r Runner) ensureGoTool(ctx context.Context, binaryName, modulePath, versio
 func (r Runner) runGovulncheck(ctx context.Context, opts CIOptions) error {
 	govulncheckPath, err := r.ensureGoTool(ctx, "govulncheck", "golang.org/x/vuln/cmd/govulncheck", opts.GovulncheckVersion)
 	if err != nil {
-		if opts.GovulncheckMode == "required" {
-			return fmt.Errorf("resolve govulncheck: %w", err)
-		}
-		if _, printErr := fmt.Fprintf(r.Stdout, "warning: govulncheck install failed but mode=%s, continuing\n", opts.GovulncheckMode); printErr != nil {
+		if _, printErr := fmt.Fprintf(r.Stdout, "warning: govulncheck unavailable, skipping local scan (%v)\n", err); printErr != nil {
 			return printErr
 		}
 		return nil

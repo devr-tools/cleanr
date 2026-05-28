@@ -49,6 +49,7 @@ Local behavior differs from hosted GitHub Actions in two places:
 - the `gocyclo` gate compares changed files against the base ref and fails only on new or worsened complexity violations, so existing baseline debt on the target branch does not block local pre-commit checks
 - the `scc` gate compares changed files against the base ref and fails only on new or worsened god-file size regressions
 - the `golangci-lint` gate uses [.golangci.yml](../.golangci.yml) and reports only new issues against the merge-base of your base ref and `HEAD`
+- the `govulncheck` step is skipped with a warning when the scanner cannot be installed for your local Go toolchain
 - the `semgrep` step is skipped with a warning when the `semgrep` binary is not installed locally
 
 Set `CI_BASE_REF=<ref>` when you want to force the comparison target, for example `make ci CI_BASE_REF=origin/develop`.

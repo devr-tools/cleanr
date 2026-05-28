@@ -1,4 +1,8 @@
 GO ?= go
+ifeq ($(strip $(GOROOT)),)
+else ifeq ($(wildcard $(GOROOT)),)
+GO := env -u GOROOT $(GO)
+endif
 VERSION ?= dev
 REPOSITORY ?= devr-tools/cleanr
 SOURCE_SHA256 ?=

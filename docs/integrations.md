@@ -40,6 +40,14 @@ These integrations write local summary artifacts after the run completes.
 | Markdown summary | `summaries[].format: markdown` | implemented | Writes a human-readable PR or release summary |
 | JSON summary | `summaries[].format: json` | implemented | Writes a machine-readable summary for downstream automation |
 
+### Sync Workflows
+
+These workflows pull Braintrust-stored artifacts back into a reviewable `cleanr` change set.
+
+| Workflow | Command | Status | Current behavior |
+| --- | --- | --- | --- |
+| Braintrust sync | `cleanr sync braintrust` | implemented | Reads replay artifacts and explicit `cleanr_sync` insight payloads from Braintrust, writes a normalized insight dataset, merges scenario updates into config, applies explicit config patch operations, and can optionally open a GitHub PR through `gh` |
+
 ## Current Gaps
 
 The following are not implemented yet:
@@ -47,7 +55,7 @@ The following are not implemented yet:
 - native Langfuse trend-source loading
 - native PostHog trend-source loading
 - provider-backed dataset import or export flows
-- provider-specific UI or PR annotation integrations beyond returned run URLs and local summary files
+- provider-specific UI integrations beyond returned run URLs, local summary files, and the `cleanr sync braintrust` review loop
 
 ## Where To Configure
 
