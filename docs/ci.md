@@ -149,6 +149,7 @@ It runs the same main gates locally: test presence, formatting, `go vet`, `gocyc
 For `gocyclo`, the local command compares changed files to the resolved base ref and fails only on new or worsened over-limit findings. That keeps `make ci` usable when the base branch already carries complexity debt.
 For `scc`, the local command treats changed non-test Go files above `400` code lines as god files, but only fails on new or worsened size debt compared with the base ref.
 For `golangci-lint`, the local command uses [.golangci.yml](../.golangci.yml) and reports only new maintainability findings against the merge-base with the target branch.
+If `govulncheck` cannot be installed for the current local Go toolchain, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 If `semgrep` is not installed locally, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 
 The local command compares your working tree against a Git base ref. Resolution order is:
@@ -229,6 +230,40 @@ That generated config points to standard env var names instead of embedding cred
 - `pr`: light drift, security, token optimization, exploratory trend gates
 - `main`: retained trend history and moderate trend gates
 - `release`: full drift, load, chaos, replay artifacts, attestation, and starter `release_policy` rules
+
+## Braintrust Sync Loop
+
+When Braintrust stores replay artifacts and a follow-up optimizer writes an explicit `cleanr_sync` payload into the experiment, `cleanr` can pull those recommendations back into a reviewable config update:
+
+```bash
+cleanr sync braintrust \
+  -config cleanr.connected.yaml \
+  -output-insights reports/braintrust.insights.yaml \
+  -output-dataset reports/braintrust.dataset.yaml \
+  -output-config cleanr.synced.yaml \
+  -approve-insights
+```
+
+The sync command:
+
+- reads the latest matching Braintrust experiment for the configured project and experiment family
+- derives regression scenarios from the stored replay artifact using the local base config
+- applies explicit config patch operations from `output.cleanr_sync`
+- writes a normalized Braintrust insight dataset for auditability
+
+If you want `cleanr` to open a GitHub PR after generating the files, run:
+
+```bash
+cleanr sync braintrust \
+  -config cleanr.connected.yaml \
+  -output-config cleanr.connected.yaml \
+  -approve-insights \
+  -create-pr \
+  -pr-branch cleanr-sync-braintrust \
+  -pr-title "cleanr sync: apply Braintrust insights"
+```
+
+That flow requires `git` and the GitHub CLI `gh` on `PATH`.
 
 ## Related Docs
 

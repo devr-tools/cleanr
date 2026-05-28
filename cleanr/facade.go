@@ -97,6 +97,9 @@ type ScenarioDataset = integrationspkg.ScenarioDataset
 type ScenarioDatasetEntry = integrationspkg.ScenarioDatasetEntry
 type DatasetScenarioOrigin = integrationspkg.DatasetScenarioOrigin
 type ScenarioDatasetGenerator = integrationspkg.ScenarioDatasetGenerator
+type BraintrustInsightDataset = integrationspkg.BraintrustInsightDataset
+type BraintrustConfigPatchSet = integrationspkg.BraintrustConfigPatchSet
+type BraintrustConfigPatchOperation = integrationspkg.BraintrustConfigPatchOperation
 type ReleaseGateAttestation = core.ReleaseGateAttestation
 type AttestationSubject = core.AttestationSubject
 type AttestationPredicate = core.AttestationPredicate
@@ -233,6 +236,26 @@ func GenerateScenarioDataset(ctx context.Context, cfg Config, client *http.Clien
 
 func MergeDatasetIntoConfig(base Config, dataset ScenarioDataset) Config {
 	return integrationspkg.MergeDatasetIntoConfig(base, dataset)
+}
+
+func LoadBraintrustInsightDatasetFile(path string) (BraintrustInsightDataset, error) {
+	return integrationspkg.LoadBraintrustInsightDatasetFile(path)
+}
+
+func LoadBraintrustInsightDatasetData(data []byte, path string) (BraintrustInsightDataset, error) {
+	return integrationspkg.LoadBraintrustInsightDatasetData(data, path)
+}
+
+func WriteBraintrustInsightDatasetFile(path string, dataset BraintrustInsightDataset) error {
+	return integrationspkg.WriteBraintrustInsightDatasetFile(path, dataset)
+}
+
+func FetchBraintrustInsightDataset(ctx context.Context, source TrendSourceConfig, base Config) (BraintrustInsightDataset, error) {
+	return integrationspkg.FetchBraintrustInsightDataset(ctx, source, base)
+}
+
+func ApplyBraintrustInsightDataset(base Config, dataset BraintrustInsightDataset, applyScenarios, applyPatches, approved bool) (Config, error) {
+	return integrationspkg.ApplyBraintrustInsightDataset(base, dataset, applyScenarios, applyPatches, approved)
 }
 
 func BuildReleaseGateAttestation(report Report, artifact ReplayArtifact, rawKey string, keyID string) (ReleaseGateAttestation, error) {

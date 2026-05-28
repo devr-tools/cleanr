@@ -26,6 +26,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 		return trendsCmd(args[1:], stdout, stderr)
 	case "dataset":
 		return datasetCmd(args[1:], stdout, stderr)
+	case "sync":
+		return syncCmd(args[1:], stdout, stderr)
 	case "plugins":
 		return pluginsCmd(args[1:], stdout, stderr)
 	case "snapshot":
@@ -48,5 +50,5 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|generate|trends|dataset|plugins|snapshot|validate|init|setup|mcp|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|generate|trends|dataset|sync|plugins|snapshot|validate|init|setup|mcp|version> [flags]")
 }

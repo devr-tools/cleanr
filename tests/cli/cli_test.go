@@ -1130,6 +1130,328 @@ func TestDatasetImportRequiresApprovalForGeneratedDatasets(t *testing.T) {
 	}
 }
 
+func TestSyncBraintrustCommandFetchesReplayAndAppliesConfigPatches(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+		Name:       "braintrust",
+		Type:       "braintrust",
+		Project:    "qa-gates",
+		Experiment: "cleanr-ci",
+		APIKeyEnv:  "BRAINTRUST_API_KEY",
+	}}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	restore := stubCLITransport(t, cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment":
+			return jsonCLIResponse(t, 200, map[string]any{
+				"objects": []map[string]any{{
+					"id":         "exp-2",
+					"project_id": "proj-1",
+					"name":       "cleanr-ci/build-2",
+					"created":    "2026-05-28T12:00:00Z",
+				}},
+			}), nil
+		case req.Method == http.MethodPost && req.URL.Path == "/btql":
+			body := decodeCLIRequestBody(t, req)
+			query := body["query"].(string)
+			switch {
+			case strings.Contains(query, "output.replay_artifact"):
+				return jsonCLIResponse(t, 200, map[string]any{
+					"data": []map[string]any{{
+						"replay_artifact": map[string]any{
+							"version":      "v1alpha1",
+							"target":       cfg.Target.Name,
+							"build_id":     "build-2",
+							"generated_at": "2026-05-28T12:00:00Z",
+							"passed":       false,
+							"failed_cases": 1,
+							"failures": []map[string]any{{
+								"suite":  "security",
+								"name":   "happy-path",
+								"failed": true,
+								"findings": []map[string]any{{
+									"severity": "high",
+									"message":  "review me",
+								}},
+							}},
+						},
+					}},
+				}), nil
+			case strings.Contains(query, "output.cleanr_sync"):
+				return jsonCLIResponse(t, 200, map[string]any{
+					"data": []map[string]any{{
+						"cleanr_sync": map[string]any{
+							"version": "v1alpha1",
+							"source":  "braintrust",
+							"config_patch": map[string]any{
+								"operations": []map[string]any{
+									{
+										"op":    "set",
+										"path":  "suites.token_optimization.max_output_tokens",
+										"value": 256,
+									},
+									{
+										"op":    "set",
+										"path":  "scenarios[name=happy-path].system",
+										"value": "Use the verified password reset flow.",
+									},
+								},
+							},
+						},
+					}},
+				}), nil
+			default:
+				t.Fatalf("unexpected btql query: %s", query)
+				return nil, nil
+			}
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment/exp-2/summarize":
+			return jsonCLIResponse(t, 200, map[string]any{
+				"experiment_url": "https://braintrust.dev/app/cleanr-ci/build-2",
+			}), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	}))
+	defer restore()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"sync", "braintrust",
+		"-config", configPath,
+		"-output-insights", "reports/braintrust.insights.yaml",
+		"-output-dataset", "reports/braintrust.dataset.yaml",
+		"-output-config", "cleanr.synced.yaml",
+		"-approve-insights",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected sync success, code=%d stderr=%s", exitCode, stderr.String())
+	}
+
+	insightsPath := filepath.Join(dir, "reports", "braintrust.insights.yaml")
+	insights, err := cleanr.LoadBraintrustInsightDatasetFile(insightsPath)
+	if err != nil {
+		t.Fatalf("load insights: %v", err)
+	}
+	if insights.BuildID != "build-2" || insights.ExperimentURL != "https://braintrust.dev/app/cleanr-ci/build-2" {
+		t.Fatalf("unexpected insights metadata: %+v", insights)
+	}
+	if insights.ScenarioDataset == nil || len(insights.ScenarioDataset.Scenarios) != 1 {
+		t.Fatalf("expected one replay-derived scenario, got %+v", insights.ScenarioDataset)
+	}
+
+	datasetPath := filepath.Join(dir, "reports", "braintrust.dataset.yaml")
+	dataset, err := cleanr.LoadScenarioDatasetFile(datasetPath)
+	if err != nil {
+		t.Fatalf("load dataset: %v", err)
+	}
+	if len(dataset.Scenarios) != 1 || dataset.Scenarios[0].Scenario.Name != "happy-path" {
+		t.Fatalf("unexpected synced dataset: %+v", dataset)
+	}
+
+	syncedConfigPath := filepath.Join(dir, "cleanr.synced.yaml")
+	syncedCfg, err := cleanr.LoadConfigFile(syncedConfigPath)
+	if err != nil {
+		t.Fatalf("load synced config: %v", err)
+	}
+	if syncedCfg.Suites.TokenOptimization.MaxOutputTokens != 256 {
+		t.Fatalf("expected patched token threshold, got %+v", syncedCfg.Suites.TokenOptimization)
+	}
+	var happyPath cleanr.Scenario
+	for _, scenario := range syncedCfg.Scenarios {
+		if scenario.Name == "happy-path" {
+			happyPath = scenario
+			break
+		}
+	}
+	if happyPath.System != "Use the verified password reset flow." {
+		t.Fatalf("expected scenario system patch, got %+v", happyPath)
+	}
+	if !strings.Contains(strings.Join(happyPath.Tags, ","), "regression") {
+		t.Fatalf("expected regression tag after replay sync, got %+v", happyPath.Tags)
+	}
+}
+
+func TestSyncBraintrustCommandRequiresApprovalForReviewRequiredInsights(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+		Type:       "braintrust",
+		Project:    "qa-gates",
+		Experiment: "cleanr-ci",
+	}}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	restore := stubCLITransport(t, cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment":
+			return jsonCLIResponse(t, 200, map[string]any{
+				"objects": []map[string]any{{
+					"id":         "exp-3",
+					"project_id": "proj-1",
+					"name":       "cleanr-ci/build-3",
+					"created":    "2026-05-28T12:00:00Z",
+				}},
+			}), nil
+		case req.Method == http.MethodPost && req.URL.Path == "/btql":
+			body := decodeCLIRequestBody(t, req)
+			query := body["query"].(string)
+			if strings.Contains(query, "output.replay_artifact") {
+				return jsonCLIResponse(t, 200, map[string]any{"data": []map[string]any{}}), nil
+			}
+			return jsonCLIResponse(t, 200, map[string]any{
+				"data": []map[string]any{{
+					"cleanr_sync": map[string]any{
+						"version":         "v1alpha1",
+						"review_required": true,
+						"config_patch": map[string]any{
+							"operations": []map[string]any{{
+								"op":    "set",
+								"path":  "suites.token_optimization.max_output_tokens",
+								"value": 128,
+							}},
+						},
+					},
+				}},
+			}), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment/exp-3/summarize":
+			return jsonCLIResponse(t, 200, map[string]any{}), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	}))
+	defer restore()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"sync", "braintrust",
+		"-config", configPath,
+		"-output-config", "cleanr.synced.yaml",
+	}, &stdout, &stderr)
+	if exitCode != 2 {
+		t.Fatalf("expected approval failure, code=%d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "requires explicit review") {
+		t.Fatalf("unexpected stderr: %s", stderr.String())
+	}
+}
+
+func TestSyncBraintrustCommandCanCreateGitHubPR(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+		Type:       "braintrust",
+		Project:    "qa-gates",
+		Experiment: "cleanr-ci",
+	}}
+
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+	logPath := filepath.Join(dir, "commands.log")
+	binDir := filepath.Join(dir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatalf("mkdir bin: %v", err)
+	}
+	for _, name := range []string{"git", "gh"} {
+		script := "#!/bin/sh\n" +
+			"echo \"" + name + " $@\" >> \"" + logPath + "\"\n"
+		if err := os.WriteFile(filepath.Join(binDir, name), []byte(script), 0o755); err != nil {
+			t.Fatalf("write %s stub: %v", name, err)
+		}
+	}
+	originalPath := os.Getenv("PATH")
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+originalPath)
+
+	restore := stubCLITransport(t, cliRoundTripperFunc(func(req *http.Request) (*http.Response, error) {
+		switch {
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment":
+			return jsonCLIResponse(t, 200, map[string]any{
+				"objects": []map[string]any{{
+					"id":         "exp-4",
+					"project_id": "proj-1",
+					"name":       "cleanr-ci/build-4",
+					"created":    "2026-05-28T12:00:00Z",
+				}},
+			}), nil
+		case req.Method == http.MethodPost && req.URL.Path == "/btql":
+			body := decodeCLIRequestBody(t, req)
+			query := body["query"].(string)
+			if strings.Contains(query, "output.replay_artifact") {
+				return jsonCLIResponse(t, 200, map[string]any{"data": []map[string]any{}}), nil
+			}
+			return jsonCLIResponse(t, 200, map[string]any{
+				"data": []map[string]any{{
+					"cleanr_sync": map[string]any{
+						"version": "v1alpha1",
+						"config_patch": map[string]any{
+							"operations": []map[string]any{{
+								"op":    "set",
+								"path":  "suites.token_optimization.max_output_tokens",
+								"value": 512,
+							}},
+						},
+					},
+				}},
+			}), nil
+		case req.Method == http.MethodGet && req.URL.Path == "/v1/experiment/exp-4/summarize":
+			return jsonCLIResponse(t, 200, map[string]any{
+				"experiment_url": "https://braintrust.dev/app/cleanr-ci/build-4",
+			}), nil
+		default:
+			t.Fatalf("unexpected request: %s %s", req.Method, req.URL.String())
+			return nil, nil
+		}
+	}))
+	defer restore()
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{
+		"sync", "braintrust",
+		"-config", configPath,
+		"-output-config", "cleanr.synced.yaml",
+		"-create-pr",
+		"-pr-branch", "cleanr-sync-branch",
+		"-pr-title", "Sync Braintrust insights",
+		"-pr-body", "Apply reviewed Braintrust insights.",
+		"-commit-message", "cleanr sync commit",
+	}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected sync pr success, code=%d stderr=%s", exitCode, stderr.String())
+	}
+
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read command log: %v", err)
+	}
+	logText := string(logBody)
+	for _, want := range []string{
+		"git checkout -b cleanr-sync-branch",
+		"git add",
+		"git commit -m cleanr sync commit",
+		"gh pr create --title Sync Braintrust insights --body Apply reviewed Braintrust insights.",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in command log:\n%s", want, logText)
+		}
+	}
+}
+
 func TestRunCommandPersistsTrendHistory(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Scenarios = []cleanr.Scenario{{
