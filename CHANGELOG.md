@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.4.0](https://github.com/devr-tools/cleanr/compare/v0.3.0...v0.4.0) (2026-05-28)
+
+
+### Features
+
+* braintrust integration ([d3076cb](https://github.com/devr-tools/cleanr/commit/d3076cbce487039c899677b412e810e2f0225bd3))
+* braintrust integration ([bbebd07](https://github.com/devr-tools/cleanr/commit/bbebd070f150444e38cfc1ebbb5dfcb4c14dc855))
+
 ## [0.3.0](https://github.com/devr-tools/cleanr/compare/v0.2.0...v0.3.0) (2026-05-27)
 
 
