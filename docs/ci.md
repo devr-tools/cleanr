@@ -12,6 +12,8 @@ That split lets pipelines distinguish product regressions from setup or infrastr
 
 ## Pick an Integration Shape
 
+If you use Buildkite instead of GitHub Actions, see [buildkite.md](buildkite.md) for a pipeline example and the Buildkite-specific CLI hooks.
+
 ### Use the released container
 
 Best when your CI supports container jobs and you want the exact tagged CLI:
@@ -199,7 +201,7 @@ This repository already ships with:
 - `.github/workflows/cd.yml`: branch-driven prerelease and Release Please orchestration
 - `.github/workflows/release.yml`: tag-driven publishing for binaries, GHCR, and Homebrew sync
 - `.github/workflows/homebrew-validation.yml`: PR-time formula install and `brew test`
-- `.github/workflows/cleanr-smoke.yml`: manual and PR-safe smoke workflow that builds `cleanr`, runs it against a local mock target, captures a baseline, and renders trend artifacts without external model credentials
+- `.github/workflows/cleanr-smoke.yml`: manual and PR-safe smoke workflow that builds `cleanr`, runs it against a local mock target, captures a baseline, renders trend artifacts, and emits a replay-backed dataset plus reviewed artifacts without external model credentials
 - `.github/workflows/cleanr-connected.yml`: manual provider workflow that generates an agent config, reads standard GitHub secrets, and optionally connects Braintrust, Langfuse, PostHog, webhook sinks, and signed attestations
 
 Release and branch-publishing details live in [release-automation.md](release-automation.md).

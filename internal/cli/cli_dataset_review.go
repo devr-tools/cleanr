@@ -5,7 +5,6 @@ import (
 	"flag"
 	"fmt"
 	"io"
-	"os"
 	"strings"
 
 	"github.com/devr-tools/cleanr/cleanr"
@@ -32,6 +31,9 @@ func datasetReviewCmd(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "dataset review warning: %v\n", err)
 		}
 	}
+	if err := maybeWriteBuildkiteReviewOutputs(cmd.Buildkite, ctx, gate); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset review warning: %v\n", err)
+	}
 	if !gate.Passed {
 		for _, message := range gate.Messages {
 			_, _ = fmt.Fprintf(stderr, "dataset review gate: %s\n", message)
@@ -57,6 +59,9 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 	minApproved := fs.Int("min-approved", 0, "Minimum approved scenario count required for exit code 0")
 	maxDuplicates := fs.Int("max-duplicates", -1, "Maximum duplicate candidates allowed before exit code 1")
 	githubOutputs := fs.Bool("github-outputs", false, "Write review metrics to $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY when available")
+	buildkiteMeta := fs.Bool("buildkite-meta", false, "Write review metrics to Buildkite metadata when buildkite-agent is available")
+	buildkiteAnnotation := fs.Bool("buildkite-annotation", false, "Write a Buildkite annotation when the review gate fails and buildkite-agent is available")
+	buildkiteUploadArtifacts := fs.Bool("buildkite-upload-artifacts", false, "Upload reviewed artifacts with buildkite-agent when available")
 	var approve repeatedStringFlag
 	var reject repeatedStringFlag
 	var promoteStable repeatedStringFlag
@@ -84,6 +89,11 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 		Format:        *format,
 		MergeInPlace:  *mergeInPlace,
 		GitHubOutputs: *githubOutputs,
+		Buildkite: buildkiteOptions{
+			Meta:            *buildkiteMeta,
+			Annotation:      *buildkiteAnnotation,
+			UploadArtifacts: *buildkiteUploadArtifacts,
+		},
 		Gate: datasetReviewGateOptions{
 			FailOnPending:  *failOnPending,
 			FailOnRejected: *failOnRejected,
@@ -313,86 +323,4 @@ func evaluateDatasetReviewGate(reviewed cleanr.ReviewedScenarioDataset, opts dat
 		result.Messages = append(result.Messages, fmt.Sprintf("duplicate candidate count %d exceeds maximum %d", reviewed.Summary.Duplicates, opts.MaxDuplicates))
 	}
 	return result
-}
-
-func writeDatasetReviewGitHubOutputs(reviewed cleanr.ReviewedScenarioDataset, gate datasetReviewGateResult, reviewPath, mergePath string) error {
-	outputPath := strings.TrimSpace(os.Getenv("GITHUB_OUTPUT"))
-	summaryPath := strings.TrimSpace(os.Getenv("GITHUB_STEP_SUMMARY"))
-	if outputPath == "" && summaryPath == "" {
-		return nil
-	}
-
-	if outputPath != "" {
-		f, err := os.OpenFile(outputPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
-		if err != nil {
-			return fmt.Errorf("open GITHUB_OUTPUT: %w", err)
-		}
-		defer f.Close()
-		values := map[string]string{
-			"cleanr_review_gate_passed":   boolString(gate.Passed),
-			"cleanr_review_total":         fmt.Sprintf("%d", reviewed.Summary.TotalCandidates),
-			"cleanr_review_approved":      fmt.Sprintf("%d", reviewed.ApprovedScenarios),
-			"cleanr_review_rejected":      fmt.Sprintf("%d", reviewed.RejectedScenarios),
-			"cleanr_review_pending":       fmt.Sprintf("%d", reviewed.PendingScenarios),
-			"cleanr_review_new":           fmt.Sprintf("%d", reviewed.Summary.NewCandidates),
-			"cleanr_review_modified":      fmt.Sprintf("%d", reviewed.Summary.Modified),
-			"cleanr_review_duplicates":    fmt.Sprintf("%d", reviewed.Summary.Duplicates),
-			"cleanr_review_unchanged":     fmt.Sprintf("%d", reviewed.Summary.Unchanged),
-			"cleanr_review_artifact":      reviewPath,
-			"cleanr_review_merge_output":  mergePath,
-			"cleanr_review_top_candidate": topReviewedScenarioName(reviewed),
-			"cleanr_review_top_score":     fmt.Sprintf("%d", topReviewedScenarioScore(reviewed)),
-		}
-		for key, value := range values {
-			if _, err := fmt.Fprintf(f, "%s=%s\n", key, escapeGitHubOutput(value)); err != nil {
-				return fmt.Errorf("write GITHUB_OUTPUT: %w", err)
-			}
-		}
-	}
-
-	if summaryPath != "" {
-		f, err := os.OpenFile(summaryPath, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o644)
-		if err != nil {
-			return fmt.Errorf("open GITHUB_STEP_SUMMARY: %w", err)
-		}
-		defer f.Close()
-		_, _ = fmt.Fprintln(f, "## cleanr Dataset Review")
-		_, _ = fmt.Fprintln(f)
-		_, _ = fmt.Fprintf(f, "- Gate passed: `%s`\n", strings.ToLower(boolString(gate.Passed)))
-		_, _ = fmt.Fprintf(f, "- Approved: `%d`\n", reviewed.ApprovedScenarios)
-		_, _ = fmt.Fprintf(f, "- Rejected: `%d`\n", reviewed.RejectedScenarios)
-		_, _ = fmt.Fprintf(f, "- Pending: `%d`\n", reviewed.PendingScenarios)
-		_, _ = fmt.Fprintf(f, "- Duplicates: `%d`\n", reviewed.Summary.Duplicates)
-		_, _ = fmt.Fprintf(f, "- Review artifact: `%s`\n", reviewPath)
-		if strings.TrimSpace(mergePath) != "" {
-			_, _ = fmt.Fprintf(f, "- Merge output: `%s`\n", mergePath)
-		}
-		if len(gate.Messages) > 0 {
-			_, _ = fmt.Fprintln(f)
-			_, _ = fmt.Fprintln(f, "Gate findings:")
-			for _, message := range gate.Messages {
-				_, _ = fmt.Fprintf(f, "- %s\n", message)
-			}
-		}
-	}
-	return nil
-}
-
-func topReviewedScenarioName(reviewed cleanr.ReviewedScenarioDataset) string {
-	if len(reviewed.Scenarios) == 0 {
-		return ""
-	}
-	return reviewed.Scenarios[0].Entry.Scenario.Name
-}
-
-func topReviewedScenarioScore(reviewed cleanr.ReviewedScenarioDataset) int {
-	if len(reviewed.Scenarios) == 0 {
-		return 0
-	}
-	return reviewed.Scenarios[0].Analysis.UsefulnessScore
-}
-
-func escapeGitHubOutput(value string) string {
-	replacer := strings.NewReplacer("%", "%25", "\n", "%0A", "\r", "%0D")
-	return replacer.Replace(value)
 }

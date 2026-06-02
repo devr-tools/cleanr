@@ -100,6 +100,29 @@ jobs:
             -output reports/github-actions-smoke.report.json \
             -build-id "${GITHUB_SHA}-smoke-2"
 
+      - name: Export smoke dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr dataset export \
+            -config examples/github-actions-smoke/cleanr.yaml \
+            -replay-artifact reports/github-actions-smoke.replay.json \
+            -output reports/github-actions-smoke.dataset.yaml \
+            -all
+
+      - name: Review smoke dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          ./dist/cleanr dataset review \
+            -input reports/github-actions-smoke.dataset.yaml \
+            -base-config examples/github-actions-smoke/cleanr.yaml \
+            -output reports/github-actions-smoke.reviewed.yaml \
+            -merge-output reports/github-actions-smoke.reviewed-config.yaml \
+            -approve refund-policy,support-hours \
+            -min-approved 2 \
+            -format json > reports/github-actions-smoke.review.json
+
       - name: Render trend summary
         shell: bash
         run: |
@@ -116,6 +139,15 @@ jobs:
             echo '```json'
             sed -n '1,120p' reports/github-actions-smoke.trends.json
             echo '```'
+            echo
+            echo "## Buildkite Reproducible Dataset"
+            echo
+            echo "The smoke workflow now emits a replay-backed dataset and reviewed artifact set that mirrors the Buildkite guide:"
+            echo
+            echo "- \`reports/github-actions-smoke.dataset.yaml\`"
+            echo "- \`reports/github-actions-smoke.reviewed.yaml\`"
+            echo "- \`reports/github-actions-smoke.review.json\`"
+            echo "- \`reports/github-actions-smoke.reviewed-config.yaml\`"
           } >>"$GITHUB_STEP_SUMMARY"
 
       - name: Upload smoke artifacts
@@ -127,6 +159,10 @@ jobs:
             reports/github-actions-smoke.junit.xml
             reports/github-actions-smoke.report.json
             reports/github-actions-smoke.replay.json
+            reports/github-actions-smoke.dataset.yaml
+            reports/github-actions-smoke.reviewed.yaml
+            reports/github-actions-smoke.review.json
+            reports/github-actions-smoke.reviewed-config.yaml
             reports/github-actions-smoke.trends.yaml
             reports/github-actions-smoke.trends.json
             reports/github-actions-smoke.snapshots.yaml

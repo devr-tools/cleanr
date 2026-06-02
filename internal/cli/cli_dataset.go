@@ -32,6 +32,12 @@ type datasetReviewGateOptions struct {
 	WriteGHOutputs bool
 }
 
+type buildkiteOptions struct {
+	Meta            bool
+	Annotation      bool
+	UploadArtifacts bool
+}
+
 type datasetReviewGateResult struct {
 	Passed   bool
 	Messages []string
@@ -46,6 +52,7 @@ type datasetReviewCommandOptions struct {
 	Format        string
 	MergeInPlace  bool
 	GitHubOutputs bool
+	Buildkite     buildkiteOptions
 	Gate          datasetReviewGateOptions
 	Approve       []string
 	Reject        []string

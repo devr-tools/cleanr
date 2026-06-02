@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -58,6 +59,23 @@ func jsonCLIResponse(t *testing.T, statusCode int, body map[string]any) *http.Re
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(bytes.NewReader(data)),
 	}
+}
+
+func installFakeBuildkiteAgent(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake buildkite-agent helper uses POSIX shell")
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "buildkite-agent.log")
+	scriptPath := filepath.Join(dir, "buildkite-agent")
+	script := "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$*\" >> \"$FAKE_BUILDKITE_LOG\"\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake buildkite-agent: %v", err)
+	}
+	t.Setenv("FAKE_BUILDKITE_LOG", logPath)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return logPath
 }
 
 func TestValidateCommandPrintsActionableFieldErrors(t *testing.T) {
@@ -553,6 +571,54 @@ func TestRunCommandSupportsExternalIntegrations(t *testing.T) {
 	} {
 		if !strings.Contains(string(summaryBody), want) {
 			t.Fatalf("expected %q in summary:\n%s", want, string(summaryBody))
+		}
+	}
+}
+
+func TestRunCommandWritesBuildkiteMetadataAndAnnotation(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = true
+	cfg.Suites.Security.MaxPIIMatches = 0
+	cfg.Suites.Security.DangerousToolIndicators = []string{}
+	cfg.Suites.Security.SecretExposureIndicators = []string{}
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Reporting.BuildID = "build-bk-1"
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:             "missing-phrase",
+		Input:            "hello",
+		ExpectedContains: []string{"missing"},
+	}}
+
+	path := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	logPath := installFakeBuildkiteAgent(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{"run", "-config", path, "-buildkite-meta", "-buildkite-annotation"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected failing exit code 1, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read buildkite log: %v", err)
+	}
+	logText := string(logBody)
+	for _, want := range []string{
+		"meta-data set cleanr.run.passed false",
+		"meta-data set cleanr.run.failed_cases 1",
+		"meta-data set cleanr.run.build_id build-bk-1",
+		"annotate ### cleanr run failed",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in buildkite log:\n%s", want, logText)
 		}
 	}
 }
@@ -1373,6 +1439,72 @@ func TestDatasetReviewCommandSupportsCIGatesAndGitHubOutputs(t *testing.T) {
 	} {
 		if !strings.Contains(summaryText, want) {
 			t.Fatalf("expected %q in summary:\n%s", want, summaryText)
+		}
+	}
+}
+
+func TestDatasetReviewCommandSupportsBuildkiteOutputs(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{Name: "existing", System: "You are helpful.", Input: "Reset my password."},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-generation",
+		Target:      baseCfg.Target.Name,
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{Scenario: cleanr.Scenario{Name: "needs-review", System: "You are helpful.", Input: "What is the refund policy?", Tags: []string{"generated"}}},
+			{Scenario: cleanr.Scenario{Name: "dup", System: "You are helpful.", Input: "Reset my password.", Tags: []string{"generated"}}},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	logPath := installFakeBuildkiteAgent(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", filepath.Join(dir, "reviewed.yaml"),
+		"-merge-output", filepath.Join(dir, "merged.yaml"),
+		"-approve", "dup",
+		"-fail-on-pending",
+		"-max-duplicates", "0",
+		"-buildkite-meta",
+		"-buildkite-annotation",
+		"-buildkite-upload-artifacts",
+	}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected gate failure exit code 1, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read buildkite log: %v", err)
+	}
+	logText := string(logBody)
+	for _, want := range []string{
+		"meta-data set cleanr.review.gate_passed false",
+		"meta-data set cleanr.review.pending 1",
+		"meta-data set cleanr.review.duplicates 1",
+		"annotate ### cleanr dataset review gate failed",
+		"artifact upload " + filepath.Join(dir, "reviewed.yaml"),
+		"artifact upload " + filepath.Join(dir, "merged.yaml"),
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in buildkite log:\n%s", want, logText)
 		}
 	}
 }

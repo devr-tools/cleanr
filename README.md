@@ -97,6 +97,7 @@ More CI, Docker, SDK, and release patterns are in [docs/ci.md](docs/ci.md), [doc
 - [Docker guide](docs/docker.md)
 - [Configuration](docs/configuration.md)
 - [CI guide](docs/ci.md)
+- [Buildkite guide](docs/buildkite.md)
 - [Best practices](docs/best-practices.md)
 - [Release automation](docs/release-automation.md)
 - [Homebrew packaging](docs/homebrew.md)
