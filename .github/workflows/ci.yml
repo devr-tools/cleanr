@@ -19,6 +19,7 @@ env:
   GOCYCLO_VERSION: v0.6.0
   SCC_VERSION: v3.6.0
   MAX_GO_FILE_CODE_LINES: "400"
+  MAX_FUNCTION_COMPLEXITY: "20"
   GOLANGCI_LINT_VERSION: v2.12.2
   MIN_INTERNAL_COVERAGE: "65.0"
 
@@ -111,55 +112,8 @@ jobs:
       - name: Run go vet
         run: go vet ./...
 
-  gocyclo:
-    name: gocyclo
-    needs: vet
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v6
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Install gocyclo
-        run: go install github.com/fzipp/gocyclo/cmd/gocyclo@${{ env.GOCYCLO_VERSION }}
-
-      - name: Enforce cyclomatic complexity budget
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          mapfile -t files < <(find cleanr cmd internal -type f -name '*.go' ! -name '*_test.go' | sort)
-          if [ "${#files[@]}" -eq 0 ]; then
-            echo "No non-test Go files found."
-            exit 0
-          fi
-
-          gocyclo_bin="$(go env GOPATH)/bin/gocyclo"
-          "$gocyclo_bin" -over 20 "${files[@]}" | tee gocyclo.out
-
-          {
-            echo "## Cyclomatic Complexity"
-            echo
-            if [ -s gocyclo.out ]; then
-              echo "Functions above the limit:"
-              echo '```'
-              sed -n '1,80p' gocyclo.out
-              echo '```'
-            else
-              echo "No functions exceeded the \`gocyclo\` limit of 20."
-            fi
-          } >> "$GITHUB_STEP_SUMMARY"
-
-          if [ -s gocyclo.out ]; then
-            echo "::error title=High cyclomatic complexity::gocyclo found functions above the limit"
-            exit 1
-          fi
-
-  scc:
-    name: scc
+  codeguard:
+    name: codeguard
     needs: vet
     runs-on: ubuntu-latest
     env:
@@ -177,38 +131,14 @@ jobs:
       - name: Fetch base branch
         run: git fetch origin "${PR_BASE_REF}" --depth=1
 
-      - name: Enforce god-file size budget
-        run: go run ./cmd/cleanr-dev ci-scc -base-ref "origin/${PR_BASE_REF}"
-
-  golangci-lint:
-    name: golangci-lint
-    needs: vet
-    runs-on: ubuntu-latest
-    env:
-      PR_BASE_REF: ${{ github.base_ref }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-
-      - uses: actions/setup-go@v6
-        with:
-          go-version-file: go.mod
-          cache: true
-
-      - name: Fetch base branch
-        run: git fetch origin "${PR_BASE_REF}" --depth=1
-
-      - name: Enforce maintainability lint budget
-        run: go run ./cmd/cleanr-dev ci-golangci-lint -base-ref "origin/${PR_BASE_REF}"
+      - name: Run codeguard
+        run: go run ./cmd/cleanr-dev ci-codeguard -base-ref "origin/${PR_BASE_REF}"
 
   test:
     name: test (${{ matrix.label }})
     needs:
       - vet
-      - gocyclo
-      - scc
-      - golangci-lint
+      - codeguard
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -233,9 +163,7 @@ jobs:
     name: build
     needs:
       - vet
-      - gocyclo
-      - scc
-      - golangci-lint
+      - codeguard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -258,9 +186,7 @@ jobs:
     name: coverage
     needs:
       - vet
-      - gocyclo
-      - scc
-      - golangci-lint
+      - codeguard
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -291,9 +217,7 @@ jobs:
     name: security scan
     needs:
       - vet
-      - gocyclo
-      - scc
-      - golangci-lint
+      - codeguard
     runs-on: ubuntu-latest
     env:
       PR_BASE_REF: ${{ github.base_ref }}

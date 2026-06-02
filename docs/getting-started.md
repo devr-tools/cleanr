@@ -77,6 +77,32 @@ cleanr snapshot -config cleanr.yaml
 
 Commit the resulting snapshot file once it reflects expected behavior.
 
+## Review Scenario Datasets
+
+If you generate scenarios or export replay failures, review them before merging them into your runnable config:
+
+```bash
+cleanr dataset review \
+  -input generated/cleanr.dataset.yaml \
+  -base-config cleanr.yaml \
+  -output reviewed/cleanr.reviewed.yaml
+```
+
+Apply explicit review decisions and write an updated config with only approved scenarios:
+
+```bash
+cleanr dataset review \
+  -input generated/cleanr.dataset.yaml \
+  -profile pr \
+  -approve refund-policy \
+  -reject duplicate-password-reset \
+  -promote-stable refund-policy \
+  -set-metadata refund-policy:owner=qa \
+  -merge-output .cleanr/pr.reviewed.yaml
+```
+
+The review artifact ranks candidates by usefulness, marks duplicates, shows field-level diff status against the current config, and preserves replay or generation provenance for approved scenarios.
+
 ## Choose the Next Guide
 
 - [Configuration](configuration.md): target fields, suites, thresholds, and reporting options

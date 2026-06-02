@@ -1130,6 +1130,253 @@ func TestDatasetImportRequiresApprovalForGeneratedDatasets(t *testing.T) {
 	}
 }
 
+func TestDatasetReviewCommandWritesReviewedArtifactAndMergedConfig(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{
+			Name:             "happy-path",
+			System:           "You are a helpful assistant.",
+			Input:            "Help with a refund.",
+			Tags:             []string{"stable"},
+			ExpectedContains: []string{"refund"},
+		},
+		{
+			Name:   "legacy-duplicate",
+			System: "You are a helpful assistant.",
+			Input:  "Reset my password.",
+			Tags:   []string{"legacy"},
+		},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-replay",
+		Target:      baseCfg.Target.Name,
+		BuildID:     "build-77",
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{
+				Scenario: cleanr.Scenario{
+					Name:             "happy-path",
+					System:           "You are a helpful assistant.",
+					Input:            "Help with a refund after an account lockout.",
+					Tags:             []string{"generated"},
+					ExpectedContains: []string{"refund", "account"},
+				},
+				Origin: cleanr.DatasetScenarioOrigin{
+					Suite:   "security",
+					Case:    "happy-path",
+					BuildID: "build-77",
+					Findings: []cleanr.Finding{{
+						Severity: "high",
+						Message:  "important regression",
+					}},
+				},
+			},
+			{
+				Scenario: cleanr.Scenario{
+					Name:   "duplicate-reset",
+					System: "You are a helpful assistant.",
+					Input:  "Reset my password.",
+					Tags:   []string{"generated"},
+				},
+			},
+			{
+				Scenario: cleanr.Scenario{
+					Name:             "new-stable-candidate",
+					System:           "You are a helpful assistant.",
+					Input:            "Summarize the refund policy in one sentence.",
+					Tags:             []string{"generated"},
+					ExpectedContains: []string{"refund"},
+				},
+			},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	reviewedPath := filepath.Join(dir, "reviewed.yaml")
+	mergedPath := filepath.Join(dir, "merged.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", reviewedPath,
+		"-merge-output", mergedPath,
+		"-approve", "happy-path,new-stable-candidate",
+		"-reject", "duplicate-reset",
+		"-promote-regression", "happy-path",
+		"-promote-stable", "new-stable-candidate",
+		"-add-tag", "happy-path:security",
+		"-set-metadata", "happy-path:owner=qa",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected dataset review success, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	reviewed, err := cleanr.LoadReviewedScenarioDatasetFile(reviewedPath)
+	if err != nil {
+		t.Fatalf("load reviewed dataset: %v", err)
+	}
+	if reviewed.ApprovedScenarios != 2 || reviewed.RejectedScenarios != 1 || reviewed.PendingScenarios != 0 {
+		t.Fatalf("unexpected review counts: %+v", reviewed)
+	}
+	if len(reviewed.Scenarios) != 3 {
+		t.Fatalf("unexpected reviewed scenarios: %+v", reviewed.Scenarios)
+	}
+	if reviewed.Scenarios[0].Entry.Scenario.Name != "happy-path" {
+		t.Fatalf("expected high severity scenario to rank first, got %+v", reviewed.Scenarios)
+	}
+	if reviewed.Scenarios[0].Decision.Status != "approved" || reviewed.Scenarios[0].Diff.Status != "modified" {
+		t.Fatalf("unexpected reviewed entry: %+v", reviewed.Scenarios[0])
+	}
+	if reviewed.Scenarios[0].Entry.Origin.Suite != "security" {
+		t.Fatalf("expected provenance to be preserved, got %+v", reviewed.Scenarios[0].Entry.Origin)
+	}
+
+	duplicateSeen := false
+	for _, item := range reviewed.Scenarios {
+		if item.Entry.Scenario.Name == "duplicate-reset" {
+			duplicateSeen = true
+			if item.Decision.Status != "rejected" || item.Diff.Status != "duplicate" {
+				t.Fatalf("unexpected duplicate entry: %+v", item)
+			}
+		}
+	}
+	if !duplicateSeen {
+		t.Fatalf("expected duplicate candidate in reviewed dataset: %+v", reviewed.Scenarios)
+	}
+
+	merged, err := cleanr.LoadConfigFile(mergedPath)
+	if err != nil {
+		t.Fatalf("load merged config: %v", err)
+	}
+	if len(merged.Scenarios) != 3 {
+		t.Fatalf("expected legacy plus two approved scenarios, got %+v", merged.Scenarios)
+	}
+
+	mergedByName := map[string]cleanr.Scenario{}
+	for _, scenario := range merged.Scenarios {
+		mergedByName[scenario.Name] = scenario
+	}
+	if _, ok := mergedByName["duplicate-reset"]; ok {
+		t.Fatalf("rejected scenario should not be merged: %+v", merged.Scenarios)
+	}
+	happy := mergedByName["happy-path"]
+	if !strings.Contains(strings.Join(happy.Tags, ","), "regression") || !strings.Contains(strings.Join(happy.Tags, ","), "security") {
+		t.Fatalf("expected promoted tags on approved scenario, got %+v", happy.Tags)
+	}
+	if happy.Metadata["owner"] != "qa" {
+		t.Fatalf("expected metadata edit to persist, got %+v", happy.Metadata)
+	}
+	if happy.Metadata["cleanr.review.source"] != "cleanr-replay" || happy.Metadata["cleanr.review.origin_suite"] != "security" {
+		t.Fatalf("expected review provenance metadata, got %+v", happy.Metadata)
+	}
+
+	newStable := mergedByName["new-stable-candidate"]
+	if !strings.Contains(strings.Join(newStable.Tags, ","), "stable") {
+		t.Fatalf("expected stable promotion to persist, got %+v", newStable.Tags)
+	}
+}
+
+func TestDatasetReviewCommandSupportsCIGatesAndGitHubOutputs(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{Name: "existing", System: "You are helpful.", Input: "Reset my password."},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-generation",
+		Target:      baseCfg.Target.Name,
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{Scenario: cleanr.Scenario{Name: "needs-review", System: "You are helpful.", Input: "What is the refund policy?", Tags: []string{"generated"}}},
+			{Scenario: cleanr.Scenario{Name: "dup", System: "You are helpful.", Input: "Reset my password.", Tags: []string{"generated"}}},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	githubOutputPath := filepath.Join(dir, "github-output.txt")
+	githubSummaryPath := filepath.Join(dir, "github-summary.md")
+	t.Setenv("GITHUB_OUTPUT", githubOutputPath)
+	t.Setenv("GITHUB_STEP_SUMMARY", githubSummaryPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", filepath.Join(dir, "reviewed.yaml"),
+		"-approve", "dup",
+		"-fail-on-pending",
+		"-max-duplicates", "0",
+		"-github-outputs",
+	}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected gate failure exit code 1, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "found 1 pending scenarios") {
+		t.Fatalf("expected pending gate failure, got stderr=%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "duplicate candidate count 1 exceeds maximum 0") {
+		t.Fatalf("expected duplicate gate failure, got stderr=%s", stderr.String())
+	}
+
+	outputBody, err := os.ReadFile(githubOutputPath)
+	if err != nil {
+		t.Fatalf("read github output: %v", err)
+	}
+	outputText := string(outputBody)
+	for _, want := range []string{
+		"cleanr_review_gate_passed=false",
+		"cleanr_review_pending=1",
+		"cleanr_review_duplicates=1",
+		"cleanr_review_top_candidate=",
+	} {
+		if !strings.Contains(outputText, want) {
+			t.Fatalf("expected %q in GITHUB_OUTPUT:\n%s", want, outputText)
+		}
+	}
+
+	summaryBody, err := os.ReadFile(githubSummaryPath)
+	if err != nil {
+		t.Fatalf("read github summary: %v", err)
+	}
+	summaryText := string(summaryBody)
+	for _, want := range []string{
+		"## cleanr Dataset Review",
+		"Gate passed: `false`",
+		"Pending: `1`",
+		"Duplicates: `1`",
+		"Gate findings:",
+	} {
+		if !strings.Contains(summaryText, want) {
+			t.Fatalf("expected %q in summary:\n%s", want, summaryText)
+		}
+	}
+}
+
 func TestSyncBraintrustCommandFetchesReplayAndAppliesConfigPatches(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{

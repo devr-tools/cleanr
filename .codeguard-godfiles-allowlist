@@ -1,0 +1,7 @@
+# Code Guard god-file allowlist.
+# Files listed here (repo-relative paths) are exempt from the "God Files"
+# section. Use this for legitimately long-but-cohesive files that should not
+# be split.
+#
+# One repo-relative path per line, for example:
+# cleanr/generated/schema.go

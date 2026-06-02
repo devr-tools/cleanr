@@ -32,6 +32,8 @@ func run(args []string) int {
 		return runRunnerCommand("check", func() error { return runner.Check(ctx) })
 	case "ci":
 		return runCIDevCommand(ctx, runner, args[1:])
+	case "ci-codeguard":
+		return runCICodeGuardDevCommand(ctx, runner, args[1:])
 	case "ci-scc":
 		return runCISCCDevCommand(ctx, runner, args[1:])
 	case "ci-golangci-lint":
@@ -78,6 +80,7 @@ func runCIDevCommand(ctx context.Context, runner devtools.Runner, args []string)
 	gocycloVersion := fs.String("gocyclo-version", "", "gocyclo version to install")
 	sccVersion := fs.String("scc-version", "", "scc version to install")
 	maxFileCodeLines := fs.Int("max-file-code-lines", 0, "Maximum Go code lines allowed in a changed file before it is treated as a god file")
+	maxFunctionComplexity := fs.Int("max-function-complexity", 0, "Maximum cyclomatic complexity allowed for a changed function before it is flagged")
 	golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
 	minCoverage := fs.Float64("min-internal-coverage", 0, "Minimum internal coverage percentage")
 	semgrepCommand := fs.String("semgrep-command", "", "Semgrep executable name or path")
@@ -86,16 +89,17 @@ func runCIDevCommand(ctx context.Context, runner devtools.Runner, args []string)
 	}
 	return runRunnerCommand("ci", func() error {
 		return runner.CI(ctx, devtools.CIOptions{
-			BaseRef:             *baseRef,
-			BuildOutput:         *buildOutput,
-			GovulncheckMode:     *govulncheckMode,
-			GovulncheckVersion:  *govulncheckVersion,
-			GocycloVersion:      *gocycloVersion,
-			SCCVersion:          *sccVersion,
-			MaxFileCodeLines:    *maxFileCodeLines,
-			GolangCILintVersion: *golangciLintVersion,
-			MinInternalCoverage: *minCoverage,
-			SemgrepCommand:      *semgrepCommand,
+			BaseRef:               *baseRef,
+			BuildOutput:           *buildOutput,
+			GovulncheckMode:       *govulncheckMode,
+			GovulncheckVersion:    *govulncheckVersion,
+			GocycloVersion:        *gocycloVersion,
+			SCCVersion:            *sccVersion,
+			MaxFileCodeLines:      *maxFileCodeLines,
+			MaxFunctionComplexity: *maxFunctionComplexity,
+			GolangCILintVersion:   *golangciLintVersion,
+			MinInternalCoverage:   *minCoverage,
+			SemgrepCommand:        *semgrepCommand,
 		})
 	})
 }
@@ -114,6 +118,30 @@ func runCISCCDevCommand(ctx context.Context, runner devtools.Runner, args []stri
 			BaseRef:          *baseRef,
 			SCCVersion:       *sccVersion,
 			MaxFileCodeLines: *maxFileCodeLines,
+		})
+	})
+}
+
+func runCICodeGuardDevCommand(ctx context.Context, runner devtools.Runner, args []string) int {
+	fs := flag.NewFlagSet("ci-codeguard", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
+	gocycloVersion := fs.String("gocyclo-version", "", "gocyclo version to install")
+	sccVersion := fs.String("scc-version", "", "scc version to install")
+	maxFileCodeLines := fs.Int("max-file-code-lines", 0, "Maximum Go code lines allowed in a changed file before it is treated as a god file")
+	maxFunctionComplexity := fs.Int("max-function-complexity", 0, "Maximum cyclomatic complexity allowed for a changed function before it is flagged")
+	golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return runRunnerCommand("ci-codeguard", func() error {
+		return runner.CodeGuard(ctx, devtools.CIOptions{
+			BaseRef:               *baseRef,
+			GocycloVersion:        *gocycloVersion,
+			SCCVersion:            *sccVersion,
+			MaxFileCodeLines:      *maxFileCodeLines,
+			MaxFunctionComplexity: *maxFunctionComplexity,
+			GolangCILintVersion:   *golangciLintVersion,
 		})
 	})
 }
@@ -213,5 +241,5 @@ func runReportDevCommand(ctx context.Context, runner devtools.Runner, args []str
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-codeguard|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
 }

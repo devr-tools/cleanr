@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-func (r Runner) runCIGocyclo(ctx context.Context, baseRef, version string) error {
+func (r Runner) runCIGocyclo(ctx context.Context, baseRef, version string, maxFunctionComplexity int) error {
 	gocycloPath, err := r.ensureGoTool(ctx, "gocyclo", "github.com/fzipp/gocyclo/cmd/gocyclo", version)
 	if err != nil {
 		return err
@@ -20,13 +20,13 @@ func (r Runner) runCIGocyclo(ctx context.Context, baseRef, version string) error
 	if err != nil {
 		return err
 	}
-	targets := filterCIGocycloTargets(changedFiles)
+	targets := filterCICodeGuardTargets(changedFiles)
 	if len(targets) == 0 {
 		_, err := fmt.Fprintln(r.Stdout, "No changed non-test Go files for gocyclo.")
 		return err
 	}
 
-	out, err := r.runOutputCommand(ctx, nil, gocycloPath, append([]string{"-over", "20"}, targets...)...)
+	out, err := r.runOutputCommand(ctx, nil, gocycloPath, append([]string{"-over", strconv.Itoa(maxFunctionComplexity)}, targets...)...)
 	if err != nil {
 		return err
 	}
@@ -42,7 +42,7 @@ func (r Runner) runCIGocyclo(ctx context.Context, baseRef, version string) error
 		return nil
 	}
 
-	baseFindings, err := r.loadBaseGocycloFindings(ctx, baseRef, gocycloPath, targets)
+	baseFindings, err := r.loadBaseGocycloFindings(ctx, baseRef, gocycloPath, targets, maxFunctionComplexity)
 	if err != nil {
 		return err
 	}
@@ -56,7 +56,7 @@ func (r Runner) runCIGocyclo(ctx context.Context, baseRef, version string) error
 	return nil
 }
 
-func (r Runner) loadBaseGocycloFindings(ctx context.Context, baseRef, gocycloPath string, targets []string) (map[string]gocycloFinding, error) {
+func (r Runner) loadBaseGocycloFindings(ctx context.Context, baseRef, gocycloPath string, targets []string, maxFunctionComplexity int) (map[string]gocycloFinding, error) {
 	baseDir, err := os.MkdirTemp("", "cleanr-ci-gocyclo-base-*")
 	if err != nil {
 		return nil, fmt.Errorf("create gocyclo base temp dir: %w", err)
@@ -92,14 +92,14 @@ func (r Runner) loadBaseGocycloFindings(ctx context.Context, baseRef, gocycloPat
 	}
 
 	baseRunner := NewRunner(baseDir, r.Stdout, r.Stderr)
-	out, err := baseRunner.runOutputCommand(ctx, nil, gocycloPath, append([]string{"-over", "20"}, baseTargets...)...)
+	out, err := baseRunner.runOutputCommand(ctx, nil, gocycloPath, append([]string{"-over", strconv.Itoa(maxFunctionComplexity)}, baseTargets...)...)
 	if err != nil {
 		return nil, err
 	}
 	return parseGocycloFindings(out)
 }
 
-func filterCIGocycloTargets(files []string) []string {
+func filterCICodeGuardTargets(files []string) []string {
 	targets := make([]string, 0, len(files))
 	for _, file := range files {
 		if !strings.HasSuffix(file, ".go") || strings.HasSuffix(file, "_test.go") {

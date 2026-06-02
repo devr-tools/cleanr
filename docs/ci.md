@@ -118,6 +118,70 @@ cleanr run \
   -build-id "$GITHUB_SHA"
 ```
 
+## Dataset Review Gates
+
+When you generate scenarios or export replay failures, you can gate that review step directly in CI without parsing stdout:
+
+```bash
+cleanr dataset review \
+  -input reports/cleanr.dataset.yaml \
+  -profile pr \
+  -output reports/cleanr.reviewed.yaml \
+  -merge-output .cleanr/pr.reviewed.yaml \
+  -approve refund-policy \
+  -fail-on-pending \
+  -min-approved 1 \
+  -max-duplicates 0 \
+  -github-outputs
+```
+
+Review gate behavior:
+
+- exit `0`: review completed and all requested gate conditions passed
+- exit `1`: review completed, but one or more gate conditions failed
+- exit `2`: invalid flags, invalid config, or another runtime/setup problem
+
+If `-github-outputs` is enabled inside GitHub Actions, `cleanr` writes structured outputs like:
+
+- `cleanr_review_gate_passed`
+- `cleanr_review_approved`
+- `cleanr_review_rejected`
+- `cleanr_review_pending`
+- `cleanr_review_duplicates`
+- `cleanr_review_artifact`
+- `cleanr_review_merge_output`
+- `cleanr_review_top_candidate`
+
+Example GitHub Actions step:
+
+```yaml
+- name: Review cleanr dataset
+  id: cleanr_review
+  run: |
+    ./dist/cleanr dataset review \
+      -input reports/cleanr.dataset.yaml \
+      -profile pr \
+      -output reports/cleanr.reviewed.yaml \
+      -merge-output .cleanr/pr.reviewed.yaml \
+      -fail-on-pending \
+      -min-approved 1 \
+      -max-duplicates 0 \
+      -github-outputs
+
+- name: Upload reviewed dataset
+  if: always()
+  uses: actions/upload-artifact@v4
+  with:
+    name: cleanr-reviewed-dataset
+    path: |
+      reports/cleanr.reviewed.yaml
+      .cleanr/pr.reviewed.yaml
+
+- name: Echo top candidate
+  if: always()
+  run: echo "Top candidate: ${{ steps.cleanr_review.outputs.cleanr_review_top_candidate }}"
+```
+
 ## Artifact Retention
 
 Persist these files between runs when you want trend and replay workflows to be useful:
@@ -144,11 +208,17 @@ Release and branch-publishing details live in [release-automation.md](release-au
 
 Use `make ci` before committing when you want a local approximation of `.github/workflows/ci.yml`.
 
-It runs the same main gates locally: test presence, formatting, `go vet`, `gocyclo`, `scc`, `golangci-lint`, `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
+It runs the same main gates locally: test presence, formatting, `go vet`, `codeguard` (`gocyclo` + `scc` + `golangci-lint`), `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
 
-For `gocyclo`, the local command compares changed files to the resolved base ref and fails only on new or worsened over-limit findings. That keeps `make ci` usable when the base branch already carries complexity debt.
-For `scc`, the local command treats changed non-test Go files above `400` code lines as god files, but only fails on new or worsened size debt compared with the base ref.
-For `golangci-lint`, the local command uses [.golangci.yml](../.golangci.yml) and reports only new maintainability findings against the merge-base with the target branch.
+The `codeguard` step renders a compact section summary and currently covers:
+
+- `gocyclo`, which compares changed files to the resolved base ref and fails only on new or worsened over-limit findings
+- `scc`, which treats changed non-test Go files above `400` code lines as god files and fails only on new or worsened size debt compared with the base ref
+- `golangci-lint`, which uses [.golangci.yml](../.golangci.yml) and reports only new maintainability findings against the merge-base with the target branch
+- advisory AST-based quality sections for `DRY`, `Clean Code`, and `Design Principles (SOLID/SoC)` on changed Go files
+
+God-file exceptions can be listed in [.codeguard-godfiles-allowlist](../.codeguard-godfiles-allowlist). Entries there are repo-relative paths and only exempt files from the `God Files` section; complexity and lint checks still apply.
+The main codeguard thresholds are environment-driven: `MAX_GO_FILE_CODE_LINES` for the god-file cap and `MAX_FUNCTION_COMPLEXITY` for the `gocyclo` function threshold.
 If `govulncheck` cannot be installed for the current local Go toolchain, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 If `semgrep` is not installed locally, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 

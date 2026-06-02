@@ -24,7 +24,7 @@ func (r Runner) runCIGolangCILint(ctx context.Context, baseRef, version string) 
 	if err != nil {
 		return err
 	}
-	targets := filterCIGocycloTargets(changedFiles)
+	targets := filterCICodeGuardTargets(changedFiles)
 	if len(targets) == 0 {
 		_, err := fmt.Fprintln(r.Stdout, "No changed non-test Go files for golangci-lint.")
 		return err
@@ -74,7 +74,7 @@ func (r Runner) ensureGolangCILint(ctx context.Context, version string) (string,
 	}
 	if _, err := r.runOutputCommand(ctx, nil, "go", "install", "github.com/golangci/golangci-lint/v2/cmd/golangci-lint@"+version); err == nil {
 		return toolPath, nil
-	} else if !shouldFallbackToPrebuiltGolangCILint(err) {
+	} else if !shouldFallbackToPrebuiltGoTool(err) {
 		return "", err
 	} else {
 		if _, printErr := fmt.Fprintln(r.Stdout, "falling back to prebuilt golangci-lint binary"); printErr != nil {
@@ -85,16 +85,6 @@ func (r Runner) ensureGolangCILint(ctx context.Context, version string) (string,
 		}
 	}
 	return toolPath, nil
-}
-
-func shouldFallbackToPrebuiltGolangCILint(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	return strings.Contains(message, "invalid go version") ||
-		strings.Contains(message, "unknown block type: ignore") ||
-		strings.Contains(message, "unknown directive: ignore")
 }
 
 func (r Runner) downloadGolangCILint(ctx context.Context, toolPath, version string) error {
