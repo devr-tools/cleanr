@@ -46,6 +46,7 @@ steps:
       - |
         ./dist/cleanr dataset review \
           -input reports/cleanr.dataset.yaml \
+          -policy cleanr.review.yaml \
           -profile pr \
           -output reports/cleanr.reviewed.yaml \
           -merge-output .cleanr/pr.reviewed.yaml \

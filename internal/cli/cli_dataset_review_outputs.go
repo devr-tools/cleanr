@@ -33,6 +33,7 @@ func writeDatasetReviewGitHubOutputs(reviewed cleanr.ReviewedScenarioDataset, ga
 			"cleanr_review_duplicates":    fmt.Sprintf("%d", reviewed.Summary.Duplicates),
 			"cleanr_review_unchanged":     fmt.Sprintf("%d", reviewed.Summary.Unchanged),
 			"cleanr_review_artifact":      reviewPath,
+			"cleanr_review_policy_path":   reviewed.PolicyPath,
 			"cleanr_review_merge_output":  mergePath,
 			"cleanr_review_top_candidate": topReviewedScenarioName(reviewed),
 			"cleanr_review_top_score":     fmt.Sprintf("%d", topReviewedScenarioScore(reviewed)),
@@ -58,6 +59,9 @@ func writeDatasetReviewGitHubOutputs(reviewed cleanr.ReviewedScenarioDataset, ga
 		_, _ = fmt.Fprintf(f, "- Pending: `%d`\n", reviewed.PendingScenarios)
 		_, _ = fmt.Fprintf(f, "- Duplicates: `%d`\n", reviewed.Summary.Duplicates)
 		_, _ = fmt.Fprintf(f, "- Review artifact: `%s`\n", reviewPath)
+		if strings.TrimSpace(reviewed.PolicyPath) != "" {
+			_, _ = fmt.Fprintf(f, "- Review policy: `%s`\n", reviewed.PolicyPath)
+		}
 		if strings.TrimSpace(mergePath) != "" {
 			_, _ = fmt.Fprintf(f, "- Merge output: `%s`\n", mergePath)
 		}

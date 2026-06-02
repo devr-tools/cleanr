@@ -45,6 +45,7 @@ type datasetReviewGateResult struct {
 
 type datasetReviewCommandOptions struct {
 	Input         string
+	Policy        string
 	BaseConfig    string
 	Profile       string
 	Output        string
@@ -66,6 +67,7 @@ type datasetReviewCommandOptions struct {
 type datasetReviewCommandContext struct {
 	BaseConfig cleanr.Config
 	Reviewed   cleanr.ReviewedScenarioDataset
+	PolicyPath string
 	OutputPath string
 	MergePath  string
 	JSONOutput bool

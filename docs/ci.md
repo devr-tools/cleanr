@@ -151,6 +151,7 @@ If `-github-outputs` is enabled inside GitHub Actions, `cleanr` writes structure
 - `cleanr_review_pending`
 - `cleanr_review_duplicates`
 - `cleanr_review_artifact`
+- `cleanr_review_policy_path`
 - `cleanr_review_merge_output`
 - `cleanr_review_top_candidate`
 

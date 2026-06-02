@@ -125,6 +125,53 @@ func resolveTrendPath(configPath, profile, explicitTrendPath string) (string, er
 	return trendPath, nil
 }
 
+func resolveDatasetReviewPolicyPath(explicitPolicyPath, resolvedBasePath, profile string) (string, bool, error) {
+	if strings.TrimSpace(explicitPolicyPath) != "" {
+		return resolveConfigRelativePath(resolvedBasePath, explicitPolicyPath), true, nil
+	}
+
+	resolvedProfile, err := resolveConfigProfile(profile)
+	if err != nil {
+		return "", false, err
+	}
+
+	baseDir := filepath.Dir(resolvedBasePath)
+	var candidates []string
+	if resolvedProfile != "" {
+		candidates = append(candidates,
+			filepath.Join(baseDir, resolvedProfile+".review.yaml"),
+			filepath.Join(baseDir, resolvedProfile+".review.yml"),
+			filepath.Join(baseDir, resolvedProfile+".review.json"),
+		)
+	}
+	candidates = append(candidates,
+		filepath.Join(baseDir, "cleanr.review.yaml"),
+		filepath.Join(baseDir, "cleanr.review.yml"),
+		filepath.Join(baseDir, "cleanr.review.json"),
+	)
+
+	if filepath.Base(baseDir) == ".cleanr" {
+		rootDir := filepath.Dir(baseDir)
+		candidates = append(candidates,
+			filepath.Join(rootDir, "cleanr.review.yaml"),
+			filepath.Join(rootDir, "cleanr.review.yml"),
+			filepath.Join(rootDir, "cleanr.review.json"),
+		)
+	}
+
+	seen := map[string]struct{}{}
+	for _, candidate := range candidates {
+		if _, ok := seen[candidate]; ok {
+			continue
+		}
+		seen[candidate] = struct{}{}
+		if _, err := os.Stat(candidate); err == nil {
+			return candidate, true, nil
+		}
+	}
+	return "", false, nil
+}
+
 func writeJSON(w io.Writer, value any) int {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")

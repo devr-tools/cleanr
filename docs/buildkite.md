@@ -22,6 +22,10 @@ If you want a reproducible artifact set before adapting the pipeline to your own
 
 Those artifacts are the reference dataset/review loop that the Buildkite example mirrors.
 
+The repository also includes a starter policy file at [../cleanr.review.yaml](../cleanr.review.yaml) so the review step can be checked in instead of encoded only in pipeline flags. If `-policy` is omitted, `cleanr dataset review` looks for `.cleanr/<profile>.review.yaml` first and then falls back to `cleanr.review.yaml`.
+
+Whichever policy path is resolved is surfaced in the reviewed dataset artifact, in CLI text output, in GitHub Action outputs, and in Buildkite metadata as `cleanr.review.policy_path`.
+
 The main pattern is:
 
 ```yaml
@@ -93,6 +97,7 @@ Current metadata keys:
 - `-buildkite-meta`: writes review metrics into Buildkite metadata
 - `-buildkite-annotation`: writes an error annotation when the review gate fails
 - `-buildkite-upload-artifacts`: uploads the reviewed dataset artifact and merged config output when present
+- `-policy`: loads a checked-in dataset review policy before applying any manual CLI overrides
 
 Current metadata keys:
 
@@ -106,6 +111,7 @@ Current metadata keys:
 - `cleanr.review.duplicates`
 - `cleanr.review.unchanged`
 - `cleanr.review.artifact`
+- `cleanr.review.policy_path`
 - `cleanr.review.merge_output`
 - `cleanr.review.top_candidate`
 - `cleanr.review.top_score`

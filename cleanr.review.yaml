@@ -1,0 +1,36 @@
+version: v1alpha1
+rules:
+  - name: reject-duplicates
+    action: reject
+    statuses: [duplicate]
+
+  - name: promote-high-severity-regressions
+    action: approve
+    statuses: [modified]
+    sources: [cleanr-replay]
+    min_severity: high
+
+  - name: tag-high-severity-regressions
+    action: promote-regression
+    statuses: [modified]
+    sources: [cleanr-replay]
+    min_severity: high
+
+  - name: mark-reviewed-generated-scenarios
+    action: add-tags
+    generator_providers: [openai, anthropic]
+    scenario_tags: [generated]
+    tags: [generator-reviewed]
+
+  - name: promote-stable-reviewed-candidates
+    action: promote-stable
+    statuses: [new]
+    stable_suitability: medium
+    require_assertions: true
+    require_expected_text: true
+
+  - name: assign-qa-owner
+    action: set-metadata
+    statuses: [modified, new]
+    metadata:
+      owner: qa

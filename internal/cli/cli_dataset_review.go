@@ -48,6 +48,7 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 	fs.SetOutput(stderr)
 	cmd := datasetReviewCommandOptions{}
 	input := fs.String("input", "", "Path to scenario dataset file")
+	policyPath := fs.String("policy", "", "Optional dataset review policy file")
 	baseConfig := fs.String("base-config", "", "Optional base cleanr config to diff and merge against")
 	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	output := fs.String("output", "cleanr.reviewed.yaml", "Path to write the reviewed dataset artifact")
@@ -82,6 +83,7 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 
 	cmd = datasetReviewCommandOptions{
 		Input:         strings.TrimSpace(*input),
+		Policy:        strings.TrimSpace(*policyPath),
 		BaseConfig:    strings.TrimSpace(*baseConfig),
 		Profile:       strings.TrimSpace(*profile),
 		Output:        *output,
@@ -161,14 +163,30 @@ func loadDatasetReviewContext(cmd datasetReviewCommandOptions) (datasetReviewCom
 	if err != nil {
 		return datasetReviewCommandContext{}, err
 	}
+	policyPath := ""
+	if resolvedPolicyPath, ok, err := resolveDatasetReviewPolicyPath(cmd.Policy, resolvedBasePath, cmd.Profile); err != nil {
+		return datasetReviewCommandContext{}, err
+	} else if ok {
+		policy, err := cleanr.LoadDatasetReviewPolicyFile(resolvedPolicyPath)
+		if err != nil {
+			return datasetReviewCommandContext{}, err
+		}
+		policyPath = resolvedPolicyPath
+		opts.Policy = &policy
+	}
 	reviewed, err := cleanr.ReviewDatasetAgainstConfig(baseCfg, dataset, opts)
 	if err != nil {
 		return datasetReviewCommandContext{}, err
+	}
+	reviewed.PolicyPath = policyPath
+	if opts.Policy != nil {
+		reviewed.PolicyVersion = opts.Policy.Version
 	}
 
 	return datasetReviewCommandContext{
 		BaseConfig: baseCfg,
 		Reviewed:   reviewed,
+		PolicyPath: policyPath,
 		OutputPath: resolveConfigRelativePath(resolvedBasePath, cmd.Output),
 		MergePath:  resolveDatasetReviewMergePath(cmd, resolvedBasePath),
 		JSONOutput: strings.EqualFold(strings.TrimSpace(cmd.Format), "json"),
@@ -203,6 +221,9 @@ func renderDatasetReview(stdout io.Writer, ctx datasetReviewCommandContext) int 
 		return writeJSON(stdout, ctx.Reviewed)
 	}
 	writeReviewedDatasetText(stdout, ctx.Reviewed)
+	if strings.TrimSpace(ctx.PolicyPath) != "" {
+		_, _ = fmt.Fprintf(stdout, "applied review policy: %s\n", ctx.PolicyPath)
+	}
 	_, _ = fmt.Fprintf(stdout, "wrote reviewed dataset to %s\n", ctx.OutputPath)
 	return 0
 }
@@ -298,6 +319,9 @@ func writeReviewedDatasetText(w io.Writer, reviewed cleanr.ReviewedScenarioDatas
 		}
 		if item.Diff.DuplicateOf != "" {
 			line["duplicate_of"] = item.Diff.DuplicateOf
+		}
+		if len(item.Decision.PolicyRules) > 0 {
+			line["policy_rules"] = item.Decision.PolicyRules
 		}
 		data, _ := json.Marshal(line)
 		_, _ = fmt.Fprintln(w, string(data))

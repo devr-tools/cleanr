@@ -145,6 +145,7 @@ func buildBuildkiteReviewMetadata(reviewed cleanr.ReviewedScenarioDataset, gate 
 		"cleanr.review.duplicates":    strconv.Itoa(reviewed.Summary.Duplicates),
 		"cleanr.review.unchanged":     strconv.Itoa(reviewed.Summary.Unchanged),
 		"cleanr.review.artifact":      strings.TrimSpace(reviewPath),
+		"cleanr.review.policy_path":   strings.TrimSpace(reviewed.PolicyPath),
 		"cleanr.review.merge_output":  strings.TrimSpace(mergePath),
 		"cleanr.review.top_candidate": topReviewedScenarioName(reviewed),
 		"cleanr.review.top_score":     strconv.Itoa(topReviewedScenarioScore(reviewed)),
@@ -162,6 +163,9 @@ func buildBuildkiteReviewAnnotation(reviewed cleanr.ReviewedScenarioDataset, gat
 	b.WriteString(fmt.Sprintf("- Rejected: `%d`\n", reviewed.RejectedScenarios))
 	b.WriteString(fmt.Sprintf("- Pending: `%d`\n", reviewed.PendingScenarios))
 	b.WriteString(fmt.Sprintf("- Duplicates: `%d`\n", reviewed.Summary.Duplicates))
+	if strings.TrimSpace(reviewed.PolicyPath) != "" {
+		b.WriteString(fmt.Sprintf("- Review policy: `%s`\n", reviewed.PolicyPath))
+	}
 	if len(gate.Messages) > 0 {
 		b.WriteString("\nGate findings:\n")
 		for _, message := range gate.Messages {

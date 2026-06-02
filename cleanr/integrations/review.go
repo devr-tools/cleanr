@@ -20,6 +20,8 @@ type ReviewedScenarioDataset struct {
 	InputSource       string                    `json:"input_source,omitempty"`
 	Target            string                    `json:"target,omitempty"`
 	BuildID           string                    `json:"build_id,omitempty"`
+	PolicyPath        string                    `json:"policy_path,omitempty"`
+	PolicyVersion     string                    `json:"policy_version,omitempty"`
 	GeneratedAt       time.Time                 `json:"generated_at"`
 	ReviewedAt        time.Time                 `json:"reviewed_at"`
 	Generator         *ScenarioDatasetGenerator `json:"generator,omitempty"`
@@ -73,6 +75,7 @@ type DatasetReviewDecision struct {
 	AddedTags   []string          `json:"added_tags,omitempty"`
 	SetTags     []string          `json:"set_tags,omitempty"`
 	SetMetadata map[string]string `json:"set_metadata,omitempty"`
+	PolicyRules []string          `json:"policy_rules,omitempty"`
 }
 
 type DatasetReviewSummary struct {
@@ -91,6 +94,7 @@ type DatasetReviewOptions struct {
 	AddTags           map[string][]string
 	SetTags           map[string][]string
 	SetMetadata       map[string]map[string]string
+	Policy            *DatasetReviewPolicy
 }
 
 func LoadReviewedScenarioDatasetFile(path string) (ReviewedScenarioDataset, error) {
@@ -143,8 +147,15 @@ func ReviewDatasetAgainstConfig(base core.Config, dataset ScenarioDataset, opts 
 
 	index := buildReviewIndex(base)
 	reviewed := newReviewedScenarioDataset(dataset)
+	policyCtx := datasetReviewPolicyContext{
+		Source: dataset.Source,
+	}
+	if dataset.Generator != nil {
+		policyCtx.GeneratorProvider = dataset.Generator.Provider
+		policyCtx.GeneratorModel = dataset.Generator.Model
+	}
 	for _, item := range dataset.Scenarios {
-		entry := reviewScenario(item, opts, index)
+		entry := reviewScenario(item, opts, index, policyCtx)
 		reviewed.Scenarios = append(reviewed.Scenarios, entry)
 		accumulateReviewSummary(&reviewed, entry)
 	}
@@ -210,20 +221,24 @@ func newReviewedScenarioDataset(dataset ScenarioDataset) ReviewedScenarioDataset
 	}
 }
 
-func reviewScenario(item ScenarioDatasetEntry, opts DatasetReviewOptions, index datasetReviewIndex) ReviewedScenarioEntry {
-	candidate, decision := applyReviewOptions(item, opts)
+func reviewScenario(item ScenarioDatasetEntry, opts DatasetReviewOptions, index datasetReviewIndex, policyCtx datasetReviewPolicyContext) ReviewedScenarioEntry {
+	baseEntry := buildReviewedEntry(item, index.existingByName, index.existingByBody)
+	candidate, decision := applyReviewOptions(item, opts, baseEntry, policyCtx)
 	entry := buildReviewedEntry(candidate, index.existingByName, index.existingByBody)
 	entry.Decision = decision
 	return entry
 }
 
-func applyReviewOptions(item ScenarioDatasetEntry, opts DatasetReviewOptions) (ScenarioDatasetEntry, DatasetReviewDecision) {
+func applyReviewOptions(item ScenarioDatasetEntry, opts DatasetReviewOptions, baseEntry ReviewedScenarioEntry, policyCtx datasetReviewPolicyContext) (ScenarioDatasetEntry, DatasetReviewDecision) {
 	candidate := item
 	decision := DatasetReviewDecision{Status: "pending"}
+	applyPolicyRules(&candidate, &decision, baseEntry, opts.Policy, policyCtx)
 	addedTags := addReviewTags(&candidate, item, opts)
 	setTags := setScenarioTags(&candidate, item, opts)
 	setReviewMetadata(&candidate, item, opts, &decision)
-	decision.Status = resolveReviewDecisionStatus(item.Scenario.Name, opts)
+	if status := resolveReviewDecisionStatus(item.Scenario.Name, opts); status != "" {
+		decision.Status = status
+	}
 	finalizeReviewDecision(&decision, addedTags, setTags)
 	sort.Strings(candidate.Scenario.Tags)
 	return candidate, decision
@@ -280,7 +295,7 @@ func resolveReviewDecisionStatus(name string, opts DatasetReviewOptions) string 
 	case containsString(opts.Approve, name):
 		return "approved"
 	default:
-		return "pending"
+		return ""
 	}
 }
 

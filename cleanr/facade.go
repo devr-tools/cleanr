@@ -104,6 +104,8 @@ type DatasetReviewAnalysis = integrationspkg.DatasetReviewAnalysis
 type DatasetReviewDecision = integrationspkg.DatasetReviewDecision
 type DatasetReviewSummary = integrationspkg.DatasetReviewSummary
 type DatasetReviewOptions = integrationspkg.DatasetReviewOptions
+type DatasetReviewPolicy = integrationspkg.DatasetReviewPolicy
+type DatasetReviewPolicyRule = integrationspkg.DatasetReviewPolicyRule
 type BraintrustInsightDataset = integrationspkg.BraintrustInsightDataset
 type BraintrustConfigPatchSet = integrationspkg.BraintrustConfigPatchSet
 type BraintrustConfigPatchOperation = integrationspkg.BraintrustConfigPatchOperation
@@ -243,6 +245,18 @@ func LoadReviewedScenarioDatasetData(data []byte, path string) (ReviewedScenario
 
 func WriteReviewedScenarioDatasetFile(path string, reviewed ReviewedScenarioDataset) error {
 	return integrationspkg.WriteReviewedScenarioDatasetFile(path, reviewed)
+}
+
+func LoadDatasetReviewPolicyFile(path string) (DatasetReviewPolicy, error) {
+	return integrationspkg.LoadDatasetReviewPolicyFile(path)
+}
+
+func LoadDatasetReviewPolicyData(data []byte, path string) (DatasetReviewPolicy, error) {
+	return integrationspkg.LoadDatasetReviewPolicyData(data, path)
+}
+
+func WriteDatasetReviewPolicyFile(path string, policy DatasetReviewPolicy) error {
+	return integrationspkg.WriteDatasetReviewPolicyFile(path, policy)
 }
 
 func ExportScenarioDataset(cfg Config, artifact ReplayArtifact, includeAll bool) ScenarioDataset {

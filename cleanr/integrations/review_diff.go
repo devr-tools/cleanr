@@ -146,6 +146,12 @@ func withReviewProvenance(metadata map[string]string, reviewed ReviewedScenarioD
 	if reviewed.BuildID != "" {
 		out["cleanr.review.build_id"] = reviewed.BuildID
 	}
+	if reviewed.PolicyPath != "" {
+		out["cleanr.review.policy_path"] = reviewed.PolicyPath
+	}
+	if reviewed.PolicyVersion != "" {
+		out["cleanr.review.policy_version"] = reviewed.PolicyVersion
+	}
 	if entry.Entry.Origin.Suite != "" {
 		out["cleanr.review.origin_suite"] = entry.Entry.Origin.Suite
 	}
@@ -162,6 +168,9 @@ func withReviewProvenance(metadata map[string]string, reviewed ReviewedScenarioD
 		if reviewed.Generator.Model != "" {
 			out["cleanr.review.generator_model"] = reviewed.Generator.Model
 		}
+	}
+	if len(entry.Decision.PolicyRules) > 0 {
+		out["cleanr.review.policy_rules"] = strings.Join(entry.Decision.PolicyRules, ",")
 	}
 	return out
 }
