@@ -17,11 +17,43 @@ func (r Runner) ReviewUIPreview(ctx context.Context) error {
 	}
 	defer os.RemoveAll(dir)
 
-	configPath := filepath.Join(dir, "cleanr.yaml")
-	datasetPath := filepath.Join(dir, "cleanr.dataset.yaml")
-	outputPath := filepath.Join(dir, "cleanr.reviewed.yaml")
-	mergePath := filepath.Join(dir, "cleanr.reviewed-config.yaml")
+	paths := reviewUIPreviewPaths{
+		config:  filepath.Join(dir, "cleanr.yaml"),
+		dataset: filepath.Join(dir, "cleanr.dataset.yaml"),
+		output:  filepath.Join(dir, "cleanr.reviewed.yaml"),
+		merge:   filepath.Join(dir, "cleanr.reviewed-config.yaml"),
+	}
 
+	cfg := buildReviewUIPreviewConfig()
+	if err := writeReviewUIPreviewConfig(paths.config, cfg); err != nil {
+		return err
+	}
+	if err := writeReviewUIPreviewDataset(paths.dataset, cfg); err != nil {
+		return err
+	}
+
+	return r.runInteractiveCommand(
+		ctx,
+		nil,
+		"go",
+		"run", "./cmd/cleanr",
+		"dataset", "review",
+		"-interactive",
+		"-input", paths.dataset,
+		"-base-config", paths.config,
+		"-output", paths.output,
+		"-merge-output", paths.merge,
+	)
+}
+
+type reviewUIPreviewPaths struct {
+	config  string
+	dataset string
+	output  string
+	merge   string
+}
+
+func buildReviewUIPreviewConfig() cleanr.Config {
 	cfg := cleanr.ExampleConfig()
 	cfg.Scenarios = []cleanr.Scenario{
 		{
@@ -32,80 +64,83 @@ func (r Runner) ReviewUIPreview(ctx context.Context) error {
 			ExpectedContains: []string{"reset"},
 		},
 	}
+	return cfg
+}
+
+func writeReviewUIPreviewConfig(configPath string, cfg cleanr.Config) error {
 	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
 		return fmt.Errorf("write preview config: %w", err)
 	}
+	return nil
+}
 
-	dataset := cleanr.ScenarioDataset{
+func writeReviewUIPreviewDataset(datasetPath string, cfg cleanr.Config) error {
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, buildReviewUIPreviewDataset(cfg)); err != nil {
+		return fmt.Errorf("write preview dataset: %w", err)
+	}
+	return nil
+}
+
+func buildReviewUIPreviewDataset(cfg cleanr.Config) cleanr.ScenarioDataset {
+	return cleanr.ScenarioDataset{
 		Version:     "v1alpha1",
 		Source:      "cleanr-replay",
 		Target:      cfg.Target.Name,
 		BuildID:     "preview-build-1",
 		GeneratedAt: time.Now().UTC(),
 		Scenarios: []cleanr.ScenarioDatasetEntry{
-			{
-				Scenario: cleanr.Scenario{
-					Name:             "candidate-hours",
-					System:           "You are a careful support assistant.",
-					Input:            "Summarize support hours in one sentence.",
-					Tags:             []string{"generated"},
-					ExpectedContains: []string{"weekday"},
-				},
-				Origin: cleanr.DatasetScenarioOrigin{
-					Suite: "replay",
-					Case:  "candidate-hours",
-					Findings: []cleanr.Finding{{
-						Severity: "high",
-						Message:  "new issue surfaced in replay",
-					}},
-				},
-			},
-			{
-				Scenario: cleanr.Scenario{
-					Name:   "candidate-password-duplicate",
-					System: "You are a careful support assistant.",
-					Input:  "Help me reset my password.",
-					Tags:   []string{"generated"},
-				},
-				Origin: cleanr.DatasetScenarioOrigin{
-					Suite: "replay",
-					Case:  "candidate-password-duplicate",
-					Findings: []cleanr.Finding{{
-						Severity: "medium",
-						Message:  "likely duplicate regression candidate",
-					}},
-				},
-			},
-			{
-				Scenario: cleanr.Scenario{
-					Name:             "candidate-lockout",
-					System:           "You are a careful support assistant.",
-					Input:            "What should I do after three failed login attempts?",
-					Tags:             []string{"generated", "security"},
-					ExpectedContains: []string{"contact support"},
-				},
-				Origin: cleanr.DatasetScenarioOrigin{
-					Suite: "replay",
-					Case:  "candidate-lockout",
-					Findings: []cleanr.Finding{{
-						Severity: "critical",
-						Message:  "account lockout flow regressed",
-					}},
-				},
-			},
+			reviewUIPreviewDatasetEntry(reviewUIPreviewEntrySpec{
+				name:     "candidate-hours",
+				input:    "Summarize support hours in one sentence.",
+				tags:     []string{"generated"},
+				expected: []string{"weekday"},
+				severity: "high",
+				message:  "new issue surfaced in replay",
+			}),
+			reviewUIPreviewDatasetEntry(reviewUIPreviewEntrySpec{
+				name:     "candidate-password-duplicate",
+				input:    "Help me reset my password.",
+				tags:     []string{"generated"},
+				severity: "medium",
+				message:  "likely duplicate regression candidate",
+			}),
+			reviewUIPreviewDatasetEntry(reviewUIPreviewEntrySpec{
+				name:     "candidate-lockout",
+				input:    "What should I do after three failed login attempts?",
+				tags:     []string{"generated", "security"},
+				expected: []string{"contact support"},
+				severity: "critical",
+				message:  "account lockout flow regressed",
+			}),
 		},
 	}
-	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
-		return fmt.Errorf("write preview dataset: %w", err)
-	}
+}
 
-	return r.runInteractiveCommand(ctx, nil, "go",
-		"run", "./cmd/cleanr",
-		"dataset", "review",
-		"-interactive",
-		"-input", datasetPath,
-		"-base-config", configPath,
-		"-output", outputPath,
-		"-merge-output", mergePath,
-	)
+type reviewUIPreviewEntrySpec struct {
+	name     string
+	input    string
+	tags     []string
+	expected []string
+	severity string
+	message  string
+}
+
+func reviewUIPreviewDatasetEntry(spec reviewUIPreviewEntrySpec) cleanr.ScenarioDatasetEntry {
+	return cleanr.ScenarioDatasetEntry{
+		Scenario: cleanr.Scenario{
+			Name:             spec.name,
+			System:           "You are a careful support assistant.",
+			Input:            spec.input,
+			Tags:             spec.tags,
+			ExpectedContains: spec.expected,
+		},
+		Origin: cleanr.DatasetScenarioOrigin{
+			Suite: "replay",
+			Case:  spec.name,
+			Findings: []cleanr.Finding{{
+				Severity: spec.severity,
+				Message:  spec.message,
+			}},
+		},
+	}
 }

@@ -25,14 +25,27 @@ func runInteractiveDatasetReview(stdin io.Reader, stdout io.Writer, reviewed cle
 
 func runLineInteractiveDatasetReview(stdin io.Reader, stdout io.Writer, reviewed cleanr.ReviewedScenarioDataset) (cleanr.ReviewedScenarioDataset, error) {
 	reader := bufio.NewReader(stdin)
+	session := lineInteractiveReviewSession{
+		reader:     reader,
+		stdout:     stdout,
+		policyPath: reviewed.PolicyPath,
+		total:      len(reviewed.Scenarios),
+	}
 	_, _ = fmt.Fprintln(stdout, "interactive dataset review")
 	_, _ = fmt.Fprintln(stdout, "commands: approve|a, reject|r, pending|p, stable, regression, tag <tag>, tags <a,b>, metadata <key=value>, show, help, skip, quit")
 	for i := range reviewed.Scenarios {
-		if err := reviewInteractiveScenario(reader, stdout, &reviewed.Scenarios[i], i+1, len(reviewed.Scenarios), reviewed.PolicyPath); err != nil {
+		if err := session.reviewScenario(&reviewed.Scenarios[i], i+1); err != nil {
 			return cleanr.ReviewedScenarioDataset{}, err
 		}
 	}
 	return cleanr.FinalizeReviewedScenarioDataset(reviewed), nil
+}
+
+type lineInteractiveReviewSession struct {
+	reader     *bufio.Reader
+	stdout     io.Writer
+	policyPath string
+	total      int
 }
 
 type ttyDatasetReviewSession struct {
@@ -71,11 +84,11 @@ func (s *ttyDatasetReviewSession) run(reviewed cleanr.ReviewedScenarioDataset) (
 	return cleanr.FinalizeReviewedScenarioDataset(result.reviewed), nil
 }
 
-func reviewInteractiveScenario(reader *bufio.Reader, stdout io.Writer, entry *cleanr.ReviewedScenarioEntry, index, total int, policyPath string) error {
+func (s lineInteractiveReviewSession) reviewScenario(entry *cleanr.ReviewedScenarioEntry, index int) error {
 	for {
-		writeInteractiveScenarioSummary(stdout, *entry, index, total, policyPath)
-		_, _ = fmt.Fprint(stdout, "review> ")
-		line, err := reader.ReadString('\n')
+		writeInteractiveScenarioSummary(s.stdout, *entry, index, s.total, s.policyPath)
+		_, _ = fmt.Fprint(s.stdout, "review> ")
+		line, err := s.reader.ReadString('\n')
 		if err != nil && err != io.EOF {
 			return err
 		}
@@ -83,9 +96,9 @@ func reviewInteractiveScenario(reader *bufio.Reader, stdout io.Writer, entry *cl
 		if command == "" {
 			command = "skip"
 		}
-		done, quit, cmdErr := applyInteractiveReviewCommand(entry, command, stdout)
+		done, quit, cmdErr := applyInteractiveReviewCommand(entry, command, s.stdout)
 		if cmdErr != nil {
-			_, _ = fmt.Fprintf(stdout, "invalid command: %v\n", cmdErr)
+			_, _ = fmt.Fprintf(s.stdout, "invalid command: %v\n", cmdErr)
 		}
 		if quit {
 			return fmt.Errorf("interactive review aborted by user")
