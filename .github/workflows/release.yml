@@ -1,10 +1,6 @@
 name: release.yml
 
 on:
-  push:
-    tags:
-      - "v*"
-      - "cleanr-v*"
   workflow_call:
     inputs:
       tag:
