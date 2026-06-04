@@ -19,6 +19,13 @@ func (r Runner) Test(ctx context.Context) error {
 	return r.runGoTestFiltered(ctx, "./...")
 }
 
+func (r Runner) TestReviewUI(ctx context.Context) error {
+	if _, err := fmt.Fprintln(r.Stdout, "running review UI tests"); err != nil {
+		return err
+	}
+	return r.runGoTestFiltered(ctx, "-run", "Test(DatasetReviewCommandInteractiveModeAppliesScenarioEdits|DatasetReviewTUIModelSupportsNavigationAndActions|DatasetReviewTUIViewUsesStructuredLayout)$", "./tests/cli")
+}
+
 func (r Runner) Check(ctx context.Context) error {
 	steps := []struct {
 		name string

@@ -130,3 +130,28 @@ func resolveCIMaxFileCodeLines(explicit int) int {
 	}
 	return value
 }
+
+func resolveCIMaxFunctionComplexity(explicit int) int {
+	if explicit > 0 {
+		return explicit
+	}
+	raw := strings.TrimSpace(os.Getenv("MAX_FUNCTION_COMPLEXITY"))
+	if raw == "" {
+		return defaultCIMaxFunctionComplexity
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return defaultCIMaxFunctionComplexity
+	}
+	return value
+}
+
+func shouldFallbackToPrebuiltGoTool(err error) bool {
+	if err == nil {
+		return false
+	}
+	message := err.Error()
+	return strings.Contains(message, "invalid go version") ||
+		strings.Contains(message, "unknown block type: ignore") ||
+		strings.Contains(message, "unknown directive: ignore")
+}

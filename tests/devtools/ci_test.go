@@ -183,6 +183,222 @@ func TestDevtoolsCIToleratesBaselineSCCDebt(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCodeGuardSummarizesSections(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/codeguard-summary")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected codeguard to pass, got %v\n%s", err, stdout.String())
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"Code Guard",
+		"| Check",
+		"God Files",
+		"Cyclomatic Complexity",
+		"Maintainability Lint",
+		"DRY",
+		"Clean Code",
+		"Design Principles (SOLID/SoC)",
+		"Security: Go Vulnerabilities",
+		"Security: Critical Files",
+		"RESULT: PASS",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected %q in output:\n%s", want, output)
+		}
+	}
+}
+
+func TestDevtoolsCodeGuardWritesGitHubStepSummary(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/codeguard-step-summary")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+
+	summaryPath := filepath.Join(t.TempDir(), "step-summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", summaryPath)
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected codeguard to pass, got %v\n%s", err, stdout.String())
+	}
+
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read step summary: %v", err)
+	}
+	summary := string(data)
+	for _, want := range []string{
+		"## CodeGuard",
+		"```text",
+		"Code Guard",
+		"RESULT: PASS",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("expected %q in step summary:\n%s", want, summary)
+		}
+	}
+}
+
+func TestDevtoolsCodeGuardReportsQualityWarnings(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/codeguard-quality-warning")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "quality.go"), `package cleanr
+
+func duplicateOne(enabled, verbose bool) int {
+	if enabled {
+		if verbose {
+			if enabled {
+				if verbose {
+					if enabled {
+						return 1
+					}
+				}
+			}
+		}
+	}
+	return 0
+}
+
+func duplicateTwo(enabled, verbose bool) int {
+	if enabled {
+		if verbose {
+			if enabled {
+				if verbose {
+					if enabled {
+						return 1
+					}
+				}
+			}
+		}
+	}
+	return 0
+}
+`)
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	t.Setenv("MAX_NESTING_DEPTH", "2")
+	t.Setenv("MAX_BOOL_PARAMS", "1")
+	t.Setenv("DRY_MIN_FUNCTION_LINES", "3")
+
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected warning-only codeguard to pass, got %v\n%s", err, stdout.String())
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"DRY",
+		"Clean Code",
+		"Design Principles (SOLID/SoC)",
+		"WARN",
+		"Warnings (non-blocking):",
+		"duplicate function bodies",
+		"bool params (>1)",
+		"RESULT: PASS",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected %q in output:\n%s", want, output)
+		}
+	}
+}
+
+func TestDevtoolsCodeGuardReportsSecurityWarnings(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/codeguard-security-warning")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	t.Setenv("GOVULNCHECK_EXIT", "1")
+	t.Setenv("GOVULNCHECK_OUTPUT", "stdlib package vulnerable")
+
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected warning-only codeguard to pass, got %v\n%s", err, stdout.String())
+	}
+
+	output := stdout.String()
+	for _, want := range []string{
+		"Security: Go Vulnerabilities",
+		"WARN",
+		"Warnings (non-blocking):",
+		"stdlib package vulnerable",
+		"RESULT: PASS",
+	} {
+		if !strings.Contains(output, want) {
+			t.Fatalf("expected %q in output:\n%s", want, output)
+		}
+	}
+}
+
+func TestDevtoolsCodeGuardAllowsGodFileAllowlist(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/codeguard-allowlist")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, ".codeguard-godfiles-allowlist"), "cleanr/app.go\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	t.Setenv("SCC_OUTPUT_CURRENT", `[{"Files":[{"Code":405,"Lines":440,"Location":"cleanr/app.go"}]}]`)
+	t.Setenv("SCC_OUTPUT_BASE", `[{"Files":[{"Code":120,"Lines":140,"Location":"cleanr/app.go"}]}]`)
+
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected allowlisted god file to pass, got %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "RESULT: PASS") {
+		t.Fatalf("expected passing codeguard output, got:\n%s", stdout.String())
+	}
+}
+
+func TestDevtoolsCodeGuardHonorsFunctionComplexityThresholdEnv(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/codeguard-complexity-threshold")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	t.Setenv("MAX_FUNCTION_COMPLEXITY", "10")
+	t.Setenv("GOCYCLO_OUTPUT_CURRENT", "11 cleanr Value cleanr/app.go:3:1")
+	t.Setenv("GOCYCLO_OUTPUT_BASE", "")
+
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	err := runner.CodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main"})
+	if err == nil || !strings.Contains(err.Error(), "codeguard failed") {
+		t.Fatalf("expected codeguard complexity failure, got %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "functions above complexity 10") {
+		t.Fatalf("expected threshold note in output, got:\n%s", stdout.String())
+	}
+}
+
 func TestDevtoolsCIFailsOnNewSCCGodFile(t *testing.T) {
 	repo := initGitRepo(t, "main")
 	writeCIBaseFiles(t, repo)
@@ -199,7 +415,7 @@ func TestDevtoolsCIFailsOnNewSCCGodFile(t *testing.T) {
 
 	runner := devtools.NewRunner(repo, &stdout, &stdout)
 	err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main"})
-	if err == nil || !strings.Contains(err.Error(), "scc failed") {
+	if err == nil || !strings.Contains(err.Error(), "codeguard failed") {
 		t.Fatalf("expected scc failure, got %v\n%s", err, stdout.String())
 	}
 }
@@ -249,7 +465,7 @@ func TestDevtoolsCIFailsOnNewGolangCIIssue(t *testing.T) {
 
 	runner := devtools.NewRunner(repo, &stdout, &stdout)
 	err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main"})
-	if err == nil || !strings.Contains(err.Error(), "golangci-lint failed") {
+	if err == nil || !strings.Contains(err.Error(), "codeguard failed") {
 		t.Fatalf("expected golangci-lint failure, got %v\n%s", err, stdout.String())
 	}
 }

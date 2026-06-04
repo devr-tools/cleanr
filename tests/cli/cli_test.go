@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -58,6 +59,43 @@ func jsonCLIResponse(t *testing.T, statusCode int, body map[string]any) *http.Re
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(bytes.NewReader(data)),
 	}
+}
+
+func installFakeBuildkiteAgent(t *testing.T) string {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		t.Skip("fake buildkite-agent helper uses POSIX shell")
+	}
+	dir := t.TempDir()
+	logPath := filepath.Join(dir, "buildkite-agent.log")
+	scriptPath := filepath.Join(dir, "buildkite-agent")
+	script := "#!/bin/sh\nset -eu\nprintf '%s\\n' \"$*\" >> \"$FAKE_BUILDKITE_LOG\"\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0o755); err != nil {
+		t.Fatalf("write fake buildkite-agent: %v", err)
+	}
+	t.Setenv("FAKE_BUILDKITE_LOG", logPath)
+	t.Setenv("PATH", dir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return logPath
+}
+
+func withCLIStdinFile(t *testing.T, content string) {
+	t.Helper()
+	file, err := os.CreateTemp(t.TempDir(), "cleanr-stdin-*.txt")
+	if err != nil {
+		t.Fatalf("create temp stdin: %v", err)
+	}
+	if _, err := file.WriteString(content); err != nil {
+		t.Fatalf("write temp stdin: %v", err)
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		t.Fatalf("seek temp stdin: %v", err)
+	}
+	original := os.Stdin
+	os.Stdin = file
+	t.Cleanup(func() {
+		os.Stdin = original
+		_ = file.Close()
+	})
 }
 
 func TestValidateCommandPrintsActionableFieldErrors(t *testing.T) {
@@ -553,6 +591,54 @@ func TestRunCommandSupportsExternalIntegrations(t *testing.T) {
 	} {
 		if !strings.Contains(string(summaryBody), want) {
 			t.Fatalf("expected %q in summary:\n%s", want, string(summaryBody))
+		}
+	}
+}
+
+func TestRunCommandWritesBuildkiteMetadataAndAnnotation(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = true
+	cfg.Suites.Security.MaxPIIMatches = 0
+	cfg.Suites.Security.DangerousToolIndicators = []string{}
+	cfg.Suites.Security.SecretExposureIndicators = []string{}
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.Reporting.BuildID = "build-bk-1"
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:             "missing-phrase",
+		Input:            "hello",
+		ExpectedContains: []string{"missing"},
+	}}
+
+	path := filepath.Join(t.TempDir(), "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	logPath := installFakeBuildkiteAgent(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{"run", "-config", path, "-buildkite-meta", "-buildkite-annotation"}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected failing exit code 1, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read buildkite log: %v", err)
+	}
+	logText := string(logBody)
+	for _, want := range []string{
+		"meta-data set cleanr.run.passed false",
+		"meta-data set cleanr.run.failed_cases 1",
+		"meta-data set cleanr.run.build_id build-bk-1",
+		"annotate ### cleanr run failed",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in buildkite log:\n%s", want, logText)
 		}
 	}
 }
@@ -1127,6 +1213,785 @@ func TestDatasetImportRequiresApprovalForGeneratedDatasets(t *testing.T) {
 	}
 	if !strings.Contains(strings.Join(names, ","), "generated-happy-path") {
 		t.Fatalf("unexpected imported config: %+v", importedCfg.Scenarios)
+	}
+}
+
+func TestDatasetReviewCommandWritesReviewedArtifactAndMergedConfig(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{
+			Name:             "happy-path",
+			System:           "You are a helpful assistant.",
+			Input:            "Help with a refund.",
+			Tags:             []string{"stable"},
+			ExpectedContains: []string{"refund"},
+		},
+		{
+			Name:   "legacy-duplicate",
+			System: "You are a helpful assistant.",
+			Input:  "Reset my password.",
+			Tags:   []string{"legacy"},
+		},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-replay",
+		Target:      baseCfg.Target.Name,
+		BuildID:     "build-77",
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{
+				Scenario: cleanr.Scenario{
+					Name:             "happy-path",
+					System:           "You are a helpful assistant.",
+					Input:            "Help with a refund after an account lockout.",
+					Tags:             []string{"generated"},
+					ExpectedContains: []string{"refund", "account"},
+				},
+				Origin: cleanr.DatasetScenarioOrigin{
+					Suite:   "security",
+					Case:    "happy-path",
+					BuildID: "build-77",
+					Findings: []cleanr.Finding{{
+						Severity: "high",
+						Message:  "important regression",
+					}},
+				},
+			},
+			{
+				Scenario: cleanr.Scenario{
+					Name:   "duplicate-reset",
+					System: "You are a helpful assistant.",
+					Input:  "Reset my password.",
+					Tags:   []string{"generated"},
+				},
+			},
+			{
+				Scenario: cleanr.Scenario{
+					Name:             "new-stable-candidate",
+					System:           "You are a helpful assistant.",
+					Input:            "Summarize the refund policy in one sentence.",
+					Tags:             []string{"generated"},
+					ExpectedContains: []string{"refund"},
+				},
+			},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	reviewedPath := filepath.Join(dir, "reviewed.yaml")
+	mergedPath := filepath.Join(dir, "merged.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", reviewedPath,
+		"-merge-output", mergedPath,
+		"-approve", "happy-path,new-stable-candidate",
+		"-reject", "duplicate-reset",
+		"-promote-regression", "happy-path",
+		"-promote-stable", "new-stable-candidate",
+		"-add-tag", "happy-path:security",
+		"-set-metadata", "happy-path:owner=qa",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected dataset review success, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	reviewed, err := cleanr.LoadReviewedScenarioDatasetFile(reviewedPath)
+	if err != nil {
+		t.Fatalf("load reviewed dataset: %v", err)
+	}
+	if reviewed.ApprovedScenarios != 2 || reviewed.RejectedScenarios != 1 || reviewed.PendingScenarios != 0 {
+		t.Fatalf("unexpected review counts: %+v", reviewed)
+	}
+	if len(reviewed.Scenarios) != 3 {
+		t.Fatalf("unexpected reviewed scenarios: %+v", reviewed.Scenarios)
+	}
+	if reviewed.Scenarios[0].Entry.Scenario.Name != "happy-path" {
+		t.Fatalf("expected high severity scenario to rank first, got %+v", reviewed.Scenarios)
+	}
+	if reviewed.Scenarios[0].Decision.Status != "approved" || reviewed.Scenarios[0].Diff.Status != "modified" {
+		t.Fatalf("unexpected reviewed entry: %+v", reviewed.Scenarios[0])
+	}
+	if reviewed.Scenarios[0].Entry.Origin.Suite != "security" {
+		t.Fatalf("expected provenance to be preserved, got %+v", reviewed.Scenarios[0].Entry.Origin)
+	}
+
+	duplicateSeen := false
+	for _, item := range reviewed.Scenarios {
+		if item.Entry.Scenario.Name == "duplicate-reset" {
+			duplicateSeen = true
+			if item.Decision.Status != "rejected" || item.Diff.Status != "duplicate" {
+				t.Fatalf("unexpected duplicate entry: %+v", item)
+			}
+		}
+	}
+	if !duplicateSeen {
+		t.Fatalf("expected duplicate candidate in reviewed dataset: %+v", reviewed.Scenarios)
+	}
+
+	merged, err := cleanr.LoadConfigFile(mergedPath)
+	if err != nil {
+		t.Fatalf("load merged config: %v", err)
+	}
+	if len(merged.Scenarios) != 3 {
+		t.Fatalf("expected legacy plus two approved scenarios, got %+v", merged.Scenarios)
+	}
+
+	mergedByName := map[string]cleanr.Scenario{}
+	for _, scenario := range merged.Scenarios {
+		mergedByName[scenario.Name] = scenario
+	}
+	if _, ok := mergedByName["duplicate-reset"]; ok {
+		t.Fatalf("rejected scenario should not be merged: %+v", merged.Scenarios)
+	}
+	happy := mergedByName["happy-path"]
+	if !strings.Contains(strings.Join(happy.Tags, ","), "regression") || !strings.Contains(strings.Join(happy.Tags, ","), "security") {
+		t.Fatalf("expected promoted tags on approved scenario, got %+v", happy.Tags)
+	}
+	if happy.Metadata["owner"] != "qa" {
+		t.Fatalf("expected metadata edit to persist, got %+v", happy.Metadata)
+	}
+	if happy.Metadata["cleanr.review.source"] != "cleanr-replay" || happy.Metadata["cleanr.review.origin_suite"] != "security" {
+		t.Fatalf("expected review provenance metadata, got %+v", happy.Metadata)
+	}
+
+	newStable := mergedByName["new-stable-candidate"]
+	if !strings.Contains(strings.Join(newStable.Tags, ","), "stable") {
+		t.Fatalf("expected stable promotion to persist, got %+v", newStable.Tags)
+	}
+}
+
+func TestDatasetReviewCommandSupportsCIGatesAndGitHubOutputs(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{Name: "existing", System: "You are helpful.", Input: "Reset my password."},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-generation",
+		Target:      baseCfg.Target.Name,
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{Scenario: cleanr.Scenario{Name: "needs-review", System: "You are helpful.", Input: "What is the refund policy?", Tags: []string{"generated"}}},
+			{Scenario: cleanr.Scenario{Name: "dup", System: "You are helpful.", Input: "Reset my password.", Tags: []string{"generated"}}},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	githubOutputPath := filepath.Join(dir, "github-output.txt")
+	githubSummaryPath := filepath.Join(dir, "github-summary.md")
+	if err := os.WriteFile(githubOutputPath, []byte("existing-output=true\n"), 0o644); err != nil {
+		t.Fatalf("seed github output: %v", err)
+	}
+	if err := os.WriteFile(githubSummaryPath, []byte("Existing summary\n"), 0o644); err != nil {
+		t.Fatalf("seed github summary: %v", err)
+	}
+	t.Setenv("GITHUB_OUTPUT", githubOutputPath)
+	t.Setenv("GITHUB_STEP_SUMMARY", githubSummaryPath)
+
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", filepath.Join(dir, "reviewed.yaml"),
+		"-approve", "dup",
+		"-fail-on-pending",
+		"-max-duplicates", "0",
+		"-github-outputs",
+	}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected gate failure exit code 1, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "found 1 pending scenarios") {
+		t.Fatalf("expected pending gate failure, got stderr=%s", stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "duplicate candidate count 1 exceeds maximum 0") {
+		t.Fatalf("expected duplicate gate failure, got stderr=%s", stderr.String())
+	}
+
+	outputBody, err := os.ReadFile(githubOutputPath)
+	if err != nil {
+		t.Fatalf("read github output: %v", err)
+	}
+	outputText := string(outputBody)
+	for _, want := range []string{
+		"existing-output=true",
+		"cleanr_review_gate_passed=false",
+		"cleanr_review_pending=1",
+		"cleanr_review_duplicates=1",
+		"cleanr_review_policy_path=",
+		"cleanr_review_top_candidate=",
+	} {
+		if !strings.Contains(outputText, want) {
+			t.Fatalf("expected %q in GITHUB_OUTPUT:\n%s", want, outputText)
+		}
+	}
+
+	summaryBody, err := os.ReadFile(githubSummaryPath)
+	if err != nil {
+		t.Fatalf("read github summary: %v", err)
+	}
+	summaryText := string(summaryBody)
+	for _, want := range []string{
+		"Existing summary",
+		"## cleanr Dataset Review",
+		"Gate passed: `false`",
+		"Pending: `1`",
+		"Duplicates: `1`",
+		"Review artifact: `",
+		"Gate findings:",
+	} {
+		if !strings.Contains(summaryText, want) {
+			t.Fatalf("expected %q in summary:\n%s", want, summaryText)
+		}
+	}
+}
+
+func TestDatasetReviewCommandSupportsBuildkiteOutputs(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{Name: "existing", System: "You are helpful.", Input: "Reset my password."},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-generation",
+		Target:      baseCfg.Target.Name,
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{Scenario: cleanr.Scenario{Name: "needs-review", System: "You are helpful.", Input: "What is the refund policy?", Tags: []string{"generated"}}},
+			{Scenario: cleanr.Scenario{Name: "dup", System: "You are helpful.", Input: "Reset my password.", Tags: []string{"generated"}}},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	logPath := installFakeBuildkiteAgent(t)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", filepath.Join(dir, "reviewed.yaml"),
+		"-merge-output", filepath.Join(dir, "merged.yaml"),
+		"-approve", "dup",
+		"-fail-on-pending",
+		"-max-duplicates", "0",
+		"-buildkite-meta",
+		"-buildkite-annotation",
+		"-buildkite-upload-artifacts",
+	}, &stdout, &stderr)
+	if code != 1 {
+		t.Fatalf("expected gate failure exit code 1, got %d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	logBody, err := os.ReadFile(logPath)
+	if err != nil {
+		t.Fatalf("read buildkite log: %v", err)
+	}
+	logText := string(logBody)
+	for _, want := range []string{
+		"meta-data set cleanr.review.gate_passed false",
+		"meta-data set cleanr.review.pending 1",
+		"meta-data set cleanr.review.duplicates 1",
+		"meta-data set cleanr.review.policy_path ",
+		"annotate ### cleanr dataset review gate failed",
+		"artifact upload " + filepath.Join(dir, "reviewed.yaml"),
+		"artifact upload " + filepath.Join(dir, "merged.yaml"),
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in buildkite log:\n%s", want, logText)
+		}
+	}
+}
+
+func TestDatasetReviewCommandAppliesCheckedInPolicyBeforeManualOverrides(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{
+			Name:             "existing-refund",
+			System:           "You are helpful.",
+			Input:            "Summarize the refund policy.",
+			Tags:             []string{"stable"},
+			ExpectedContains: []string{"refund"},
+			Assertions: []cleanr.Assertion{{
+				Type:  "contains",
+				Value: "refund",
+			}},
+		},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	policy := cleanr.DatasetReviewPolicy{
+		Version: "v1alpha1",
+		Rules: []cleanr.DatasetReviewPolicyRule{
+			{
+				Action:   "reject",
+				Statuses: []string{"duplicate"},
+			},
+			{
+				Action:      "approve",
+				Statuses:    []string{"modified"},
+				MinSeverity: "high",
+			},
+			{
+				Action:      "promote-regression",
+				Statuses:    []string{"modified"},
+				MinSeverity: "high",
+			},
+			{
+				Action:              "promote-stable",
+				Statuses:            []string{"new"},
+				StableSuitability:   "medium",
+				Sources:             []string{"cleanr-replay"},
+				RequireAssertions:   true,
+				RequireExpectedText: true,
+			},
+			{
+				Action:   "set-metadata",
+				Statuses: []string{"modified", "new"},
+				Metadata: map[string]string{"owner": "qa"},
+			},
+			{
+				Action:             "add-tags",
+				GeneratorProviders: []string{"openai"},
+				GeneratorModels:    []string{"gpt-4.1-mini"},
+				ScenarioTags:       []string{"generated"},
+				Tags:               []string{"generator-reviewed"},
+			},
+		},
+	}
+	policyPath := filepath.Join(dir, "cleanr.review.yaml")
+	if err := cleanr.WriteDatasetReviewPolicyFile(policyPath, policy); err != nil {
+		t.Fatalf("write review policy: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-replay",
+		Target:      baseCfg.Target.Name,
+		BuildID:     "build-policy-1",
+		GeneratedAt: time.Now().UTC(),
+		Generator: &cleanr.ScenarioDatasetGenerator{
+			Provider: "openai",
+			Model:    "gpt-4.1-mini",
+		},
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{
+				Scenario: cleanr.Scenario{
+					Name:             "existing-refund",
+					System:           "You are helpful.",
+					Input:            "Summarize the refund policy for a locked account.",
+					Tags:             []string{"generated"},
+					ExpectedContains: []string{"refund"},
+				},
+				Origin: cleanr.DatasetScenarioOrigin{
+					Suite: "security",
+					Case:  "existing-refund",
+					Findings: []cleanr.Finding{{
+						Severity: "high",
+						Message:  "important",
+					}},
+				},
+			},
+			{
+				Scenario: cleanr.Scenario{
+					Name:             "new-stable",
+					System:           "You are helpful.",
+					Input:            "Summarize the support hours in one sentence.",
+					Tags:             []string{"generated", "policy"},
+					ExpectedContains: []string{"weekday"},
+					Assertions: []cleanr.Assertion{{
+						Type:  "contains",
+						Value: "weekday",
+					}},
+				},
+			},
+			{
+				Scenario: cleanr.Scenario{
+					Name:   "duplicate-refund-copy",
+					System: "You are helpful.",
+					Input:  "Summarize the refund policy.",
+					Tags:   []string{"generated"},
+				},
+			},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	reviewedPath := filepath.Join(dir, "reviewed.yaml")
+	mergedPath := filepath.Join(dir, "merged.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-policy", policyPath,
+		"-base-config", basePath,
+		"-output", reviewedPath,
+		"-merge-output", mergedPath,
+		"-approve", "new-stable",
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected review success, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "applied review policy: "+policyPath) {
+		t.Fatalf("expected stdout to include applied review policy path, got %s", stdout.String())
+	}
+
+	reviewed, err := cleanr.LoadReviewedScenarioDatasetFile(reviewedPath)
+	if err != nil {
+		t.Fatalf("load reviewed dataset: %v", err)
+	}
+	if reviewed.PolicyPath != policyPath {
+		t.Fatalf("expected reviewed policy path %q, got %q", policyPath, reviewed.PolicyPath)
+	}
+	if reviewed.PolicyVersion != "v1alpha1" {
+		t.Fatalf("expected reviewed policy version v1alpha1, got %q", reviewed.PolicyVersion)
+	}
+
+	entries := map[string]cleanr.ReviewedScenarioEntry{}
+	for _, item := range reviewed.Scenarios {
+		entries[item.Entry.Scenario.Name] = item
+	}
+
+	modified := entries["existing-refund"]
+	if modified.Decision.Status != "approved" {
+		t.Fatalf("expected modified scenario to be policy-approved, got %+v", modified.Decision)
+	}
+	if !strings.Contains(strings.Join(modified.Entry.Scenario.Tags, ","), "regression") {
+		t.Fatalf("expected modified scenario to gain regression tag, got %+v", modified.Entry.Scenario.Tags)
+	}
+	if !strings.Contains(strings.Join(modified.Entry.Scenario.Tags, ","), "generator-reviewed") {
+		t.Fatalf("expected generator/tag selector to add tag, got %+v", modified.Entry.Scenario.Tags)
+	}
+	if modified.Entry.Scenario.Metadata["owner"] != "qa" {
+		t.Fatalf("expected policy metadata on modified scenario, got %+v", modified.Entry.Scenario.Metadata)
+	}
+	if len(modified.Decision.PolicyRules) == 0 {
+		t.Fatalf("expected policy rule provenance on modified scenario, got %+v", modified.Decision)
+	}
+
+	newStable := entries["new-stable"]
+	if newStable.Decision.Status != "approved" {
+		t.Fatalf("expected manual approval override for new-stable, got %+v", newStable.Decision)
+	}
+	if !strings.Contains(strings.Join(newStable.Entry.Scenario.Tags, ","), "stable") {
+		t.Fatalf("expected policy stable promotion for new scenario, got %+v", newStable.Entry.Scenario.Tags)
+	}
+	if !strings.Contains(strings.Join(newStable.Entry.Scenario.Tags, ","), "generator-reviewed") {
+		t.Fatalf("expected generator/tag selector to affect new scenario, got %+v", newStable.Entry.Scenario.Tags)
+	}
+
+	duplicate := entries["duplicate-refund-copy"]
+	if duplicate.Decision.Status != "rejected" || duplicate.Diff.Status != "duplicate" {
+		t.Fatalf("expected duplicate rejection from policy, got %+v", duplicate)
+	}
+	if !strings.Contains(strings.Join(duplicate.Entry.Scenario.Tags, ","), "generator-reviewed") {
+		t.Fatalf("expected generator/tag selector on duplicate scenario, got %+v", duplicate.Entry.Scenario.Tags)
+	}
+
+	merged, err := cleanr.LoadConfigFile(mergedPath)
+	if err != nil {
+		t.Fatalf("load merged config: %v", err)
+	}
+	if len(merged.Scenarios) != 2 {
+		t.Fatalf("expected existing plus new approved scenario in merged config, got %+v", merged.Scenarios)
+	}
+	var mergedNew cleanr.Scenario
+	for _, scenario := range merged.Scenarios {
+		if scenario.Name == "new-stable" {
+			mergedNew = scenario
+			break
+		}
+	}
+	if mergedNew.Metadata["cleanr.review.policy_path"] != policyPath {
+		t.Fatalf("expected merged scenario provenance to include policy path, got %+v", mergedNew.Metadata)
+	}
+	if !strings.Contains(mergedNew.Metadata["cleanr.review.policy_rules"], "rule-") {
+		t.Fatalf("expected merged scenario provenance to include policy rules, got %+v", mergedNew.Metadata)
+	}
+}
+
+func TestDatasetReviewCommandInteractiveModeAppliesScenarioEdits(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{Name: "existing", System: "You are helpful.", Input: "Reset my password."},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-generation",
+		Target:      baseCfg.Target.Name,
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{Scenario: cleanr.Scenario{Name: "candidate-one", System: "You are helpful.", Input: "Summarize support hours.", Tags: []string{"generated"}}},
+			{Scenario: cleanr.Scenario{Name: "candidate-two", System: "You are helpful.", Input: "Reset my password.", Tags: []string{"generated"}}},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	withCLIStdinFile(t, "tag manual\nmetadata owner=qa\nstable\nreject\n")
+
+	reviewedPath := filepath.Join(dir, "reviewed.yaml")
+	mergedPath := filepath.Join(dir, "merged.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-interactive",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", reviewedPath,
+		"-merge-output", mergedPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected interactive review success, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	reviewed, err := cleanr.LoadReviewedScenarioDatasetFile(reviewedPath)
+	if err != nil {
+		t.Fatalf("load reviewed dataset: %v", err)
+	}
+	if reviewed.ApprovedScenarios != 1 || reviewed.RejectedScenarios != 1 || reviewed.PendingScenarios != 0 {
+		t.Fatalf("unexpected reviewed counts: %+v", reviewed)
+	}
+
+	entries := map[string]cleanr.ReviewedScenarioEntry{}
+	for _, item := range reviewed.Scenarios {
+		entries[item.Entry.Scenario.Name] = item
+	}
+
+	first := entries["candidate-one"]
+	if first.Decision.Status != "approved" {
+		t.Fatalf("expected candidate-one approved, got %+v", first.Decision)
+	}
+	if !strings.Contains(strings.Join(first.Entry.Scenario.Tags, ","), "manual") || !strings.Contains(strings.Join(first.Entry.Scenario.Tags, ","), "stable") {
+		t.Fatalf("expected candidate-one tag edits, got %+v", first.Entry.Scenario.Tags)
+	}
+	if first.Entry.Scenario.Metadata["owner"] != "qa" {
+		t.Fatalf("expected candidate-one metadata edit, got %+v", first.Entry.Scenario.Metadata)
+	}
+
+	second := entries["candidate-two"]
+	if second.Decision.Status != "rejected" {
+		t.Fatalf("expected candidate-two rejected, got %+v", second.Decision)
+	}
+
+	merged, err := cleanr.LoadConfigFile(mergedPath)
+	if err != nil {
+		t.Fatalf("load merged config: %v", err)
+	}
+	if len(merged.Scenarios) != 2 {
+		t.Fatalf("expected merged config to include one approved scenario, got %+v", merged.Scenarios)
+	}
+	if !strings.Contains(stdout.String(), "interactive dataset review") || !strings.Contains(stdout.String(), "review>") {
+		t.Fatalf("expected interactive prompts in stdout, got %s", stdout.String())
+	}
+}
+
+func TestDatasetReviewCommandAutoDiscoversProfilePolicy(t *testing.T) {
+	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+	if err := os.MkdirAll(".cleanr", 0o755); err != nil {
+		t.Fatalf("mkdir .cleanr: %v", err)
+	}
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "existing",
+		System: "You are helpful.",
+		Input:  "Reset my password.",
+	}}
+	if err := cleanr.WriteConfigFile(filepath.Join(".cleanr", "pr.yaml"), cfg); err != nil {
+		t.Fatalf("write staged config: %v", err)
+	}
+
+	policy := cleanr.DatasetReviewPolicy{
+		Version: "v1alpha1",
+		Rules: []cleanr.DatasetReviewPolicyRule{{
+			Action:   "reject",
+			Statuses: []string{"duplicate"},
+		}},
+	}
+	if err := cleanr.WriteDatasetReviewPolicyFile(filepath.Join(".cleanr", "pr.review.yaml"), policy); err != nil {
+		t.Fatalf("write staged review policy: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-replay",
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{{
+			Scenario: cleanr.Scenario{
+				Name:   "duplicate",
+				System: "You are helpful.",
+				Input:  "Reset my password.",
+			},
+		}},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	reviewedPath := filepath.Join(dir, "reviewed.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-profile", "pr",
+		"-output", reviewedPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected review success, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	reviewed, err := cleanr.LoadReviewedScenarioDatasetFile(reviewedPath)
+	if err != nil {
+		t.Fatalf("load reviewed dataset: %v", err)
+	}
+	if len(reviewed.Scenarios) != 1 || reviewed.Scenarios[0].Decision.Status != "rejected" {
+		t.Fatalf("expected staged policy discovery to reject duplicate, got %+v", reviewed.Scenarios)
+	}
+	if reviewed.PolicyPath != filepath.Join(".cleanr", "pr.review.yaml") {
+		t.Fatalf("expected staged policy path in reviewed artifact, got %q", reviewed.PolicyPath)
+	}
+}
+
+func TestDatasetReviewCommandFallsBackToRootPolicy(t *testing.T) {
+	dir := t.TempDir()
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("getwd: %v", err)
+	}
+	defer func() { _ = os.Chdir(wd) }()
+	if err := os.Chdir(dir); err != nil {
+		t.Fatalf("chdir: %v", err)
+	}
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:   "existing",
+		System: "You are helpful.",
+		Input:  "Refund summary.",
+	}}
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(configPath, cfg); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	policy := cleanr.DatasetReviewPolicy{
+		Version: "v1alpha1",
+		Rules: []cleanr.DatasetReviewPolicyRule{{
+			Action:   "set-metadata",
+			Statuses: []string{"new"},
+			Metadata: map[string]string{"owner": "qa"},
+		}},
+	}
+	if err := cleanr.WriteDatasetReviewPolicyFile(filepath.Join(dir, "cleanr.review.yaml"), policy); err != nil {
+		t.Fatalf("write root review policy: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-generation",
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{{
+			Scenario: cleanr.Scenario{
+				Name:   "new-one",
+				System: "You are helpful.",
+				Input:  "Summarize support hours.",
+			},
+		}},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	reviewedPath := filepath.Join(dir, "reviewed.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-input", datasetPath,
+		"-base-config", configPath,
+		"-output", reviewedPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected review success, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	reviewed, err := cleanr.LoadReviewedScenarioDatasetFile(reviewedPath)
+	if err != nil {
+		t.Fatalf("load reviewed dataset: %v", err)
+	}
+	if len(reviewed.Scenarios) != 1 || reviewed.Scenarios[0].Entry.Scenario.Metadata["owner"] != "qa" {
+		t.Fatalf("expected root policy discovery to set metadata, got %+v", reviewed.Scenarios)
+	}
+	if reviewed.PolicyPath != filepath.Join(dir, "cleanr.review.yaml") {
+		t.Fatalf("expected root policy path in reviewed artifact, got %q", reviewed.PolicyPath)
 	}
 }
 

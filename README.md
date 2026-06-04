@@ -68,6 +68,19 @@ cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output 
 
 For scenario generation and dataset import flows, start with [docs/getting-started.md](docs/getting-started.md).
 
+Review generated or replay-backed scenarios before merging them into your checked-in config:
+
+```bash
+cleanr dataset review -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output reviewed/cleanr.reviewed.yaml
+cleanr dataset review -input reviewed/cleanr.dataset.yaml -profile pr -approve happy-path -promote-regression happy-path -merge-output .cleanr/pr.reviewed.yaml
+```
+
+If you want to review candidates one by one locally, use interactive mode:
+
+```bash
+cleanr dataset review -interactive -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output reviewed/cleanr.reviewed.yaml
+```
+
 ## CI Example
 
 ```yaml
@@ -90,6 +103,7 @@ More CI, Docker, SDK, and release patterns are in [docs/ci.md](docs/ci.md), [doc
 - [Docker guide](docs/docker.md)
 - [Configuration](docs/configuration.md)
 - [CI guide](docs/ci.md)
+- [Buildkite guide](docs/buildkite.md)
 - [Best practices](docs/best-practices.md)
 - [Release automation](docs/release-automation.md)
 - [Homebrew packaging](docs/homebrew.md)

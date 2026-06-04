@@ -1,0 +1,60 @@
+steps:
+  - label: ":go: build cleanr"
+    key: "build-cleanr"
+    commands:
+      - "mkdir -p dist reports .cleanr"
+      - "go build -trimpath -o ./dist/cleanr ./cmd/cleanr"
+    artifact_paths:
+      - "dist/cleanr"
+
+  - label: ":mag: validate cleanr profile"
+    key: "validate-cleanr"
+    depends_on:
+      - "build-cleanr"
+    commands:
+      - "./dist/cleanr validate -profile pr"
+
+  - label: ":test_tube: run cleanr"
+    key: "run-cleanr"
+    depends_on:
+      - "validate-cleanr"
+    commands:
+      - |
+        ./dist/cleanr run \
+          -profile pr \
+          -format json \
+          -output reports/cleanr-report.json \
+          -build-id "${BUILDKITE_BUILD_ID:-local-build}" \
+          -buildkite-meta \
+          -buildkite-annotation
+    artifact_paths:
+      - "reports/cleanr-report.json"
+      - "reports/cleanr.replay.json"
+
+  - label: ":clipboard: review cleanr dataset"
+    key: "review-cleanr"
+    depends_on:
+      - "run-cleanr"
+    commands:
+      - 'echo "If you want a reproducible reference artifact set first, run .github/workflows/cleanr-smoke.yml and inspect reports/github-actions-smoke.* artifacts."'
+      - |
+        ./dist/cleanr dataset export \
+          -profile pr \
+          -output reports/cleanr.dataset.yaml
+      - |
+        ./dist/cleanr dataset review \
+          -input reports/cleanr.dataset.yaml \
+          -policy cleanr.review.yaml \
+          -profile pr \
+          -output reports/cleanr.reviewed.yaml \
+          -merge-output .cleanr/pr.reviewed.yaml \
+          -fail-on-pending \
+          -min-approved 1 \
+          -max-duplicates 0 \
+          -buildkite-meta \
+          -buildkite-annotation \
+          -buildkite-upload-artifacts
+    artifact_paths:
+      - "reports/cleanr.dataset.yaml"
+      - "reports/cleanr.reviewed.yaml"
+      - ".cleanr/pr.reviewed.yaml"

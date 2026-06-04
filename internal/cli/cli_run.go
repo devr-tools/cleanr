@@ -23,6 +23,7 @@ type runOptions struct {
 	buildID            string
 	trendLimit         int
 	timeout            time.Duration
+	buildkite          buildkiteOptions
 }
 
 func runCmd(args []string, stdout, stderr io.Writer) int {
@@ -71,6 +72,9 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "write report: %v\n", err)
 		return 2
 	}
+	if err := maybeWriteBuildkiteRunOutputs(opts.buildkite, cfg.Reporting, report, resolvedConfigPath); err != nil {
+		_, _ = fmt.Fprintf(stderr, "buildkite warning: %v\n", err)
+	}
 	if report.Passed {
 		return 0
 	}
@@ -90,6 +94,8 @@ func parseRunOptions(args []string, stderr io.Writer) (runOptions, error) {
 	fs.StringVar(&opts.buildID, "build-id", "", "Optional build identifier for trend history")
 	fs.IntVar(&opts.trendLimit, "trend-limit", 0, "Maximum number of trend history runs to keep")
 	fs.DurationVar(&opts.timeout, "timeout", 0, "Overall execution timeout")
+	fs.BoolVar(&opts.buildkite.Meta, "buildkite-meta", false, "Write run metrics to Buildkite metadata when buildkite-agent is available")
+	fs.BoolVar(&opts.buildkite.Annotation, "buildkite-annotation", false, "Write a Buildkite annotation when the run fails and buildkite-agent is available")
 	return opts, fs.Parse(args)
 }
 
@@ -195,6 +201,25 @@ func writeRunReport(stdout, stderr io.Writer, reporting cleanr.ReportingConfig, 
 	}
 	if reporting.Output != "" && reporting.Format != "text" {
 		_, _ = fmt.Fprintf(stdout, "wrote %s report to %s\n", reporting.Format, reporting.Output)
+	}
+	return nil
+}
+
+func maybeWriteBuildkiteRunOutputs(opts buildkiteOptions, reporting cleanr.ReportingConfig, report cleanr.Report, resolvedConfigPath string) error {
+	if !opts.Meta && !opts.Annotation {
+		return nil
+	}
+	buildCtx := context.Background()
+	reportPath := resolveConfigRelativePath(resolvedConfigPath, reporting.Output)
+	if opts.Meta {
+		if err := writeBuildkiteMetadata(buildCtx, buildBuildkiteRunMetadata(report, reportPath, reporting.Format)); err != nil {
+			return err
+		}
+	}
+	if opts.Annotation {
+		if err := writeBuildkiteAnnotation(buildCtx, "cleanr-run", "error", buildBuildkiteRunAnnotation(report)); err != nil {
+			return err
+		}
 	}
 	return nil
 }

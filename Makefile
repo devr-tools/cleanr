@@ -12,12 +12,14 @@ REPORT_FORMAT ?= text
 REPORT_PRESET ?= fail
 REPORT_INPUT ?=
 CI_BASE_REF ?=
+UI_GOROOT ?= /opt/homebrew/opt/go/libexec
+UI_GOPATH ?= $(HOME)/go
 
 .DEFAULT_GOAL := menu
 
 export GOCACHE
 
-.PHONY: menu help fmt fmt-check lint test gofiles check ci commit build release homebrew-formula deploy report clean
+.PHONY: menu help fmt fmt-check lint test test-review-ui preview-review-ui gofiles check ci commit build release homebrew-formula deploy report clean
 
 menu:
 	@printf "\ncleanr make menu\n\n"
@@ -25,6 +27,8 @@ menu:
 	@printf "  make fmt-check   Verify Go files are formatted\n"
 	@printf "  make lint        Run go vet\n"
 	@printf "  make test        Run the Go test suite\n"
+	@printf "  make test-review-ui  Run focused interactive dataset review tests\n"
+	@printf "  make preview-review-ui  Launch the live interactive dataset review preview\n"
 	@printf "  make gofiles     Validate and list Go file layout\n"
 	@printf "  make check       Run gofiles, fmt-check, lint, and test\n"
 	@printf "  make ci          Run the local CI parity gate used before commit\n"
@@ -44,7 +48,9 @@ menu:
 	@printf "  REPORT_PRESET=%s\n" "$(REPORT_PRESET)"
 	@printf "  REPORT_INPUT=%s\n" "$(REPORT_INPUT)"
 	@printf "  CI_BASE_REF=%s\n" "$(CI_BASE_REF)"
-	@printf "  GOCACHE=%s\n\n" "$(GOCACHE)"
+	@printf "  GOCACHE=%s\n" "$(GOCACHE)"
+	@printf "  UI_GOROOT=%s\n" "$(UI_GOROOT)"
+	@printf "  UI_GOPATH=%s\n\n" "$(UI_GOPATH)"
 
 help: menu
 
@@ -59,6 +65,12 @@ lint:
 
 test:
 	$(GO) run ./cmd/cleanr-dev test
+
+test-review-ui:
+	@GOROOT=$(UI_GOROOT) GOPATH=$(UI_GOPATH) GOCACHE=$(GOCACHE) go run ./cmd/cleanr-dev test-review-ui
+
+preview-review-ui:
+	@GOROOT=$(UI_GOROOT) GOPATH=$(UI_GOPATH) GOCACHE=$(GOCACHE) go run ./cmd/cleanr-dev preview-review-ui
 
 gofiles:
 	$(GO) run ./cmd/cleanr-dev gofiles

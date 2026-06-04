@@ -45,7 +45,7 @@ func (r Runner) runCISCC(ctx context.Context, baseRef, version string, maxCodeLi
 	if err != nil {
 		return err
 	}
-	targets := filterCIGocycloTargets(changedFiles)
+	targets := filterCICodeGuardTargets(changedFiles)
 	if len(targets) == 0 {
 		_, err := fmt.Fprintln(r.Stdout, "No changed non-test Go files for scc.")
 		return err
@@ -98,7 +98,7 @@ func (r Runner) ensureSCC(ctx context.Context, version string) (string, error) {
 	}
 	if _, err := r.runOutputCommand(ctx, nil, "go", "install", "github.com/boyter/scc/v3@"+version); err == nil {
 		return toolPath, nil
-	} else if !shouldFallbackToPrebuiltSCC(err) {
+	} else if !shouldFallbackToPrebuiltGoTool(err) {
 		return "", err
 	} else {
 		if _, printErr := fmt.Fprintln(r.Stdout, "falling back to prebuilt scc binary"); printErr != nil {
@@ -109,16 +109,6 @@ func (r Runner) ensureSCC(ctx context.Context, version string) (string, error) {
 		}
 	}
 	return toolPath, nil
-}
-
-func shouldFallbackToPrebuiltSCC(err error) bool {
-	if err == nil {
-		return false
-	}
-	message := err.Error()
-	return strings.Contains(message, "invalid go version") ||
-		strings.Contains(message, "unknown block type: ignore") ||
-		strings.Contains(message, "unknown directive: ignore")
 }
 
 func (r Runner) downloadSCC(ctx context.Context, toolPath, version string) error {

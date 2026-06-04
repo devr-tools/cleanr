@@ -14,16 +14,17 @@ type ReleaseOptions struct {
 }
 
 type CIOptions struct {
-	BaseRef             string
-	BuildOutput         string
-	GovulncheckMode     string
-	GovulncheckVersion  string
-	GocycloVersion      string
-	SCCVersion          string
-	MaxFileCodeLines    int
-	GolangCILintVersion string
-	MinInternalCoverage float64
-	SemgrepCommand      string
+	BaseRef               string
+	BuildOutput           string
+	GovulncheckMode       string
+	GovulncheckVersion    string
+	GocycloVersion        string
+	SCCVersion            string
+	MaxFileCodeLines      int
+	MaxFunctionComplexity int
+	GolangCILintVersion   string
+	MinInternalCoverage   float64
+	SemgrepCommand        string
 }
 
 type HomebrewFormulaOptions struct {
