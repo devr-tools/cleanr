@@ -46,6 +46,10 @@ func run(args []string) int {
 		return runRunnerCommand("lint", func() error { return runner.Lint(ctx) })
 	case "test":
 		return runRunnerCommand("test", func() error { return runner.Test(ctx) })
+	case "test-review-ui":
+		return runRunnerCommand("test-review-ui", func() error { return runner.TestReviewUI(ctx) })
+	case "preview-review-ui":
+		return runRunnerCommand("preview-review-ui", func() error { return runner.ReviewUIPreview(ctx) })
 	case "gofiles":
 		return runGoFilesCommand(runner)
 	case "build":
@@ -241,5 +245,5 @@ func runReportDevCommand(ctx context.Context, runner devtools.Runner, args []str
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-codeguard|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|gofiles|build|release|homebrew-formula|report>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-codeguard|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|test-review-ui|preview-review-ui|gofiles|build|release|homebrew-formula|report>")
 }

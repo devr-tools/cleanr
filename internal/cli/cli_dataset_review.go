@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 
 	"github.com/devr-tools/cleanr/cleanr"
@@ -20,6 +21,14 @@ func datasetReviewCmd(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "dataset review error: %v\n", err)
 		return 2
+	}
+	if cmd.Interactive {
+		reviewed, err := runInteractiveDatasetReview(os.Stdin, stdout, ctx.Reviewed)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "dataset review error: %v\n", err)
+			return 2
+		}
+		ctx.Reviewed = reviewed
 	}
 	if code := persistDatasetReviewOutputs(stdout, stderr, ctx); code != 0 {
 		return code
@@ -55,6 +64,7 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 	mergeOutput := fs.String("merge-output", "", "Optional path to write the merged cleanr config containing approved scenarios")
 	mergeInPlace := fs.Bool("merge-in-place", false, "Write approved scenarios back into the resolved base config path")
 	format := fs.String("format", "text", "Review output format: text or json")
+	interactive := fs.Bool("interactive", false, "Review scenarios interactively from stdin before writing outputs")
 	failOnPending := fs.Bool("fail-on-pending", false, "Exit with code 1 if any reviewed scenarios remain pending")
 	failOnRejected := fs.Bool("fail-on-rejected", false, "Exit with code 1 if any reviewed scenarios are rejected")
 	minApproved := fs.Int("min-approved", 0, "Minimum approved scenario count required for exit code 0")
@@ -89,6 +99,7 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 		Output:        *output,
 		MergeOutput:   *mergeOutput,
 		Format:        *format,
+		Interactive:   *interactive,
 		MergeInPlace:  *mergeInPlace,
 		GitHubOutputs: *githubOutputs,
 		Buildkite: buildkiteOptions{

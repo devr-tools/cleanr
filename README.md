@@ -75,6 +75,12 @@ cleanr dataset review -input generated/cleanr.dataset.yaml -base-config cleanr.y
 cleanr dataset review -input reviewed/cleanr.dataset.yaml -profile pr -approve happy-path -promote-regression happy-path -merge-output .cleanr/pr.reviewed.yaml
 ```
 
+If you want to review candidates one by one locally, use interactive mode:
+
+```bash
+cleanr dataset review -interactive -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output reviewed/cleanr.reviewed.yaml
+```
+
 ## CI Example
 
 ```yaml

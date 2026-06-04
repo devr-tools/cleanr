@@ -8,6 +8,8 @@ This page is for contributor workflows. Keep the repository root [README](../REA
 make fmt
 make lint
 make test
+make test-review-ui
+make preview-review-ui
 make check
 make ci
 make build
@@ -24,6 +26,22 @@ make release VERSION=v0.1.0
 - runs `go test ./...`
 
 `make deploy` remains an alias for `make release`.
+
+## Review UI Testing
+
+Use `make test-review-ui` when you are changing the interactive dataset review experience. It runs the focused CLI tests that cover:
+
+- line-oriented `cleanr dataset review -interactive`
+- the Bubble Tea review model and structured terminal layout
+
+Use `make preview-review-ui` when you want to launch the live review UI locally against a canned dataset and inspect the terminal experience directly.
+
+If your local Homebrew Go toolchain lives somewhere other than `/opt/homebrew/opt/go/libexec`, override:
+
+```bash
+make test-review-ui UI_GOROOT=/path/to/go UI_GOPATH=$HOME/go
+make preview-review-ui UI_GOROOT=/path/to/go UI_GOPATH=$HOME/go
+```
 
 ## What `make ci` Runs
 

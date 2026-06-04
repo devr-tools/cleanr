@@ -51,6 +51,7 @@ type datasetReviewCommandOptions struct {
 	Output        string
 	MergeOutput   string
 	Format        string
+	Interactive   bool
 	MergeInPlace  bool
 	GitHubOutputs bool
 	Buildkite     buildkiteOptions

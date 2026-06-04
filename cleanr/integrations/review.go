@@ -188,6 +188,19 @@ func MergeReviewedDatasetIntoConfig(base core.Config, reviewed ReviewedScenarioD
 	return MergeDatasetIntoConfig(base, ApprovedDatasetFromReview(reviewed))
 }
 
+func FinalizeReviewedScenarioDataset(reviewed ReviewedScenarioDataset) ReviewedScenarioDataset {
+	reviewed.ApprovedScenarios = 0
+	reviewed.RejectedScenarios = 0
+	reviewed.PendingScenarios = 0
+	reviewed.Summary = DatasetReviewSummary{}
+	for _, entry := range reviewed.Scenarios {
+		accumulateReviewSummary(&reviewed, entry)
+	}
+	reviewed.Summary.TotalCandidates = len(reviewed.Scenarios)
+	sortReviewedScenarios(reviewed.Scenarios)
+	return reviewed
+}
+
 type datasetReviewIndex struct {
 	existingByName map[string]core.Scenario
 	existingByBody map[string][]core.Scenario

@@ -103,6 +103,28 @@ cleanr dataset review \
 
 The review artifact ranks candidates by usefulness, marks duplicates, shows field-level diff status against the current config, and preserves replay or generation provenance for approved scenarios.
 
+For local curation, `-interactive` opens a richer local review flow. In a terminal it now runs as a structured Bubble Tea TUI with single-key actions, panel layout, and inline editing; when stdin/stdout are not TTYs it falls back to the line-oriented command loop. Both paths let you approve, reject, promote, retag, and edit metadata per scenario before the reviewed artifact is written:
+
+```bash
+cleanr dataset review \
+  -interactive \
+  -input generated/cleanr.dataset.yaml \
+  -base-config cleanr.yaml \
+  -output reviewed/cleanr.reviewed.yaml
+```
+
+If you are iterating on the review UI itself, run the focused local test target:
+
+```bash
+make test-review-ui
+```
+
+To open the live terminal preview against a canned sample dataset:
+
+```bash
+make preview-review-ui
+```
+
 ## Choose the Next Guide
 
 - [Configuration](configuration.md): target fields, suites, thresholds, and reporting options

@@ -78,6 +78,26 @@ func installFakeBuildkiteAgent(t *testing.T) string {
 	return logPath
 }
 
+func withCLIStdinFile(t *testing.T, content string) {
+	t.Helper()
+	file, err := os.CreateTemp(t.TempDir(), "cleanr-stdin-*.txt")
+	if err != nil {
+		t.Fatalf("create temp stdin: %v", err)
+	}
+	if _, err := file.WriteString(content); err != nil {
+		t.Fatalf("write temp stdin: %v", err)
+	}
+	if _, err := file.Seek(0, 0); err != nil {
+		t.Fatalf("seek temp stdin: %v", err)
+	}
+	original := os.Stdin
+	os.Stdin = file
+	t.Cleanup(func() {
+		os.Stdin = original
+		_ = file.Close()
+	})
+}
+
 func TestValidateCommandPrintsActionableFieldErrors(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Target.URL = ""
@@ -1725,6 +1745,92 @@ func TestDatasetReviewCommandAppliesCheckedInPolicyBeforeManualOverrides(t *test
 	}
 	if !strings.Contains(mergedNew.Metadata["cleanr.review.policy_rules"], "rule-") {
 		t.Fatalf("expected merged scenario provenance to include policy rules, got %+v", mergedNew.Metadata)
+	}
+}
+
+func TestDatasetReviewCommandInteractiveModeAppliesScenarioEdits(t *testing.T) {
+	baseCfg := cleanr.ExampleConfig()
+	baseCfg.Scenarios = []cleanr.Scenario{
+		{Name: "existing", System: "You are helpful.", Input: "Reset my password."},
+	}
+
+	dir := t.TempDir()
+	basePath := filepath.Join(dir, "cleanr.yaml")
+	if err := cleanr.WriteConfigFile(basePath, baseCfg); err != nil {
+		t.Fatalf("write base config: %v", err)
+	}
+
+	dataset := cleanr.ScenarioDataset{
+		Version:     "v1alpha1",
+		Source:      "cleanr-generation",
+		Target:      baseCfg.Target.Name,
+		GeneratedAt: time.Now().UTC(),
+		Scenarios: []cleanr.ScenarioDatasetEntry{
+			{Scenario: cleanr.Scenario{Name: "candidate-one", System: "You are helpful.", Input: "Summarize support hours.", Tags: []string{"generated"}}},
+			{Scenario: cleanr.Scenario{Name: "candidate-two", System: "You are helpful.", Input: "Reset my password.", Tags: []string{"generated"}}},
+		},
+	}
+	datasetPath := filepath.Join(dir, "dataset.yaml")
+	if err := cleanr.WriteScenarioDatasetFile(datasetPath, dataset); err != nil {
+		t.Fatalf("write dataset: %v", err)
+	}
+
+	withCLIStdinFile(t, "tag manual\nmetadata owner=qa\nstable\nreject\n")
+
+	reviewedPath := filepath.Join(dir, "reviewed.yaml")
+	mergedPath := filepath.Join(dir, "merged.yaml")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	code := cli.Run([]string{
+		"dataset", "review",
+		"-interactive",
+		"-input", datasetPath,
+		"-base-config", basePath,
+		"-output", reviewedPath,
+		"-merge-output", mergedPath,
+	}, &stdout, &stderr)
+	if code != 0 {
+		t.Fatalf("expected interactive review success, code=%d stdout=%s stderr=%s", code, stdout.String(), stderr.String())
+	}
+
+	reviewed, err := cleanr.LoadReviewedScenarioDatasetFile(reviewedPath)
+	if err != nil {
+		t.Fatalf("load reviewed dataset: %v", err)
+	}
+	if reviewed.ApprovedScenarios != 1 || reviewed.RejectedScenarios != 1 || reviewed.PendingScenarios != 0 {
+		t.Fatalf("unexpected reviewed counts: %+v", reviewed)
+	}
+
+	entries := map[string]cleanr.ReviewedScenarioEntry{}
+	for _, item := range reviewed.Scenarios {
+		entries[item.Entry.Scenario.Name] = item
+	}
+
+	first := entries["candidate-one"]
+	if first.Decision.Status != "approved" {
+		t.Fatalf("expected candidate-one approved, got %+v", first.Decision)
+	}
+	if !strings.Contains(strings.Join(first.Entry.Scenario.Tags, ","), "manual") || !strings.Contains(strings.Join(first.Entry.Scenario.Tags, ","), "stable") {
+		t.Fatalf("expected candidate-one tag edits, got %+v", first.Entry.Scenario.Tags)
+	}
+	if first.Entry.Scenario.Metadata["owner"] != "qa" {
+		t.Fatalf("expected candidate-one metadata edit, got %+v", first.Entry.Scenario.Metadata)
+	}
+
+	second := entries["candidate-two"]
+	if second.Decision.Status != "rejected" {
+		t.Fatalf("expected candidate-two rejected, got %+v", second.Decision)
+	}
+
+	merged, err := cleanr.LoadConfigFile(mergedPath)
+	if err != nil {
+		t.Fatalf("load merged config: %v", err)
+	}
+	if len(merged.Scenarios) != 2 {
+		t.Fatalf("expected merged config to include one approved scenario, got %+v", merged.Scenarios)
+	}
+	if !strings.Contains(stdout.String(), "interactive dataset review") || !strings.Contains(stdout.String(), "review>") {
+		t.Fatalf("expected interactive prompts in stdout, got %s", stdout.String())
 	}
 }
 

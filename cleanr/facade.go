@@ -283,6 +283,10 @@ func MergeReviewedDatasetIntoConfig(base Config, reviewed ReviewedScenarioDatase
 	return integrationspkg.MergeReviewedDatasetIntoConfig(base, reviewed)
 }
 
+func FinalizeReviewedScenarioDataset(reviewed ReviewedScenarioDataset) ReviewedScenarioDataset {
+	return integrationspkg.FinalizeReviewedScenarioDataset(reviewed)
+}
+
 func LoadBraintrustInsightDatasetFile(path string) (BraintrustInsightDataset, error) {
 	return integrationspkg.LoadBraintrustInsightDatasetFile(path)
 }
