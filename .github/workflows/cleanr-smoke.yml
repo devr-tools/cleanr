@@ -106,7 +106,7 @@ jobs:
           set -euo pipefail
           ./dist/cleanr dataset export \
             -config examples/github-actions-smoke/cleanr.yaml \
-            -output reports/github-actions-smoke.dataset.yaml \
+            -output ../../reports/github-actions-smoke.dataset.yaml \
             -all
 
       - name: Review smoke dataset
@@ -116,8 +116,8 @@ jobs:
           ./dist/cleanr dataset review \
             -input reports/github-actions-smoke.dataset.yaml \
             -base-config examples/github-actions-smoke/cleanr.yaml \
-            -output reports/github-actions-smoke.reviewed.yaml \
-            -merge-output reports/github-actions-smoke.reviewed-config.yaml \
+            -output ../../reports/github-actions-smoke.reviewed.yaml \
+            -merge-output ../../reports/github-actions-smoke.reviewed-config.yaml \
             -approve refund-policy,support-hours \
             -min-approved 2 \
             -format json > reports/github-actions-smoke.review.json
