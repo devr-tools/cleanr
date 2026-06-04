@@ -17,12 +17,11 @@ It currently:
 
 ### `.github/workflows/release.yml`
 
-Tag-driven publisher.
+Reusable publisher invoked by CD or manual dispatch.
 
 It currently:
 
-- accepts `v*` and `cleanr-v*` tags
-- supports `push`, `workflow_dispatch`, and `workflow_call`
+- supports `workflow_dispatch` and `workflow_call`
 - normalizes and validates tags before release
 - runs GoReleaser using `.goreleaser.yaml`
 - uploads release archives and checksums
