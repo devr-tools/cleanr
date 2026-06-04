@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.5.0](https://github.com/devr-tools/cleanr/compare/v0.4.0...v0.5.0) (2026-06-04)
+
+
+### Features
+
+* added github output and doctor ([2766e14](https://github.com/devr-tools/cleanr/commit/2766e14738225f785f0c49ed208e33d245a082da))
+
 ## [0.4.0](https://github.com/devr-tools/cleanr/compare/v0.3.0...v0.4.0) (2026-05-28)
 
 
