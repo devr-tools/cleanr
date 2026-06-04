@@ -24,7 +24,6 @@ steps:
           -profile pr \
           -format json \
           -output reports/cleanr-report.json \
-          -replay-artifact reports/cleanr.replay.json \
           -build-id "${BUILDKITE_BUILD_ID:-local-build}" \
           -buildkite-meta \
           -buildkite-annotation
@@ -41,7 +40,6 @@ steps:
       - |
         ./dist/cleanr dataset export \
           -profile pr \
-          -replay-artifact reports/cleanr.replay.json \
           -output reports/cleanr.dataset.yaml
       - |
         ./dist/cleanr dataset review \

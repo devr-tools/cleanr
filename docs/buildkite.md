@@ -45,7 +45,6 @@ steps:
           -profile pr \
           -format json \
           -output reports/cleanr-report.json \
-          -replay-artifact reports/cleanr.replay.json \
           -buildkite-meta \
           -buildkite-annotation
 
@@ -54,7 +53,6 @@ steps:
       - |
         ./dist/cleanr dataset export \
           -profile pr \
-          -replay-artifact reports/cleanr.replay.json \
           -output reports/cleanr.dataset.yaml
       - |
         ./dist/cleanr dataset review \
@@ -69,6 +67,8 @@ steps:
           -buildkite-annotation \
           -buildkite-upload-artifacts
 ```
+
+When you use `-config` or `-profile`, replay artifact paths are resolved relative to the selected config file. Prefer the checked-in `reporting.replay_artifact_file` over passing `-replay-artifact reports/...` again unless you intentionally want a config-relative override.
 
 ## Buildkite Flags
 
