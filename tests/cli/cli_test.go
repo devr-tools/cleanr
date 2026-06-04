@@ -1404,6 +1404,12 @@ func TestDatasetReviewCommandSupportsCIGatesAndGitHubOutputs(t *testing.T) {
 
 	githubOutputPath := filepath.Join(dir, "github-output.txt")
 	githubSummaryPath := filepath.Join(dir, "github-summary.md")
+	if err := os.WriteFile(githubOutputPath, []byte("existing-output=true\n"), 0o644); err != nil {
+		t.Fatalf("seed github output: %v", err)
+	}
+	if err := os.WriteFile(githubSummaryPath, []byte("Existing summary\n"), 0o644); err != nil {
+		t.Fatalf("seed github summary: %v", err)
+	}
 	t.Setenv("GITHUB_OUTPUT", githubOutputPath)
 	t.Setenv("GITHUB_STEP_SUMMARY", githubSummaryPath)
 
@@ -1435,6 +1441,7 @@ func TestDatasetReviewCommandSupportsCIGatesAndGitHubOutputs(t *testing.T) {
 	}
 	outputText := string(outputBody)
 	for _, want := range []string{
+		"existing-output=true",
 		"cleanr_review_gate_passed=false",
 		"cleanr_review_pending=1",
 		"cleanr_review_duplicates=1",
@@ -1452,6 +1459,7 @@ func TestDatasetReviewCommandSupportsCIGatesAndGitHubOutputs(t *testing.T) {
 	}
 	summaryText := string(summaryBody)
 	for _, want := range []string{
+		"Existing summary",
 		"## cleanr Dataset Review",
 		"Gate passed: `false`",
 		"Pending: `1`",

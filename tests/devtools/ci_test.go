@@ -218,6 +218,41 @@ func TestDevtoolsCodeGuardSummarizesSections(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCodeGuardWritesGitHubStepSummary(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/codeguard-step-summary")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+
+	summaryPath := filepath.Join(t.TempDir(), "step-summary.md")
+	t.Setenv("GITHUB_STEP_SUMMARY", summaryPath)
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("expected codeguard to pass, got %v\n%s", err, stdout.String())
+	}
+
+	data, err := os.ReadFile(summaryPath)
+	if err != nil {
+		t.Fatalf("read step summary: %v", err)
+	}
+	summary := string(data)
+	for _, want := range []string{
+		"## CodeGuard",
+		"```text",
+		"Code Guard",
+		"RESULT: PASS",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("expected %q in step summary:\n%s", want, summary)
+		}
+	}
+}
+
 func TestDevtoolsCodeGuardReportsQualityWarnings(t *testing.T) {
 	repo := initGitRepo(t, "main")
 	writeCIBaseFiles(t, repo)

@@ -303,13 +303,27 @@ func (r Runner) writeCodeGuardStepSummary(results []codeGuardSectionResult) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() {
+		_ = f.Close()
+	}()
 
 	text, _ := renderCodeGuard(results)
-	_, _ = fmt.Fprintln(f, "## CodeGuard")
-	_, _ = fmt.Fprintln(f)
-	_, _ = fmt.Fprintln(f, "```text")
-	_, _ = fmt.Fprintln(f, strings.TrimPrefix(text, "\n"))
-	_, _ = fmt.Fprintln(f, "```")
-	_, _ = fmt.Fprintln(f)
+	if _, err := fmt.Fprintln(f, "## CodeGuard"); err != nil {
+		return
+	}
+	if _, err := fmt.Fprintln(f); err != nil {
+		return
+	}
+	if _, err := fmt.Fprintln(f, "```text"); err != nil {
+		return
+	}
+	if _, err := fmt.Fprintln(f, strings.TrimPrefix(text, "\n")); err != nil {
+		return
+	}
+	if _, err := fmt.Fprintln(f, "```"); err != nil {
+		return
+	}
+	if _, err := fmt.Fprintln(f); err != nil {
+		return
+	}
 }
