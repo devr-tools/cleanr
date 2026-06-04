@@ -9,7 +9,7 @@ import (
 	"github.com/devr-tools/cleanr/cleanr"
 )
 
-func writeDatasetReviewGitHubOutputs(reviewed cleanr.ReviewedScenarioDataset, gate datasetReviewGateResult, reviewPath, mergePath string) error {
+func writeDatasetReviewGitHubOutputs(reviewed cleanr.ReviewedScenarioDataset, gate datasetReviewGateResult, reviewPath, mergePath string) (retErr error) {
 	outputPath := strings.TrimSpace(os.Getenv("GITHUB_OUTPUT"))
 	summaryPath := strings.TrimSpace(os.Getenv("GITHUB_STEP_SUMMARY"))
 	if outputPath == "" && summaryPath == "" {
@@ -50,7 +50,13 @@ func writeDatasetReviewGitHubOutputs(reviewed cleanr.ReviewedScenarioDataset, ga
 		if err != nil {
 			return fmt.Errorf("open GITHUB_STEP_SUMMARY: %w", err)
 		}
-		defer f.Close()
+		defer func() {
+			if closeErr := f.Close(); closeErr != nil {
+				if retErr == nil {
+					retErr = fmt.Errorf("close GITHUB_STEP_SUMMARY: %w", closeErr)
+				}
+			}
+		}()
 		_, _ = fmt.Fprintln(f, "## cleanr Dataset Review")
 		_, _ = fmt.Fprintln(f)
 		_, _ = fmt.Fprintf(f, "- Gate passed: `%s`\n", strings.ToLower(boolString(gate.Passed)))
