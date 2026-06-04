@@ -23,6 +23,9 @@ type runOptions struct {
 	buildID            string
 	trendLimit         int
 	timeout            time.Duration
+	githubOutputs      bool
+	githubPRComment    bool
+	githubPRNumber     int
 	buildkite          buildkiteOptions
 }
 
@@ -72,6 +75,19 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "write report: %v\n", err)
 		return 2
 	}
+	if opts.githubOutputs {
+		if err := writeRunGitHubOutputs(report); err != nil {
+			_, _ = fmt.Fprintf(stderr, "github output warning: %v\n", err)
+		}
+	}
+	if opts.githubPRComment {
+		number, err := postRunGitHubPRComment(report, opts.githubPRNumber)
+		if err != nil {
+			_, _ = fmt.Fprintf(stderr, "github pr comment error: %v\n", err)
+			return 2
+		}
+		_, _ = fmt.Fprintf(stdout, "posted GitHub PR comment to #%d\n", number)
+	}
 	if err := maybeWriteBuildkiteRunOutputs(opts.buildkite, cfg.Reporting, report, resolvedConfigPath); err != nil {
 		_, _ = fmt.Fprintf(stderr, "buildkite warning: %v\n", err)
 	}
@@ -94,6 +110,9 @@ func parseRunOptions(args []string, stderr io.Writer) (runOptions, error) {
 	fs.StringVar(&opts.buildID, "build-id", "", "Optional build identifier for trend history")
 	fs.IntVar(&opts.trendLimit, "trend-limit", 0, "Maximum number of trend history runs to keep")
 	fs.DurationVar(&opts.timeout, "timeout", 0, "Overall execution timeout")
+	fs.BoolVar(&opts.githubOutputs, "github-outputs", false, "Write PR-oriented run metrics to $GITHUB_OUTPUT and $GITHUB_STEP_SUMMARY when available")
+	fs.BoolVar(&opts.githubPRComment, "github-pr-comment", false, "Post the generated PR review body to GitHub using gh")
+	fs.IntVar(&opts.githubPRNumber, "github-pr-number", 0, "GitHub pull request number to comment on; defaults to GitHub Actions pull_request context when available")
 	fs.BoolVar(&opts.buildkite.Meta, "buildkite-meta", false, "Write run metrics to Buildkite metadata when buildkite-agent is available")
 	fs.BoolVar(&opts.buildkite.Annotation, "buildkite-annotation", false, "Write a Buildkite annotation when the run fails and buildkite-agent is available")
 	return opts, fs.Parse(args)

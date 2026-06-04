@@ -115,6 +115,7 @@ cleanr run \
   -config cleanr.yaml \
   -format junit \
   -output cleanr-junit.xml \
+  -github-outputs \
   -trend-file reports/cleanr.trends.yaml \
   -replay-artifact reports/cleanr.replay.json \
   -build-id "$GITHUB_SHA"
@@ -145,6 +146,14 @@ Review gate behavior:
 
 If `-github-outputs` is enabled inside GitHub Actions, `cleanr` writes structured outputs like:
 
+- `cleanr_run_gate_passed`
+- `cleanr_run_failed_suites`
+- `cleanr_run_failed_cases`
+- `cleanr_run_new_failures`
+- `cleanr_run_worsened_drift`
+- `cleanr_run_review_scenarios`
+- `cleanr_run_gate_summary`
+- `cleanr_run_pr_comment`
 - `cleanr_review_gate_passed`
 - `cleanr_review_approved`
 - `cleanr_review_rejected`
@@ -155,7 +164,33 @@ If `-github-outputs` is enabled inside GitHub Actions, `cleanr` writes structure
 - `cleanr_review_merge_output`
 - `cleanr_review_top_candidate`
 
+For local GitHub setup, use:
+
+```bash
+cleanr github doctor
+cleanr github auth
+```
+
+`cleanr github doctor` checks whether `gh` is on `PATH` and whether it already has a usable session. `cleanr github auth` runs `gh auth login`, which is the local auth path that `cleanr` uses for PR creation and PR commenting.
+
 Example GitHub Actions step:
+
+```yaml
+- name: Run cleanr
+  id: cleanr_run
+  run: |
+    ./dist/cleanr run \
+      -config cleanr.yaml \
+      -format junit \
+      -output cleanr-junit.xml \
+      -github-outputs
+```
+
+The run step appends a PR-ready markdown body to `$GITHUB_STEP_SUMMARY` and exposes the same markdown via `steps.cleanr_run.outputs.cleanr_run_pr_comment` for comment actions.
+
+If you want `cleanr` itself to post the comment, add `-github-pr-comment`. You can also pass `-github-pr-number 123` outside GitHub Actions. That path requires `gh` on `PATH` with permission to comment on the PR.
+
+Review step:
 
 ```yaml
 - name: Review cleanr dataset
