@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.6.0](https://github.com/devr-tools/cleanr/compare/v0.5.0...v0.6.0) (2026-06-10)
+
+
+### Features
+
+* added llm judge ([91d16e8](https://github.com/devr-tools/cleanr/commit/91d16e8b8cfdc267e3ac418d577eb92dd46bf6d6))
+
 ## [0.5.0](https://github.com/devr-tools/cleanr/compare/v0.4.0...v0.5.0) (2026-06-04)
 
 
