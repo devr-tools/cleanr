@@ -80,6 +80,8 @@ type Scenario struct {
 	ExpectedContains     []string              `json:"expected_contains"`
 	ForbiddenContains    []string              `json:"forbidden_contains"`
 	Assertions           []Assertion           `json:"assertions"`
+	ReferenceAnswer      string                `json:"reference_answer,omitempty"`
+	Rubric               []string              `json:"rubric,omitempty"`
 }
 
 type ContextSource struct {
@@ -134,6 +136,7 @@ type SuitesConfig struct {
 	ReleasePolicy     ReleasePolicyConfig     `json:"release_policy"`
 	MemorySafety      MemorySafetyConfig      `json:"memory_safety"`
 	TokenOptimization TokenOptimizationConfig `json:"token_optimization"`
+	LLMJudge          LLMJudgeConfig          `json:"llm_judge"`
 }
 
 type PromptInjectionConfig struct {
@@ -239,6 +242,54 @@ type TokenOptimizationConfig struct {
 	MaxPromptDuplicationRatio   float64 `json:"max_prompt_duplication_ratio"`
 	MaxResponseDuplicationRatio float64 `json:"max_response_duplication_ratio"`
 	SuggestedMaxOutputTokens    int     `json:"suggested_max_output_tokens"`
+}
+
+// LLMJudgeConfig configures the model-graded "llm_judge" suite. A separate
+// judge model scores each target response against a rubric (and an optional
+// per-scenario reference answer) on a 1..Scale Likert scale. The case passes
+// when the aggregated normalized score meets MinScore. Self-consistency
+// sampling (Samples > 1) gates out judges that disagree with themselves.
+type LLMJudgeConfig struct {
+	Enabled          bool         `json:"enabled"`
+	Mode             string       `json:"mode,omitempty"`
+	Provider         TargetConfig `json:"provider"`
+	Baseline         TargetConfig `json:"baseline,omitempty"`
+	Criteria         []string     `json:"criteria,omitempty"`
+	Scale            int          `json:"scale,omitempty"`
+	MinScore         float64      `json:"min_score,omitempty"`
+	MinWinRate       float64      `json:"min_win_rate,omitempty"`
+	Samples          int          `json:"samples,omitempty"`
+	MaxDisagreement  float64      `json:"max_disagreement,omitempty"`
+	RequireReference bool         `json:"require_reference,omitempty"`
+	StableTags       []string     `json:"stable_tags,omitempty"`
+}
+
+// ModeValue returns the grading mode, defaulting to rubric "score" grading.
+// "pairwise" compares the target under test against Baseline.
+func (c LLMJudgeConfig) ModeValue() string {
+	switch m := strings.ToLower(strings.TrimSpace(c.Mode)); m {
+	case "pairwise":
+		return "pairwise"
+	default:
+		return "score"
+	}
+}
+
+// ScaleValue returns the configured Likert ceiling, defaulting to 5.
+func (c LLMJudgeConfig) ScaleValue() int {
+	if c.Scale <= 1 {
+		return 5
+	}
+	return c.Scale
+}
+
+// SamplesValue returns the configured self-consistency sample count,
+// defaulting to a single judge call.
+func (c LLMJudgeConfig) SamplesValue() int {
+	if c.Samples <= 0 {
+		return 1
+	}
+	return c.Samples
 }
 
 type ReportingConfig struct {

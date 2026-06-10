@@ -143,7 +143,7 @@ func (r Runner) runCodeGuardCleanCodeSection(targets []string) codeGuardSectionR
 }
 
 func (r Runner) runCodeGuardPrinciplesSection(targets []string) codeGuardSectionResult {
-	result := codeGuardSectionResult{Name: "Design Principles (SOLID/SoC)", Status: codeGuardStatusPass}
+	result := codeGuardSectionResult{Name: "Principles", Status: codeGuardStatusPass}
 	if len(targets) == 0 {
 		result.Status = codeGuardStatusSkip
 		result.Note = "no changed non-test Go files"
@@ -198,6 +198,52 @@ func (r Runner) runCodeGuardPrinciplesSection(targets []string) codeGuardSection
 	}
 
 	return finalizeCodeGuardQualitySection(result, "CODE_GUARD_PRINCIPLES_BLOCKING", false, "SOLID/SoC heuristics")
+}
+
+func mergeCodeGuardSections(name string, sections ...codeGuardSectionResult) codeGuardSectionResult {
+	result := codeGuardSectionResult{Name: name, Status: codeGuardStatusPass}
+	notes := make([]string, 0, len(sections))
+	hasPassOrWarnOrFail := false
+
+	for _, section := range sections {
+		result.Violations = append(result.Violations, section.Violations...)
+		if section.Note != "" && section.Note != "No findings." {
+			notes = append(notes, section.Note)
+		}
+		switch section.Status {
+		case codeGuardStatusFail:
+			result.Status = codeGuardStatusFail
+			hasPassOrWarnOrFail = true
+		case codeGuardStatusWarn:
+			if result.Status != codeGuardStatusFail {
+				result.Status = codeGuardStatusWarn
+			}
+			hasPassOrWarnOrFail = true
+		case codeGuardStatusPass:
+			if result.Status == codeGuardStatusSkip {
+				result.Status = codeGuardStatusPass
+			}
+			hasPassOrWarnOrFail = true
+		}
+	}
+
+	if len(result.Violations) > 0 {
+		sortCodeGuardViolations(result.Violations)
+	}
+	if len(notes) > 0 {
+		result.Note = strings.Join(notes, "; ")
+	}
+	if !hasPassOrWarnOrFail {
+		result.Status = codeGuardStatusSkip
+		if result.Note == "" {
+			result.Note = "no changed non-test Go files"
+		}
+		return result
+	}
+	if len(result.Violations) == 0 && result.Status == codeGuardStatusPass {
+		result.Note = "No findings."
+	}
+	return result
 }
 
 func finalizeCodeGuardQualitySection(result codeGuardSectionResult, envName string, defaultBlocking bool, note string) codeGuardSectionResult {
@@ -327,28 +373,27 @@ func maxStmtNesting(stmts []ast.Stmt, depth int) int {
 }
 
 func nestedStmtDepth(stmt ast.Stmt, depth int) int {
+	best := depth
 	switch node := stmt.(type) {
 	case *ast.IfStmt:
-		best := maxStmtNesting(node.Body.List, depth+1)
+		best = maxStmtNesting(node.Body.List, depth+1)
 		if node.Else != nil {
 			if elseDepth := nestedStmtDepthFromElse(node.Else, depth+1); elseDepth > best {
 				best = elseDepth
 			}
 		}
-		return best
 	case *ast.ForStmt:
-		return maxStmtNesting(node.Body.List, depth+1)
+		best = maxStmtNesting(node.Body.List, depth+1)
 	case *ast.RangeStmt:
-		return maxStmtNesting(node.Body.List, depth+1)
+		best = maxStmtNesting(node.Body.List, depth+1)
 	case *ast.SwitchStmt:
-		return maxCaseClauseDepth(node.Body.List, depth+1)
+		best = maxCaseClauseDepth(node.Body.List, depth+1)
 	case *ast.TypeSwitchStmt:
-		return maxCaseClauseDepth(node.Body.List, depth+1)
+		best = maxCaseClauseDepth(node.Body.List, depth+1)
 	case *ast.SelectStmt:
-		return maxCommClauseDepth(node.Body.List, depth+1)
-	default:
-		return depth
+		best = maxCommClauseDepth(node.Body.List, depth+1)
 	}
+	return best
 }
 
 func nestedStmtDepthFromElse(stmt ast.Stmt, depth int) int {

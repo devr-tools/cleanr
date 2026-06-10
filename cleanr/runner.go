@@ -100,6 +100,8 @@ func buildRecommendations(report Report) []string {
 			recs = append(recs, "Partition memory by user and freshness, and block stale, revoked, poisoned, or cross-user memory from flowing into responses or tool calls.")
 		case "token-optimization":
 			recs = append(recs, "Reduce prompt and response token waste with tighter context windows, deduplicated instructions, and explicit output length caps.")
+		case "llm-judge":
+			recs = append(recs, "Improve response quality against the judged rubric, add reference answers for ambiguous scenarios, and raise judge sampling where scores are unstable.")
 		}
 	}
 	return recs

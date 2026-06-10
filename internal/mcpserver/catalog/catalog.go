@@ -63,6 +63,7 @@ func DescribeSuites(_ context.Context, _ map[string]any) (toolkit.Result, error)
 			{Name: "claim_trace", Description: "Checks whether claimed citations, tool use, approvals, and state changes are backed by trace evidence.", ConfigFields: []string{"enabled", "citation_indicators", "tool_claim_indicators", "approval_indicators", "state_change_indicators"}},
 			{Name: "memory_safety", Description: "Checks whether stale, revoked, poisoned, or cross-user memory flows into responses or tool calls.", ConfigFields: []string{"enabled"}},
 			{Name: "token_optimization", Description: "Checks prompt and response token budgets, ratios, and duplication.", ConfigFields: []string{"enabled", "max_input_tokens", "max_output_tokens", "max_total_tokens", "max_output_input_ratio", "max_prompt_duplication_ratio", "max_response_duplication_ratio", "suggested_max_output_tokens"}},
+			{Name: "llm_judge", Description: "Grades each response with a separate judge model: rubric/reference scoring with self-consistency sampling, or pairwise comparison against a baseline with position-swap debiasing.", ConfigFields: []string{"enabled", "mode", "provider", "baseline", "criteria", "scale", "min_score", "min_win_rate", "samples", "max_disagreement", "require_reference", "stable_tags"}},
 		},
 	}
 	return toolkit.StructuredToolResult(out, "described built-in cleanr suites"), nil

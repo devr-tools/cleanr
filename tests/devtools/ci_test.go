@@ -64,6 +64,27 @@ func TestDevtoolsCIFailsWithoutTestUpdate(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCIFailsWithMisplacedPackageTest(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/misplaced-test")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app_test.go"), "package cleanr\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main"})
+	if err == nil || !strings.Contains(err.Error(), "Move these Go test files into tests/") {
+		t.Fatalf("expected misplaced-test note, got %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "must be moved under tests/") || !strings.Contains(stdout.String(), "cleanr/app_test.go") {
+		t.Fatalf("expected misplaced-test output note, got:\n%s", stdout.String())
+	}
+}
+
 func TestDevtoolsCIAllowsReleaseVersionBumpWithoutTestUpdate(t *testing.T) {
 	repo := initGitRepo(t, "main")
 	writeCIBaseFiles(t, repo)
@@ -202,12 +223,11 @@ func TestDevtoolsCodeGuardSummarizesSections(t *testing.T) {
 	for _, want := range []string{
 		"Code Guard",
 		"| Check",
-		"God Files",
+		"Large Files (High Cyclomatic)",
 		"Cyclomatic Complexity",
 		"Maintainability Lint",
-		"DRY",
-		"Clean Code",
-		"Design Principles (SOLID/SoC)",
+		"Hygiene",
+		"Principles",
 		"Security: Go Vulnerabilities",
 		"Security: Critical Files",
 		"RESULT: PASS",
@@ -305,9 +325,8 @@ func duplicateTwo(enabled, verbose bool) int {
 
 	output := stdout.String()
 	for _, want := range []string{
-		"DRY",
-		"Clean Code",
-		"Design Principles (SOLID/SoC)",
+		"Hygiene",
+		"Principles",
 		"WARN",
 		"Warnings (non-blocking):",
 		"duplicate function bodies",
@@ -412,6 +431,8 @@ func TestDevtoolsCIFailsOnNewSCCGodFile(t *testing.T) {
 	configureFakeCIToolchain(t, repo)
 	t.Setenv("SCC_OUTPUT_CURRENT", `[{"Files":[{"Code":405,"Lines":440,"Location":"cleanr/app.go"}]}]`)
 	t.Setenv("SCC_OUTPUT_BASE", `[{"Files":[{"Code":120,"Lines":140,"Location":"cleanr/app.go"}]}]`)
+	t.Setenv("GOCYCLO_OUTPUT_CURRENT", "21 cleanr Value cleanr/app.go:3:1")
+	t.Setenv("GOCYCLO_OUTPUT_BASE", "")
 
 	runner := devtools.NewRunner(repo, &stdout, &stdout)
 	err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main"})

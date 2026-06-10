@@ -27,6 +27,7 @@ type ReleasePolicyConfig = typespkg.ReleasePolicyConfig
 type PolicyRule = typespkg.PolicyRule
 type MemorySafetyConfig = typespkg.MemorySafetyConfig
 type TokenOptimizationConfig = typespkg.TokenOptimizationConfig
+type LLMJudgeConfig = typespkg.LLMJudgeConfig
 type ReportingConfig = typespkg.ReportingConfig
 type GovernanceConfig = typespkg.GovernanceConfig
 type AttestationConfig = typespkg.AttestationConfig
