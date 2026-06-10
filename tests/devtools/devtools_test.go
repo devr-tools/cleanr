@@ -19,6 +19,7 @@ func TestDevtoolsGoFileLayoutAndFormatting(t *testing.T) {
 	mustWriteFile(t, filepath.Join(repo, "img", "banner.go"), "package img\n")
 	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n")
 	mustWriteFile(t, filepath.Join(repo, ".git", "ignored.go"), "package ignored\n")
+	mustWriteFile(t, filepath.Join(repo, ".gomodcache", "ignored.go"), "package ignored\n")
 	mustWriteFile(t, filepath.Join(repo, "dist", "ignored.go"), "package ignored\n")
 
 	var stdout bytes.Buffer

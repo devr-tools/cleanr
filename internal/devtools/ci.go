@@ -3,8 +3,10 @@ package devtools
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 const (
@@ -111,49 +113,75 @@ func (r Runner) CIGolangCILint(ctx context.Context, opts CIOptions) error {
 	return r.runCIGolangCILint(ctx, resolved.BaseRef, resolved.GolangCILintVersion)
 }
 
+type testPresenceChanges struct {
+	codeChanges          []string
+	testChanges          []string
+	misplacedTestChanges []string
+}
+
 func (r Runner) checkTestPresence(ctx context.Context, baseRef string) error {
 	changedFiles, err := r.gitChangedFiles(ctx, baseRef)
 	if err != nil {
 		return err
 	}
+	changes := classifyTestPresenceChanges(changedFiles)
+	return r.reportTestPresence(changes)
+}
 
-	var codeChanges []string
-	var testChanges []string
+func classifyTestPresenceChanges(changedFiles []string) testPresenceChanges {
+	var changes testPresenceChanges
 	for _, file := range changedFiles {
 		switch {
 		case ciCodeChangePattern.MatchString(file) && !ciCodeIgnorePattern.MatchString(file):
-			codeChanges = append(codeChanges, file)
-		case ciTestChangePattern.MatchString(file):
-			testChanges = append(testChanges, file)
+			changes.codeChanges = append(changes.codeChanges, file)
+		case strings.HasPrefix(file, "tests/"):
+			changes.testChanges = append(changes.testChanges, file)
+		case strings.HasSuffix(file, "_test.go"):
+			changes.misplacedTestChanges = append(changes.misplacedTestChanges, file)
 		}
 	}
+	return changes
+}
 
-	if len(codeChanges) == 0 {
+func (r Runner) reportTestPresence(changes testPresenceChanges) error {
+	if len(changes.codeChanges) == 0 {
 		_, err := fmt.Fprintln(r.Stdout, "No Go source changes that require a test presence check.")
 		return err
 	}
-
-	if _, err := fmt.Fprintln(r.Stdout, "Go source files changed:"); err != nil {
+	if err := writeTestPresenceSection(r.Stdout, "Go source files changed:", changes.codeChanges); err != nil {
 		return err
 	}
-	for _, file := range codeChanges {
+	if len(changes.testChanges) > 0 {
+		return writeTestPresenceSection(r.Stdout, "\nMatching test updates detected:", changes.testChanges)
+	}
+	if len(changes.misplacedTestChanges) > 0 {
+		return r.reportMisplacedTestPresence(changes.misplacedTestChanges)
+	}
+	return fmt.Errorf("Go source changed without any updates under tests/")
+}
+
+func writeTestPresenceSection(w io.Writer, heading string, files []string) error {
+	if _, err := fmt.Fprintln(w, heading); err != nil {
+		return err
+	}
+	for _, file := range files {
+		if _, err := fmt.Fprintln(w, file); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func (r Runner) reportMisplacedTestPresence(misplacedTestChanges []string) error {
+	if _, err := fmt.Fprintln(r.Stdout, "\nNote: package-local Go test files do not satisfy CI in this repo and must be moved under tests/:"); err != nil {
+		return err
+	}
+	for _, file := range misplacedTestChanges {
 		if _, err := fmt.Fprintln(r.Stdout, file); err != nil {
 			return err
 		}
 	}
-	if len(testChanges) > 0 {
-		if _, err := fmt.Fprintln(r.Stdout, "\nMatching test updates detected:"); err != nil {
-			return err
-		}
-		for _, file := range testChanges {
-			if _, err := fmt.Fprintln(r.Stdout, file); err != nil {
-				return err
-			}
-		}
-		return nil
-	}
-
-	return fmt.Errorf("Go source changed without any updates under tests/ or *_test.go files")
+	return fmt.Errorf("Go source changed without any updates under tests/. Move these Go test files into tests/: %s", strings.Join(misplacedTestChanges, ", "))
 }
 
 func (r Runner) runCIBuild(ctx context.Context, output string) error {

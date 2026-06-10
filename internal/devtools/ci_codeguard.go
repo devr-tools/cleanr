@@ -3,6 +3,7 @@ package devtools
 import (
 	"context"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -31,13 +32,17 @@ func (r Runner) runCICodeGuard(ctx context.Context, opts CIOptions) error {
 		return err
 	}
 	targets := filterCICodeGuardTargets(changedFiles)
+	hygieneSection := mergeCodeGuardSections(
+		"Hygiene",
+		r.runCodeGuardDrySection(targets),
+		r.runCodeGuardCleanCodeSection(targets),
+	)
 
 	sections := []codeGuardSectionResult{
 		r.runCodeGuardGodFilesSection(ctx, opts, targets),
 		r.runCodeGuardComplexitySection(ctx, opts, targets),
 		r.runCodeGuardMaintainabilitySection(ctx, opts, targets),
-		r.runCodeGuardDrySection(targets),
-		r.runCodeGuardCleanCodeSection(targets),
+		hygieneSection,
 		r.runCodeGuardPrinciplesSection(targets),
 		r.runCodeGuardGovulncheckSection(ctx, opts),
 		r.runCodeGuardCriticalFilesSection(changedFiles),
@@ -57,51 +62,29 @@ func (r Runner) runCICodeGuard(ctx context.Context, opts CIOptions) error {
 }
 
 func (r Runner) runCodeGuardGodFilesSection(ctx context.Context, opts CIOptions, targets []string) codeGuardSectionResult {
-	result := codeGuardSectionResult{Name: "God Files", Status: codeGuardStatusPass}
+	result := codeGuardSectionResult{Name: "Large Files (High Cyclomatic)", Status: codeGuardStatusPass}
 	if len(targets) == 0 {
 		result.Status = codeGuardStatusSkip
 		result.Note = "no changed non-test Go files"
 		return result
 	}
-	allowlist, err := loadCodeGuardGodFilesAllowlist(r.WorkDir)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(config)", Message: err.Error()}}
-		return result
+	prepared, failResult, ok := r.prepareCodeGuardGodFilesSection(ctx, opts, targets)
+	if !ok {
+		return failResult
 	}
 
-	sccPath, err := r.ensureSCC(ctx, opts.SCCVersion)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(tooling)", Message: err.Error()}}
-		return result
-	}
-	currentStats, err := r.runSCCReport(ctx, sccPath, r.WorkDir, targets)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(runtime)", Message: err.Error()}}
-		return result
-	}
-	baseStats, err := r.loadBaseSCCStats(ctx, opts.BaseRef, sccPath, targets)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(baseline)", Message: err.Error()}}
-		return result
-	}
-
-	for _, regression := range diffSCCRegressions(currentStats, baseStats, opts.MaxFileCodeLines) {
+	for _, regression := range diffSCCRegressions(prepared.currentStats, prepared.baseStats, opts.MaxFileCodeLines) {
 		path, message := splitCodeGuardPathMessage(regression)
-		if _, ok := allowlist[path]; ok {
+		if _, ok := prepared.highComplexityPaths[path]; !ok {
+			continue
+		}
+		if _, ok := prepared.allowlist[path]; ok {
 			continue
 		}
 		result.Violations = append(result.Violations, codeGuardViolation{Path: path, Message: message})
 	}
 	if len(result.Violations) == 0 {
-		if len(allowlist) > 0 {
+		if len(prepared.allowlist) > 0 {
 			result.Note = "No new non-allowlisted file-size regressions detected."
 		} else {
 			result.Note = "No new maintainability regressions detected."
@@ -110,8 +93,69 @@ func (r Runner) runCodeGuardGodFilesSection(ctx context.Context, opts CIOptions,
 	}
 	sortCodeGuardViolations(result.Violations)
 	result.Status = codeGuardStatusFail
-	result.Note = fmt.Sprintf("files above %d code lines", opts.MaxFileCodeLines)
+	result.Note = fmt.Sprintf("files above %d code lines with new high-cyclomatic-complexity regressions", opts.MaxFileCodeLines)
 	return result
+}
+
+type codeGuardGodFilesPrepared struct {
+	allowlist           map[string]struct{}
+	currentStats        map[string]sccFileReport
+	baseStats           map[string]sccFileReport
+	highComplexityPaths map[string]struct{}
+}
+
+func (r Runner) prepareCodeGuardGodFilesSection(ctx context.Context, opts CIOptions, targets []string) (codeGuardGodFilesPrepared, codeGuardSectionResult, bool) {
+	allowlist, err := loadCodeGuardGodFilesAllowlist(r.WorkDir)
+	if err != nil {
+		return codeGuardGodFilesPrepared{}, codeGuardFailureResult("Large Files (High Cyclomatic)", "(config)", err), false
+	}
+	sccPath, err := r.ensureSCC(ctx, opts.SCCVersion)
+	if err != nil {
+		return codeGuardGodFilesPrepared{}, codeGuardFailureResult("Large Files (High Cyclomatic)", "(tooling)", err), false
+	}
+	currentStats, err := r.runSCCReport(ctx, sccPath, r.WorkDir, targets)
+	if err != nil {
+		return codeGuardGodFilesPrepared{}, codeGuardFailureResult("Large Files (High Cyclomatic)", "(runtime)", err), false
+	}
+	baseStats, err := r.loadBaseSCCStats(ctx, opts.BaseRef, sccPath, targets)
+	if err != nil {
+		return codeGuardGodFilesPrepared{}, codeGuardFailureResult("Large Files (High Cyclomatic)", "(baseline)", err), false
+	}
+	highComplexityPaths, err := r.loadGocycloRegressionPaths(ctx, opts, targets)
+	if err != nil {
+		return codeGuardGodFilesPrepared{}, codeGuardFailureResult("Large Files (High Cyclomatic)", "(complexity)", err), false
+	}
+	return codeGuardGodFilesPrepared{
+		allowlist:           allowlist,
+		currentStats:        currentStats,
+		baseStats:           baseStats,
+		highComplexityPaths: highComplexityPaths,
+	}, codeGuardSectionResult{}, true
+}
+
+func (r Runner) loadGocycloRegressionPaths(ctx context.Context, opts CIOptions, targets []string) (map[string]struct{}, error) {
+	gocycloPath, err := r.ensureGoTool(ctx, "gocyclo", "github.com/fzipp/gocyclo/cmd/gocyclo", opts.GocycloVersion)
+	if err != nil {
+		return nil, err
+	}
+	out, err := r.runOutputCommand(ctx, nil, gocycloPath, append([]string{"-over", strconv.Itoa(opts.MaxFunctionComplexity)}, targets...)...)
+	if err != nil {
+		return nil, err
+	}
+	currentFindings, err := parseGocycloFindings(out)
+	if err != nil {
+		return nil, err
+	}
+	baseFindings, err := r.loadBaseGocycloFindings(ctx, opts.BaseRef, gocycloPath, targets, opts.MaxFunctionComplexity)
+	if err != nil {
+		return nil, err
+	}
+	paths := make(map[string]struct{})
+	for _, regression := range diffGocycloRegressions(currentFindings, baseFindings) {
+		path, _ := splitCodeGuardPathMessage(regression)
+		paths[path] = struct{}{}
+	}
+	return paths, nil
 }
 
 func (r Runner) runCodeGuardComplexitySection(ctx context.Context, opts CIOptions, targets []string) codeGuardSectionResult {
@@ -121,34 +165,9 @@ func (r Runner) runCodeGuardComplexitySection(ctx context.Context, opts CIOption
 		result.Note = "no changed non-test Go files"
 		return result
 	}
-
-	gocycloPath, err := r.ensureGoTool(ctx, "gocyclo", "github.com/fzipp/gocyclo/cmd/gocyclo", opts.GocycloVersion)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(tooling)", Message: err.Error()}}
-		return result
-	}
-	out, err := r.runOutputCommand(ctx, nil, gocycloPath, append([]string{"-over", strconv.Itoa(opts.MaxFunctionComplexity)}, targets...)...)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(runtime)", Message: err.Error()}}
-		return result
-	}
-	currentFindings, err := parseGocycloFindings(out)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(parse)", Message: err.Error()}}
-		return result
-	}
-	baseFindings, err := r.loadBaseGocycloFindings(ctx, opts.BaseRef, gocycloPath, targets, opts.MaxFunctionComplexity)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(baseline)", Message: err.Error()}}
-		return result
+	currentFindings, baseFindings, failResult, ok := r.prepareCodeGuardComplexitySection(ctx, opts, targets)
+	if !ok {
+		return failResult
 	}
 
 	for _, regression := range diffGocycloRegressions(currentFindings, baseFindings) {
@@ -165,6 +184,26 @@ func (r Runner) runCodeGuardComplexitySection(ctx context.Context, opts CIOption
 	return result
 }
 
+func (r Runner) prepareCodeGuardComplexitySection(ctx context.Context, opts CIOptions, targets []string) (map[string]gocycloFinding, map[string]gocycloFinding, codeGuardSectionResult, bool) {
+	gocycloPath, err := r.ensureGoTool(ctx, "gocyclo", "github.com/fzipp/gocyclo/cmd/gocyclo", opts.GocycloVersion)
+	if err != nil {
+		return nil, nil, codeGuardFailureResult("Cyclomatic Complexity", "(tooling)", err), false
+	}
+	out, err := r.runOutputCommand(ctx, nil, gocycloPath, append([]string{"-over", strconv.Itoa(opts.MaxFunctionComplexity)}, targets...)...)
+	if err != nil {
+		return nil, nil, codeGuardFailureResult("Cyclomatic Complexity", "(runtime)", err), false
+	}
+	currentFindings, err := parseGocycloFindings(out)
+	if err != nil {
+		return nil, nil, codeGuardFailureResult("Cyclomatic Complexity", "(parse)", err), false
+	}
+	baseFindings, err := r.loadBaseGocycloFindings(ctx, opts.BaseRef, gocycloPath, targets, opts.MaxFunctionComplexity)
+	if err != nil {
+		return nil, nil, codeGuardFailureResult("Cyclomatic Complexity", "(baseline)", err), false
+	}
+	return currentFindings, baseFindings, codeGuardSectionResult{}, true
+}
+
 func (r Runner) runCodeGuardMaintainabilitySection(ctx context.Context, opts CIOptions, targets []string) codeGuardSectionResult {
 	result := codeGuardSectionResult{Name: "Maintainability Lint", Status: codeGuardStatusPass}
 	if len(targets) == 0 {
@@ -172,32 +211,10 @@ func (r Runner) runCodeGuardMaintainabilitySection(ctx context.Context, opts CIO
 		result.Note = "no changed non-test Go files"
 		return result
 	}
-
-	golangciLintPath, err := r.ensureGolangCILint(ctx, opts.GolangCILintVersion)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(tooling)", Message: err.Error()}}
-		return result
+	golangciLintPath, baseline, failResult, ok := r.prepareCodeGuardMaintainabilitySection(ctx, opts)
+	if !ok {
+		return failResult
 	}
-	baseline, hasMergeBase, err := r.gitDiffBase(ctx, opts.BaseRef)
-	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(baseline)", Message: err.Error()}}
-		return result
-	}
-	label := "baseline"
-	if !hasMergeBase {
-		label = "fallback baseline"
-	}
-	if _, err := fmt.Fprintf(r.Stdout, "running golangci-lint against %s %s\n", label, baseline); err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(runtime)", Message: err.Error()}}
-		return result
-	}
-
 	out, exitCode, err := r.runOutputCommandWithExitCode(
 		ctx,
 		nil,
@@ -211,10 +228,7 @@ func (r Runner) runCodeGuardMaintainabilitySection(ctx context.Context, opts CIO
 		"./...",
 	)
 	if err != nil {
-		result.Status = codeGuardStatusFail
-		result.Note = err.Error()
-		result.Violations = []codeGuardViolation{{Path: "(runtime)", Message: err.Error()}}
-		return result
+		return codeGuardFailureResult("Maintainability Lint", "(runtime)", err)
 	}
 	if exitCode == 0 {
 		result.Note = "No new maintainability regressions detected."
@@ -237,6 +251,25 @@ func (r Runner) runCodeGuardMaintainabilitySection(ctx context.Context, opts CIO
 	result.Note = "new golangci-lint findings"
 	result.Violations = violations
 	return result
+}
+
+func (r Runner) prepareCodeGuardMaintainabilitySection(ctx context.Context, opts CIOptions) (string, string, codeGuardSectionResult, bool) {
+	golangciLintPath, err := r.ensureGolangCILint(ctx, opts.GolangCILintVersion)
+	if err != nil {
+		return "", "", codeGuardFailureResult("Maintainability Lint", "(tooling)", err), false
+	}
+	baseline, hasMergeBase, err := r.gitDiffBase(ctx, opts.BaseRef)
+	if err != nil {
+		return "", "", codeGuardFailureResult("Maintainability Lint", "(baseline)", err), false
+	}
+	label := "baseline"
+	if !hasMergeBase {
+		label = "fallback baseline"
+	}
+	if _, err := fmt.Fprintf(r.Stdout, "running golangci-lint against %s %s\n", label, baseline); err != nil {
+		return "", "", codeGuardFailureResult("Maintainability Lint", "(runtime)", err), false
+	}
+	return golangciLintPath, baseline, codeGuardSectionResult{}, true
 }
 
 func parseGolangCILintViolations(raw string) []codeGuardViolation {
@@ -294,6 +327,15 @@ func trimPathToken(value string) string {
 	return filepath.ToSlash(strings.Join(parts[:end], ":"))
 }
 
+func codeGuardFailureResult(name, path string, err error) codeGuardSectionResult {
+	return codeGuardSectionResult{
+		Name:       name,
+		Status:     codeGuardStatusFail,
+		Note:       err.Error(),
+		Violations: []codeGuardViolation{{Path: path, Message: err.Error()}},
+	}
+}
+
 func (r Runner) writeCodeGuardStepSummary(results []codeGuardSectionResult) {
 	summaryPath := strings.TrimSpace(os.Getenv("GITHUB_STEP_SUMMARY"))
 	if summaryPath == "" {
@@ -308,22 +350,15 @@ func (r Runner) writeCodeGuardStepSummary(results []codeGuardSectionResult) {
 	}()
 
 	text, _ := renderCodeGuard(results)
-	if _, err := fmt.Fprintln(f, "## CodeGuard"); err != nil {
-		return
+	_ = writeCodeGuardSummaryBlock(f, strings.TrimPrefix(text, "\n"))
+}
+
+func writeCodeGuardSummaryBlock(w io.Writer, body string) error {
+	lines := []string{"## CodeGuard", "", "```text", body, "```", ""}
+	for _, line := range lines {
+		if _, err := fmt.Fprintln(w, line); err != nil {
+			return err
+		}
 	}
-	if _, err := fmt.Fprintln(f); err != nil {
-		return
-	}
-	if _, err := fmt.Fprintln(f, "```text"); err != nil {
-		return
-	}
-	if _, err := fmt.Fprintln(f, strings.TrimPrefix(text, "\n")); err != nil {
-		return
-	}
-	if _, err := fmt.Fprintln(f, "```"); err != nil {
-		return
-	}
-	if _, err := fmt.Fprintln(f); err != nil {
-		return
-	}
+	return nil
 }

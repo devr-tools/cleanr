@@ -44,6 +44,32 @@ func applySuiteDefaults(cfg *core.Config) {
 	applyClaimTraceDefaults(&cfg.Suites.ClaimTrace)
 	applyReleasePolicyDefaults(&cfg.Suites.ReleasePolicy)
 	applyTokenOptimizationDefaults(&cfg.Suites.TokenOptimization)
+	applyLLMJudgeDefaults(&cfg.Suites.LLMJudge)
+}
+
+func applyLLMJudgeDefaults(cfg *core.LLMJudgeConfig) {
+	if !cfg.Enabled {
+		return
+	}
+	applyTargetDefaults(&cfg.Provider, true)
+	if cfg.Scale <= 1 {
+		cfg.Scale = 5
+	}
+	if cfg.MinScore == 0 {
+		cfg.MinScore = 0.6
+	}
+	if cfg.Samples <= 0 {
+		cfg.Samples = 1
+	}
+	if cfg.Samples > 1 && cfg.MaxDisagreement == 0 {
+		cfg.MaxDisagreement = 0.4
+	}
+	if cfg.ModeValue() == "pairwise" {
+		applyTargetDefaults(&cfg.Baseline, true)
+		if cfg.MinWinRate == 0 {
+			cfg.MinWinRate = 0.5
+		}
+	}
 }
 
 func applyPromptInjectionDefaults(cfg *core.PromptInjectionConfig) {

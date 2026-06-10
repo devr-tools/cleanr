@@ -40,32 +40,43 @@ func (r Runner) CheckGoFiles() error {
 
 func discoverGoFiles(root string) ([]string, error) {
 	files := make([]string, 0)
-	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			switch d.Name() {
-			case ".git", ".gocache", "dist":
-				return filepath.SkipDir
-			}
-			return nil
-		}
-		if filepath.Ext(path) != ".go" {
-			return nil
-		}
-		rel, err := filepath.Rel(root, path)
-		if err != nil {
-			return err
-		}
-		files = append(files, filepath.ToSlash(rel))
-		return nil
-	})
+	err := filepath.WalkDir(root, goFileVisitor(root, &files))
 	if err != nil {
 		return nil, err
 	}
 	sort.Strings(files)
 	return files, nil
+}
+
+func goFileVisitor(root string, files *[]string) fs.WalkDirFunc {
+	return func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if shouldSkipGoDir(d.Name()) {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		return addGoFile(root, path, files)
+	}
+}
+
+func shouldSkipGoDir(name string) bool {
+	return strings.HasPrefix(name, ".") || name == "dist"
+}
+
+func addGoFile(root, path string, files *[]string) error {
+	if filepath.Ext(path) != ".go" {
+		return nil
+	}
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		return err
+	}
+	*files = append(*files, filepath.ToSlash(rel))
+	return nil
 }
 
 func validateGoFileLayout(files []string) error {

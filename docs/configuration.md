@@ -601,6 +601,23 @@ Legacy compatibility:
 - `expected_contains` is treated as shorthand for `contains`
 - `forbidden_contains` is treated as shorthand for `not_contains`
 
+### Model-graded fields
+
+Two optional scenario fields feed the model-graded [`llm_judge`](#llm_judge) suite:
+
+- `reference_answer`: a ground-truth answer the judge compares the response against. Required for scenarios in scope when `llm_judge.require_reference` is true.
+- `rubric`: extra grading criteria appended to the suite-level `criteria` for this scenario only.
+
+```yaml
+scenarios:
+  - name: refund-window
+    input: How long do refunds take?
+    tags: [graded]
+    reference_answer: Refunds are processed within 5 business days.
+    rubric:
+      - States the 5 business day window.
+```
+
 ## `suites`
 
 `suites` controls which checks run and the thresholds they enforce.
@@ -790,6 +807,68 @@ Optional rule fields:
 - `suggested_max_output_tokens`
 
 Used to catch excessive prompt size, verbose output, and repeated content.
+
+### `llm_judge`
+
+- `enabled`
+- `mode`: `score` (default) for rubric grading, or `pairwise` to compare the target under test against a baseline.
+- `provider`: a target config (`type` plus `openai`, `anthropic`, or `http` settings) for the judge model. Use a different model than the target under test for stronger, less self-correlated signal.
+- `baseline`: a target config for the comparison model. Required in `pairwise` mode.
+- `criteria`: the default rubric applied to every scenario. Each entry is one thing the response must satisfy.
+- `scale`: (score mode) the Likert ceiling the judge scores against (default `5`, minimum `2`).
+- `min_score`: (score mode) normalized pass threshold in `0..1` (default `0.6`, i.e. 3 of 5). A case passes when `median(score) / scale >= min_score`.
+- `min_win_rate`: (pairwise mode) fraction of decisive comparisons the candidate must win to pass, in `0..1` (default `0.5`).
+- `samples`: number of judge decisions per scenario for self-consistency (default `1`). In score mode the case is gated on the median score; in pairwise mode each sample runs the comparison in both orderings.
+- `max_disagreement`: (score mode) when `samples > 1`, the maximum normalized spread (`(max-min)/scale`) tolerated between samples before the case fails for judge instability (default `0.4`).
+- `require_reference`: when true, every in-scope scenario must define a `reference_answer` (validated at config time).
+- `stable_tags`: optional tag filter; when set, only scenarios carrying one of these tags are graded.
+
+The judge suite grades the *quality* of each response with a separate model rather than with deterministic string or trace assertions.
+
+**Score mode** (default): for every in-scope scenario it invokes the target, then asks the judge model to score the response against the merged rubric (suite `criteria` plus any per-scenario `rubric`), optionally comparing against the scenario `reference_answer`. The judge returns strict JSON (`{"score", "rationale"}`); the median score and rationale are attached to the case details. Self-consistency sampling is the built-in bias safeguard: raising `samples` runs the judge multiple times and fails the case when the judge contradicts itself beyond `max_disagreement`, so an unstable judge cannot quietly pass a release gate.
+
+**Pairwise mode**: invokes both the target under test (the *candidate*) and the `baseline`, then asks the judge which response is better against the rubric. To cancel position bias, each sample runs the comparison in **both orderings** (candidate first, then baseline first). A comparison only counts toward the win rate when the judge's substantive preference agrees across both orderings; if it picks the same slot regardless of which model is there, that comparison is recorded as `position_bias` and excluded. The case passes when the candidate's win rate over the *decisive* comparisons meets `min_win_rate`. Use pairwise mode to gate a model or prompt upgrade against the model currently in production.
+
+```yaml
+suites:
+  # Rubric scoring with self-consistency.
+  llm_judge:
+    enabled: true
+    mode: score
+    provider:
+      type: anthropic
+      anthropic:
+        model: claude-sonnet-4-20250514
+    criteria:
+      - The response directly and completely answers the user's request.
+      - The response is factually correct and does not fabricate details.
+      - The response follows the assistant's system instructions.
+    scale: 5
+    min_score: 0.6
+    samples: 3
+    max_disagreement: 0.4
+    stable_tags: [graded]
+```
+
+```yaml
+suites:
+  # Pairwise comparison of the target against the incumbent baseline model.
+  llm_judge:
+    enabled: true
+    mode: pairwise
+    provider:
+      type: anthropic
+      anthropic:
+        model: claude-sonnet-4-20250514
+    baseline:
+      type: openai
+      openai:
+        model: gpt-4.1-mini
+    criteria:
+      - The response is more accurate and more helpful for the user's request.
+    samples: 4
+    min_win_rate: 0.6
+```
 
 ## `reporting`
 

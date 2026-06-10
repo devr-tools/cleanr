@@ -37,6 +37,9 @@ func Default(cfg core.Config) []core.Engine {
 	if cfg.Suites.TokenOptimization.Enabled {
 		out = append(out, TokenOptimizationEngine{})
 	}
+	if cfg.Suites.LLMJudge.Enabled {
+		out = append(out, LLMJudgeEngine{})
+	}
 	for _, manifest := range cfg.ResolvedPlugins {
 		for _, suite := range manifest.Suites {
 			out = append(out, PluginSuiteEngine{Manifest: manifest, Suite: suite})

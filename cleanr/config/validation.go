@@ -106,22 +106,34 @@ func validateScenarioMemoryReplay(errs *ValidationErrors, prefix string, replay 
 	}
 	replaySessionIDs := make(map[string]int, len(replay))
 	for i, session := range replay {
-		sessionPrefix := fmt.Sprintf("%s.memory_replay[%d]", prefix, i)
-		validateMemoryReplaySession(errs, sessionPrefix, session)
-		validateReplaySessionID(errs, prefix, sessionPrefix, i, session.SessionID, replaySessionIDs)
+		ref := replaySessionRef{
+			prefix:        prefix,
+			sessionPrefix: fmt.Sprintf("%s.memory_replay[%d]", prefix, i),
+			index:         i,
+			sessionID:     session.SessionID,
+		}
+		validateMemoryReplaySession(errs, ref.sessionPrefix, session)
+		validateReplaySessionID(errs, replaySessionIDs, ref)
 	}
 }
 
-func validateReplaySessionID(errs *ValidationErrors, prefix, sessionPrefix string, index int, sessionID string, replaySessionIDs map[string]int) {
-	trimmed := strings.TrimSpace(sessionID)
+type replaySessionRef struct {
+	prefix        string
+	sessionPrefix string
+	index         int
+	sessionID     string
+}
+
+func validateReplaySessionID(errs *ValidationErrors, replaySessionIDs map[string]int, ref replaySessionRef) {
+	trimmed := strings.TrimSpace(ref.sessionID)
 	if trimmed == "" {
 		return
 	}
 	if first, ok := replaySessionIDs[trimmed]; ok {
-		errs.Add(sessionPrefix+".session_id", fmt.Sprintf("duplicates %s.memory_replay[%d].session_id", prefix, first), "set a unique traced session_id for each replay step")
+		errs.Add(ref.sessionPrefix+".session_id", fmt.Sprintf("duplicates %s.memory_replay[%d].session_id", ref.prefix, first), "set a unique traced session_id for each replay step")
 		return
 	}
-	replaySessionIDs[trimmed] = index
+	replaySessionIDs[trimmed] = ref.index
 }
 
 func validateScenarioExpectedMutations(errs *ValidationErrors, prefix string, mutations []core.ExpectedMutation) {
@@ -152,6 +164,79 @@ func validateSuitesConfig(errs *ValidationErrors, cfg core.Config) {
 	validateClaimTraceSuite(errs, cfg.Suites.ClaimTrace)
 	validateReleasePolicySuite(errs, cfg.Suites.ReleasePolicy)
 	validateTokenOptimizationSuite(errs, cfg.Suites.TokenOptimization)
+	validateLLMJudgeSuite(errs, cfg.Suites.LLMJudge, cfg.Scenarios)
+}
+
+func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scenarios []core.Scenario) {
+	if !cfg.Enabled {
+		return
+	}
+	if strings.TrimSpace(cfg.Provider.Type) == "" {
+		errs.Add("suites.llm_judge.provider.type", "is required", "set suites.llm_judge.provider.type to openai, anthropic, or http so a judge model can grade responses")
+	}
+	validateTargetConfig(errs, "suites.llm_judge.provider", cfg.Provider)
+	if cfg.Provider.TimeoutMS < 0 {
+		errs.Add("suites.llm_judge.provider.timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
+	}
+	switch m := strings.ToLower(strings.TrimSpace(cfg.Mode)); m {
+	case "", "score", "pairwise":
+	default:
+		errs.Add("suites.llm_judge.mode", "must be one of score or pairwise", "use score for rubric grading or pairwise to compare the target against a baseline")
+	}
+	if cfg.ModeValue() == "pairwise" {
+		if strings.TrimSpace(cfg.Baseline.Type) == "" {
+			errs.Add("suites.llm_judge.baseline.type", "is required for pairwise mode", "set suites.llm_judge.baseline.type to openai, anthropic, or http so the target can be compared against a baseline")
+		}
+		validateTargetConfig(errs, "suites.llm_judge.baseline", cfg.Baseline)
+		if cfg.Baseline.TimeoutMS < 0 {
+			errs.Add("suites.llm_judge.baseline.timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
+		}
+		if cfg.MinWinRate < 0 || cfg.MinWinRate > 1 {
+			errs.Add("suites.llm_judge.min_win_rate", "must be between 0 and 1", "use a fraction of decisive comparisons the target must win, such as 0.5")
+		}
+	}
+	if cfg.Scale != 0 && cfg.Scale < 2 {
+		errs.Add("suites.llm_judge.scale", "must be >= 2", "use a Likert ceiling such as 5, or omit the field to use the default")
+	}
+	if cfg.MinScore < 0 || cfg.MinScore > 1 {
+		errs.Add("suites.llm_judge.min_score", "must be between 0 and 1", "use a normalized pass threshold such as 0.6 (3 out of 5)")
+	}
+	if cfg.Samples < 0 {
+		errs.Add("suites.llm_judge.samples", "must be >= 0", "set the self-consistency sample count to a positive integer or omit the field to use a single judge call")
+	}
+	validateUnitInterval(errs, "suites.llm_judge.max_disagreement", cfg.MaxDisagreement, "use a normalized spread such as 0.4")
+	if cfg.RequireReference {
+		for _, idx := range judgeScopedScenarios(scenarios, cfg.StableTags) {
+			if strings.TrimSpace(scenarios[idx].ReferenceAnswer) == "" {
+				errs.Add(fmt.Sprintf("scenarios[%d].reference_answer", idx), "is required when suites.llm_judge.require_reference is true", "add a reference_answer for this scenario or disable require_reference")
+			}
+		}
+	}
+}
+
+// judgeScopedScenarios returns the indexes of scenarios graded by the judge
+// suite, honoring the optional stable-tag filter.
+func judgeScopedScenarios(scenarios []core.Scenario, stableTags []string) []int {
+	out := make([]int, 0, len(scenarios))
+	if len(stableTags) == 0 {
+		for i := range scenarios {
+			out = append(out, i)
+		}
+		return out
+	}
+	want := make(map[string]struct{}, len(stableTags))
+	for _, tag := range stableTags {
+		want[tag] = struct{}{}
+	}
+	for i, scenario := range scenarios {
+		for _, tag := range scenario.Tags {
+			if _, ok := want[tag]; ok {
+				out = append(out, i)
+				break
+			}
+		}
+	}
+	return out
 }
 
 func validateLoadSuite(errs *ValidationErrors, cfg core.LoadConfig) {
