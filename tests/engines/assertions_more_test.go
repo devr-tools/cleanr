@@ -13,7 +13,13 @@ func TestAssertionBranchesForRegexJSONPathAndScalarRendering(t *testing.T) {
 		StatusCode: 201,
 		Latency:    35 * time.Millisecond,
 		Text:       "Alpha",
-		Body:       []byte(`{"items":[{"count":2,"name":"alpha"}],"enabled":true}`),
+		Stream: cleanr.StreamMetrics{
+			TTFTMS:     20,
+			DurationMS: 90,
+			ChunkCount: 4,
+			Recovered:  true,
+		},
+		Body: []byte(`{"items":[{"count":2,"name":"alpha"}],"enabled":true}`),
 		Usage: cleanr.TokenUsage{
 			InputTokens:  3,
 			OutputTokens: 4,
@@ -39,8 +45,12 @@ func TestAssertionBranchesForRegexJSONPathAndScalarRendering(t *testing.T) {
 			{Type: "contains", Path: "response.provider_raw.ratio", Value: "1.25"},
 			{Type: "status_code", IntValue: intPtr(201)},
 			{Type: "latency_ms", IntValue: intPtr(40)},
+			{Type: "stream_ttft_ms", IntValue: intPtr(25)},
+			{Type: "stream_duration_ms", IntValue: intPtr(100)},
 			{Type: "tool_call_count", IntValue: intPtr(1)},
 			{Type: "tool_call_name", Value: "lookup"},
+			{Type: "json_path", Path: "response.stream.chunk_count", Value: "4"},
+			{Type: "json_path", Path: "response.stream.recovered", Value: "true"},
 		},
 	}}
 	cfg.Suites.PromptInjection.Enabled = false
@@ -62,7 +72,11 @@ func TestAssertionFailureBranchesForMissingAndMismatchCases(t *testing.T) {
 		StatusCode: 200,
 		Latency:    100 * time.Millisecond,
 		Text:       "hello",
-		Body:       []byte(`{"items":[]}`),
+		Stream: cleanr.StreamMetrics{
+			TTFTMS:     250,
+			DurationMS: 800,
+		},
+		Body: []byte(`{"items":[]}`),
 		Normalized: cleanr.ProviderResponse{
 			FinishReason: "done",
 		},
@@ -76,6 +90,8 @@ func TestAssertionFailureBranchesForMissingAndMismatchCases(t *testing.T) {
 			{Type: "regex", Pattern: "[", Message: "bad regex"},
 			{Type: "json_path", Path: "response.body.items.0.name"},
 			{Type: "finish_reason", Value: "stop"},
+			{Type: "stream_ttft_ms", IntValue: intPtr(100)},
+			{Type: "stream_duration_ms", IntValue: intPtr(500)},
 			{Type: "tool_call_count", IntValue: intPtr(2)},
 			{Type: "tool_call_name", Value: "missing"},
 			{Type: "not_contains", Value: "hello"},

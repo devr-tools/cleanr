@@ -30,10 +30,12 @@ func buildRunMetadata(cfg Config) *core.RunMetadata {
 
 func configuredModel(cfg TargetConfig) string {
 	switch cfg.TargetType() {
-	case "openai":
+	case "openai", "openai_compatible":
 		return strings.TrimSpace(cfg.OpenAI.Model)
 	case "anthropic":
 		return strings.TrimSpace(cfg.Anthropic.Model)
+	case "mcp":
+		return strings.TrimSpace(cfg.MCP.Tool)
 	default:
 		return ""
 	}
@@ -44,8 +46,10 @@ func buildScenarioFingerprint(scenario Scenario) core.ScenarioFingerprint {
 	sort.Strings(tags)
 	return core.ScenarioFingerprint{
 		Name:              scenario.Name,
-		SystemHash:        stableHash(strings.TrimSpace(scenario.System)),
-		InputHash:         stableHash(strings.TrimSpace(scenario.Input)),
+		SystemHash:        stableHash(scenario.SystemValue()),
+		InputHash:         stableHash(scenario.InputValue()),
+		TurnsHash:         stableObjectHash(scenario.TurnsValue()),
+		TurnCount:         len(scenario.TurnsValue()),
 		ContextHash:       stableObjectHash(scenario.ContextSources),
 		MemoryReplayHash:  stableObjectHash(scenario.MemoryReplay),
 		MemoryReplaySteps: len(scenario.MemoryReplay),

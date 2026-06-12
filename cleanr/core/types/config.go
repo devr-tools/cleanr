@@ -1,6 +1,7 @@
 package types
 
 import (
+	"fmt"
 	"strings"
 	"time"
 )
@@ -24,6 +25,7 @@ type TargetConfig struct {
 	Name            string            `json:"name"`
 	URL             string            `json:"url"`
 	Method          string            `json:"method"`
+	Stream          bool              `json:"stream,omitempty"`
 	Headers         map[string]string `json:"headers"`
 	TimeoutMS       int               `json:"timeout_ms"`
 	PromptField     string            `json:"prompt_field"`
@@ -32,15 +34,20 @@ type TargetConfig struct {
 	RequestTemplate any               `json:"request_template"`
 	OpenAI          OpenAIConfig      `json:"openai"`
 	Anthropic       AnthropicConfig   `json:"anthropic"`
+	MCP             MCPConfig         `json:"mcp"`
 }
 
 type OpenAIConfig struct {
-	APIMode      string `json:"api_mode"`
-	Model        string `json:"model"`
-	APIKeyEnv    string `json:"api_key_env"`
-	BaseURL      string `json:"base_url"`
-	Organization string `json:"organization"`
-	Project      string `json:"project"`
+	APIMode       string `json:"api_mode"`
+	Model         string `json:"model"`
+	APIKeyEnv     string `json:"api_key_env"`
+	BaseURL       string `json:"base_url"`
+	Organization  string `json:"organization"`
+	Project       string `json:"project"`
+	Provider      string `json:"provider,omitempty"`
+	AuthHeader    string `json:"auth_header,omitempty"`
+	AuthScheme    string `json:"auth_scheme,omitempty"`
+	QuirksProfile string `json:"quirks_profile,omitempty"`
 }
 
 type AnthropicConfig struct {
@@ -49,6 +56,15 @@ type AnthropicConfig struct {
 	BaseURL   string `json:"base_url"`
 	Version   string `json:"version"`
 	MaxTokens int    `json:"max_tokens"`
+}
+
+type MCPConfig struct {
+	URL               string            `json:"url"`
+	Tool              string            `json:"tool"`
+	Initialize        bool              `json:"initialize,omitempty"`
+	ResultTextPath    string            `json:"result_text_path,omitempty"`
+	ArgumentsTemplate any               `json:"arguments_template,omitempty"`
+	Headers           map[string]string `json:"headers,omitempty"`
 }
 
 type ScenarioGenerationConfig struct {
@@ -71,6 +87,7 @@ type Scenario struct {
 	Name                 string                `json:"name"`
 	System               string                `json:"system"`
 	Input                string                `json:"input"`
+	Turns                []ConversationTurn    `json:"turns,omitempty"`
 	Metadata             map[string]string     `json:"metadata"`
 	ContextSources       []ContextSource       `json:"context_sources,omitempty"`
 	MemoryReplay         []MemoryReplaySession `json:"memory_replay,omitempty"`
@@ -82,6 +99,13 @@ type Scenario struct {
 	Assertions           []Assertion           `json:"assertions"`
 	ReferenceAnswer      string                `json:"reference_answer,omitempty"`
 	Rubric               []string              `json:"rubric,omitempty"`
+}
+
+type ConversationTurn struct {
+	Role       string `json:"role"`
+	Content    string `json:"content"`
+	Name       string `json:"name,omitempty"`
+	ToolCallID string `json:"tool_call_id,omitempty"`
 }
 
 type ContextSource struct {
@@ -412,6 +436,32 @@ func (c OpenAIConfig) APIModeValue() string {
 	return strings.ToLower(strings.TrimSpace(c.APIMode))
 }
 
+func (c OpenAIConfig) ProviderValue(targetType string) string {
+	if provider := strings.TrimSpace(c.Provider); provider != "" {
+		return strings.ToLower(provider)
+	}
+	if strings.EqualFold(strings.TrimSpace(targetType), "openai_compatible") {
+		return "openai_compatible"
+	}
+	return "openai"
+}
+
+func (c OpenAIConfig) AuthHeaderValue() string {
+	if header := strings.TrimSpace(c.AuthHeader); header != "" {
+		return header
+	}
+	return "Authorization"
+}
+
+func (c OpenAIConfig) AuthSchemeValue() string {
+	if scheme := strings.TrimSpace(c.AuthScheme); strings.EqualFold(scheme, "none") {
+		return ""
+	} else if scheme != "" {
+		return scheme
+	}
+	return "Bearer"
+}
+
 func (c AnthropicConfig) VersionValue() string {
 	if strings.TrimSpace(c.Version) == "" {
 		return "2023-06-01"
@@ -424,4 +474,75 @@ func (c AnthropicConfig) MaxTokensValue() int {
 		return 1024
 	}
 	return c.MaxTokens
+}
+
+func (s Scenario) TurnsValue() []ConversationTurn {
+	if len(s.Turns) > 0 {
+		out := make([]ConversationTurn, 0, len(s.Turns))
+		for _, turn := range s.Turns {
+			role := strings.ToLower(strings.TrimSpace(turn.Role))
+			content := strings.TrimSpace(turn.Content)
+			if role == "" || content == "" {
+				continue
+			}
+			out = append(out, ConversationTurn{
+				Role:       role,
+				Content:    content,
+				Name:       strings.TrimSpace(turn.Name),
+				ToolCallID: strings.TrimSpace(turn.ToolCallID),
+			})
+		}
+		return out
+	}
+
+	out := make([]ConversationTurn, 0, 2)
+	if sys := strings.TrimSpace(s.System); sys != "" {
+		out = append(out, ConversationTurn{Role: "system", Content: sys})
+	}
+	if input := strings.TrimSpace(s.Input); input != "" {
+		out = append(out, ConversationTurn{Role: "user", Content: input})
+	}
+	return out
+}
+
+func (s Scenario) SystemValue() string {
+	if len(s.Turns) == 0 {
+		return strings.TrimSpace(s.System)
+	}
+	parts := make([]string, 0, len(s.Turns))
+	for _, turn := range s.TurnsValue() {
+		if turn.Role == "system" {
+			parts = append(parts, turn.Content)
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func (s Scenario) InputValue() string {
+	if len(s.Turns) == 0 {
+		return strings.TrimSpace(s.Input)
+	}
+	for i := len(s.Turns) - 1; i >= 0; i-- {
+		turn := s.Turns[i]
+		if strings.EqualFold(strings.TrimSpace(turn.Role), "user") {
+			return strings.TrimSpace(turn.Content)
+		}
+	}
+	return ""
+}
+
+func (s Scenario) TranscriptText() string {
+	turns := s.TurnsValue()
+	if len(turns) == 0 {
+		return ""
+	}
+	lines := make([]string, 0, len(turns))
+	for _, turn := range turns {
+		label := turn.Role
+		if turn.Name != "" {
+			label = fmt.Sprintf("%s:%s", label, turn.Name)
+		}
+		lines = append(lines, fmt.Sprintf("%s: %s", label, turn.Content))
+	}
+	return strings.Join(lines, "\n")
 }

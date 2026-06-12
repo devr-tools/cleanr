@@ -10,6 +10,14 @@ import (
 	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
+func scenarioRequest(scenario core.Scenario, timeout time.Duration) core.Request {
+	return core.BuildScenarioRequest(scenario, timeout)
+}
+
+func scenarioPromptText(scenario core.Scenario) string {
+	return strings.TrimSpace(scenario.SystemValue() + "\n" + scenario.InputValue())
+}
+
 func responseFindings(resp core.Response, forbidden []string) []core.Finding {
 	findings := make([]core.Finding, 0)
 	if resp.Err != nil {
@@ -57,6 +65,9 @@ func responseDetails(resp core.Response, base map[string]any) map[string]any {
 	}
 	if normalized.StopSequence != "" {
 		base["stop_sequence"] = normalized.StopSequence
+	}
+	if resp.Stream.TTFTMS > 0 || resp.Stream.DurationMS > 0 || resp.Stream.ChunkCount > 0 || resp.Stream.ErrorCount > 0 || resp.Stream.Recovered {
+		base["stream"] = resp.Stream
 	}
 	if len(normalized.ToolCalls) > 0 {
 		base["tool_call_count"] = len(normalized.ToolCalls)

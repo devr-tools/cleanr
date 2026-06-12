@@ -3,7 +3,6 @@ package engines
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
@@ -23,15 +22,10 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext)
 
 	for _, scenario := range runCtx.Config.Scenarios {
 		start := time.Now()
-		resp := runCtx.Target.Invoke(ctx, core.Request{
-			Scenario: scenario,
-			System:   scenario.System,
-			Prompt:   scenario.Input,
-			Timeout:  runCtx.Config.Target.Timeout(),
-		})
+		resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 		findings := responseFindings(resp, nil)
 		usage := inferTokenUsage(scenario, resp)
-		promptRatio := duplicationRatio(strings.TrimSpace(scenario.System + "\n" + scenario.Input))
+		promptRatio := duplicationRatio(scenarioPromptText(scenario))
 		responseRatio := duplicationRatio(resp.Text)
 		outputInputRatio := 0.0
 		if usage.InputTokens > 0 {

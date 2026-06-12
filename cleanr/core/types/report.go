@@ -130,6 +130,8 @@ type ScenarioFingerprint struct {
 	Name              string   `json:"name"`
 	SystemHash        string   `json:"system_hash,omitempty"`
 	InputHash         string   `json:"input_hash,omitempty"`
+	TurnsHash         string   `json:"turns_hash,omitempty"`
+	TurnCount         int      `json:"turn_count,omitempty"`
 	ContextHash       string   `json:"context_hash,omitempty"`
 	MemoryReplayHash  string   `json:"memory_replay_hash,omitempty"`
 	MemoryReplaySteps int      `json:"memory_replay_steps,omitempty"`
@@ -150,6 +152,7 @@ type ScenarioDiff struct {
 	Status              string `json:"status"`
 	SystemChanged       bool   `json:"system_changed,omitempty"`
 	InputChanged        bool   `json:"input_changed,omitempty"`
+	TurnsChanged        bool   `json:"turns_changed,omitempty"`
 	ContextChanged      bool   `json:"context_changed,omitempty"`
 	MemoryReplayChanged bool   `json:"memory_replay_changed,omitempty"`
 	TagsChanged         bool   `json:"tags_changed,omitempty"`

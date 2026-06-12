@@ -28,7 +28,7 @@ func TestToolkitCatalogRuntimeAndRegistryCoverage(t *testing.T) {
 		t.Fatalf("supported targets: %v", err)
 	}
 	targetCatalog := targets.StructuredContent.(toolkit.TargetCatalogOutput)
-	if len(targetCatalog.Targets) != 3 {
+	if len(targetCatalog.Targets) != 5 {
 		t.Fatalf("unexpected target catalog: %+v", targetCatalog)
 	}
 

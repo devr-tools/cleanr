@@ -205,7 +205,7 @@ func providerDiversityWarnings(cfg core.Config) []string {
 		return nil
 	}
 	switch cfg.Target.TargetType() {
-	case "openai", "anthropic":
+	case "openai", "openai_compatible", "anthropic", "mcp":
 		targetModel := configuredModel(cfg.Target)
 		generatorModel := configuredModel(cfg.ScenarioGeneration.Provider)
 		if targetModel != "" && generatorModel != "" && targetModel == generatorModel {
@@ -219,10 +219,12 @@ func providerDiversityWarnings(cfg core.Config) []string {
 
 func configuredModel(cfg core.TargetConfig) string {
 	switch cfg.TargetType() {
-	case "openai":
+	case "openai", "openai_compatible":
 		return strings.TrimSpace(cfg.OpenAI.Model)
 	case "anthropic":
 		return strings.TrimSpace(cfg.Anthropic.Model)
+	case "mcp":
+		return strings.TrimSpace(cfg.MCP.Tool)
 	default:
 		return ""
 	}

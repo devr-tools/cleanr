@@ -34,12 +34,7 @@ func (LoadEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteRe
 			defer wg.Done()
 			for i := 0; i < cfg.RequestsPerUser; i++ {
 				scenario := runCtx.Config.Scenarios[(vu+i)%len(runCtx.Config.Scenarios)]
-				resp := runCtx.Target.Invoke(ctx, core.Request{
-					Scenario: scenario,
-					System:   scenario.System,
-					Prompt:   scenario.Input,
-					Timeout:  runCtx.Config.Target.Timeout(),
-				})
+				resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 				ch <- sample{latency: resp.Latency, err: resp.Err, status: resp.StatusCode}
 			}
 		}(vu)

@@ -19,12 +19,7 @@ func (ReleasePolicyEngine) Run(ctx context.Context, runCtx *core.RunContext) cor
 
 	for _, scenario := range runCtx.Config.Scenarios {
 		start := time.Now()
-		resp := runCtx.Target.Invoke(ctx, core.Request{
-			Scenario: scenario,
-			System:   scenario.System,
-			Prompt:   scenario.Input,
-			Timeout:  runCtx.Config.Target.Timeout(),
-		})
+		resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 
 		findings := responseFindings(resp, nil)
 		approved := hasApprovedApprovalArtifact(resp.Normalized.Approvals)

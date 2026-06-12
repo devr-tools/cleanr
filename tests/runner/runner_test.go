@@ -90,7 +90,7 @@ func (assertionTarget) Invoke(context.Context, cleanr.Request) cleanr.Response {
 			Model:        "gpt-4o-mini",
 			FinishReason: "stop",
 			ToolCalls: []cleanr.ToolCall{
-				{Name: "lookup_policy", Arguments: `{"policy_id":"refunds"}`},
+				{Name: "lookup_policy", Arguments: `{"policy_id":"refunds"}`, ParsedArgs: map[string]any{"policy_id": "refunds"}},
 			},
 		},
 	}

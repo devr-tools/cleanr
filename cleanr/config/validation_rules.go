@@ -10,51 +10,78 @@ import (
 )
 
 func validateTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
-	urlHint := "set the full API endpoint URL"
-	promptHint := "set the request field that receives the prompt text"
-	responseHint := "set the JSON path that contains the model text response"
-	if prefix == "target" {
-		urlHint = "set target.url to the full API endpoint URL"
-		promptHint = "set target.prompt_field to the request field that receives the prompt text"
-		responseHint = "set target.response_field to the JSON path that contains the model text response"
-	}
+	urlHint, promptHint, responseHint := targetHints(prefix)
 	switch cfg.TargetType() {
 	case "http":
-		requireNonEmpty(errs, prefix+".url", cfg.URL, urlHint)
-		requireNonEmpty(errs, prefix+".prompt_field", cfg.PromptField, promptHint)
-		requireNonEmpty(errs, prefix+".response_field", cfg.ResponseField, responseHint)
-		if rawURL := strings.TrimSpace(cfg.URL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add(prefix+".url", "must be an absolute http(s) URL", "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
-			}
-		}
-	case "openai":
-		requireNonEmpty(errs, prefix+".openai.model", cfg.OpenAI.Model, "set the OpenAI model name, for example gpt-4o-mini or gpt-4.1-mini")
-		switch cfg.OpenAI.APIModeValue() {
-		case "responses", "chat_completions":
-		default:
-			errs.Add(prefix+".openai.api_mode", "must be one of responses or chat_completions", "use responses for new projects or chat_completions for legacy-compatible message requests")
-		}
-		if rawURL := strings.TrimSpace(cfg.OpenAI.BaseURL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add(prefix+".openai.base_url", "must be an absolute http(s) URL", "use a value such as https://api.openai.com/v1 or a compatible base URL for testing")
-			}
-		}
+		validateHTTPTargetConfig(errs, prefix, cfg, urlHint, promptHint, responseHint)
+	case "openai", "openai_compatible":
+		validateOpenAITargetConfig(errs, prefix, cfg)
 	case "anthropic":
-		requireNonEmpty(errs, prefix+".anthropic.model", cfg.Anthropic.Model, "set the Anthropic model name, for example claude-sonnet-4-20250514")
-		if rawURL := strings.TrimSpace(cfg.Anthropic.BaseURL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add(prefix+".anthropic.base_url", "must be an absolute http(s) URL", "use a value such as https://api.anthropic.com/v1 or a compatible base URL for testing")
-			}
-		}
-		if cfg.Anthropic.MaxTokens < 0 {
-			errs.Add(prefix+".anthropic.max_tokens", "must be >= 0", "set a positive max_tokens budget or omit the field to use the default")
-		}
+		validateAnthropicTargetConfig(errs, prefix, cfg)
+	case "mcp":
+		validateMCPTargetConfig(errs, prefix, cfg)
 	default:
-		errs.Add(prefix+".type", "must be one of http, openai, or anthropic", "set the target type to http, openai, or anthropic")
+		errs.Add(prefix+".type", "must be one of http, openai, openai_compatible, anthropic, or mcp", "set the target type to http, openai, openai_compatible, anthropic, or mcp")
+	}
+}
+
+func targetHints(prefix string) (string, string, string) {
+	if prefix == "target" {
+		return "set target.url to the full API endpoint URL",
+			"set target.prompt_field to the request field that receives the prompt text",
+			"set target.response_field to the JSON path that contains the model text response"
+	}
+	return "set the full API endpoint URL",
+		"set the request field that receives the prompt text",
+		"set the JSON path that contains the model text response"
+}
+
+func validateHTTPTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig, urlHint, promptHint, responseHint string) {
+	requireNonEmpty(errs, prefix+".url", cfg.URL, urlHint)
+	requireNonEmpty(errs, prefix+".prompt_field", cfg.PromptField, promptHint)
+	requireNonEmpty(errs, prefix+".response_field", cfg.ResponseField, responseHint)
+	validateAbsoluteURL(errs, prefix+".url", cfg.URL, "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
+}
+
+func validateOpenAITargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
+	requireNonEmpty(errs, prefix+".openai.model", cfg.OpenAI.Model, "set the OpenAI model name, for example gpt-4o-mini or gpt-4.1-mini")
+	validateOpenAIAPIMode(errs, prefix, cfg)
+	validateAbsoluteURL(errs, prefix+".openai.base_url", cfg.OpenAI.BaseURL, "use a value such as https://api.openai.com/v1 or a compatible base URL for testing")
+	if strings.TrimSpace(cfg.OpenAI.AuthHeader) == "" && cfg.TargetType() == "openai_compatible" {
+		errs.Add(prefix+".openai.auth_header", "is required for openai_compatible targets", "set the auth header name, usually Authorization or api-key")
+	}
+}
+
+func validateOpenAIAPIMode(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
+	switch cfg.OpenAI.APIModeValue() {
+	case "responses", "chat_completions":
+	default:
+		errs.Add(prefix+".openai.api_mode", "must be one of responses or chat_completions", "use responses for new projects or chat_completions for legacy-compatible message requests")
+	}
+}
+
+func validateAnthropicTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
+	requireNonEmpty(errs, prefix+".anthropic.model", cfg.Anthropic.Model, "set the Anthropic model name, for example claude-sonnet-4-20250514")
+	validateAbsoluteURL(errs, prefix+".anthropic.base_url", cfg.Anthropic.BaseURL, "use a value such as https://api.anthropic.com/v1 or a compatible base URL for testing")
+	if cfg.Anthropic.MaxTokens < 0 {
+		errs.Add(prefix+".anthropic.max_tokens", "must be >= 0", "set a positive max_tokens budget or omit the field to use the default")
+	}
+}
+
+func validateMCPTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
+	requireNonEmpty(errs, prefix+".mcp.url", cfg.MCP.URL, "set the MCP HTTP JSON-RPC endpoint URL")
+	requireNonEmpty(errs, prefix+".mcp.tool", cfg.MCP.Tool, "set the MCP tool name to call for each scenario")
+	validateAbsoluteURL(errs, prefix+".mcp.url", cfg.MCP.URL, "use a value such as http://localhost:8080/mcp or https://example.com/mcp")
+}
+
+func validateAbsoluteURL(errs *ValidationErrors, path, rawURL, hint string) {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		errs.Add(path, "must be an absolute http(s) URL", hint)
 	}
 }
 
@@ -137,7 +164,7 @@ func validateAssertion(errs *ValidationErrors, prefix string, assertion core.Ass
 		} else if *assertion.IntValue < 100 || *assertion.IntValue > 599 {
 			errs.Add(prefix+".int_value", "must be between 100 and 599", "use a valid HTTP status code")
 		}
-	case "latency_ms":
+	case "latency_ms", "stream_ttft_ms", "stream_duration_ms":
 		if assertion.IntValue == nil {
 			errs.Add(prefix+".int_value", "is required", "set the maximum allowed latency in milliseconds")
 		} else if *assertion.IntValue < 0 {
@@ -152,7 +179,7 @@ func validateAssertion(errs *ValidationErrors, prefix string, assertion core.Ass
 			errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative expected tool call count")
 		}
 	default:
-		errs.Add(prefix+".type", "must be one of contains, not_contains, regex, json_path, status_code, latency_ms, finish_reason, tool_call_count, or tool_call_name", "pick one of the built-in assertion types")
+		errs.Add(prefix+".type", "must be one of contains, not_contains, regex, json_path, status_code, latency_ms, stream_ttft_ms, stream_duration_ms, finish_reason, tool_call_count, or tool_call_name", "pick one of the built-in assertion types")
 	}
 
 	if severity := strings.TrimSpace(assertion.Severity); severity != "" {
@@ -197,6 +224,21 @@ func validateMemoryReplaySession(errs *ValidationErrors, prefix string, session 
 	}
 	for i, source := range session.ContextSources {
 		validateContextSource(errs, fmt.Sprintf("%s.context_sources[%d]", prefix, i), source)
+	}
+}
+
+func validateConversationTurn(errs *ValidationErrors, prefix string, turn core.ConversationTurn) {
+	requireNonEmpty(errs, prefix+".role", turn.Role, "set the turn role, for example system, user, assistant, or tool")
+	requireNonEmpty(errs, prefix+".content", turn.Content, "set the message content for this transcript turn")
+
+	switch strings.TrimSpace(turn.Role) {
+	case "system", "user", "assistant", "tool":
+	case "":
+	default:
+		errs.Add(prefix+".role", "must be one of system, user, assistant, or tool", "pick a supported transcript role")
+	}
+	if strings.TrimSpace(turn.Role) == "tool" {
+		requireNonEmpty(errs, prefix+".name", turn.Name, "set the tool name for tool transcript turns")
 	}
 }
 

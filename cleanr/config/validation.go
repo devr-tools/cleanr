@@ -35,7 +35,7 @@ func validateScenarioGenerationConfig(errs *ValidationErrors, cfg core.ScenarioG
 		return
 	}
 	if strings.TrimSpace(cfg.Provider.Type) == "" {
-		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to openai, anthropic, or http")
+		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to openai, openai_compatible, anthropic, mcp, or http")
 	}
 	validateTargetConfig(errs, "scenario_generation.provider", cfg.Provider)
 	if cfg.Provider.TimeoutMS < 0 {
@@ -73,13 +73,19 @@ func validateScenarios(errs *ValidationErrors, scenarios []core.Scenario, scenar
 func validateScenario(errs *ValidationErrors, index int, scenario core.Scenario, scenarioNames map[string]int) {
 	prefix := fmt.Sprintf("scenarios[%d]", index)
 	requireNonEmpty(errs, prefix+".name", scenario.Name, "set a short stable scenario name, for example \"happy-path\"")
-	requireNonEmpty(errs, prefix+".input", scenario.Input, "set the end-user prompt or test input for this scenario")
+	if len(scenario.Turns) == 0 {
+		requireNonEmpty(errs, prefix+".input", scenario.Input, "set the end-user prompt or test input for this scenario")
+	}
 	validateScenarioName(errs, prefix, index, scenario.Name, scenarioNames)
+	validateScenarioTurns(errs, prefix, scenario.Turns)
 	validateScenarioContextSources(errs, prefix, scenario.ContextSources)
 	validateScenarioMemoryReplay(errs, prefix, scenario.MemoryReplay)
 	validateScenarioExpectedMutations(errs, prefix, scenario.ExpectedMutations)
 	validateScenarioExpectedStateChanges(errs, prefix, scenario.ExpectedStateChanges)
 	validateScenarioAssertions(errs, prefix, scenario.Assertions)
+	if len(scenario.Turns) > 0 && len(scenario.MemoryReplay) > 0 {
+		errs.Add(prefix, "cannot combine turns with memory_replay", "use transcript turns for multi-turn request evaluation, or memory_replay for suite-specific memory checks")
+	}
 }
 
 func validateScenarioName(errs *ValidationErrors, prefix string, index int, name string, scenarioNames map[string]int) {
@@ -97,6 +103,12 @@ func validateScenarioName(errs *ValidationErrors, prefix string, index int, name
 func validateScenarioContextSources(errs *ValidationErrors, prefix string, sources []core.ContextSource) {
 	for i, source := range sources {
 		validateContextSource(errs, fmt.Sprintf("%s.context_sources[%d]", prefix, i), source)
+	}
+}
+
+func validateScenarioTurns(errs *ValidationErrors, prefix string, turns []core.ConversationTurn) {
+	for i, turn := range turns {
+		validateConversationTurn(errs, fmt.Sprintf("%s.turns[%d]", prefix, i), turn)
 	}
 }
 
@@ -172,7 +184,7 @@ func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scen
 		return
 	}
 	if strings.TrimSpace(cfg.Provider.Type) == "" {
-		errs.Add("suites.llm_judge.provider.type", "is required", "set suites.llm_judge.provider.type to openai, anthropic, or http so a judge model can grade responses")
+		errs.Add("suites.llm_judge.provider.type", "is required", "set suites.llm_judge.provider.type to openai, openai_compatible, anthropic, mcp, or http so a judge model can grade responses")
 	}
 	validateTargetConfig(errs, "suites.llm_judge.provider", cfg.Provider)
 	if cfg.Provider.TimeoutMS < 0 {
@@ -185,7 +197,7 @@ func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scen
 	}
 	if cfg.ModeValue() == "pairwise" {
 		if strings.TrimSpace(cfg.Baseline.Type) == "" {
-			errs.Add("suites.llm_judge.baseline.type", "is required for pairwise mode", "set suites.llm_judge.baseline.type to openai, anthropic, or http so the target can be compared against a baseline")
+			errs.Add("suites.llm_judge.baseline.type", "is required for pairwise mode", "set suites.llm_judge.baseline.type to openai, openai_compatible, anthropic, mcp, or http so the target can be compared against a baseline")
 		}
 		validateTargetConfig(errs, "suites.llm_judge.baseline", cfg.Baseline)
 		if cfg.Baseline.TimeoutMS < 0 {

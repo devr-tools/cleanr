@@ -22,12 +22,7 @@ func Capture(ctx context.Context, cfg core.Config, target core.Target) (File, er
 	}
 
 	for _, scenario := range scenarios {
-		resp := target.Invoke(ctx, core.Request{
-			Scenario: scenario,
-			System:   scenario.System,
-			Prompt:   scenario.Input,
-			Timeout:  cfg.Target.Timeout(),
-		})
+		resp := target.Invoke(ctx, core.BuildScenarioRequest(scenario, cfg.Target.Timeout()))
 		if resp.Err != nil {
 			return File{}, resp.Err
 		}
@@ -39,8 +34,8 @@ func Capture(ctx context.Context, cfg core.Config, target core.Target) (File, er
 		}
 		snapshot.Scenarios = append(snapshot.Scenarios, ScenarioSnapshot{
 			Name:       scenario.Name,
-			System:     scenario.System,
-			Input:      scenario.Input,
+			System:     scenario.SystemValue(),
+			Input:      scenario.InputValue(),
 			StatusCode: resp.StatusCode,
 			Text:       resp.Text,
 			Usage:      resp.Usage,

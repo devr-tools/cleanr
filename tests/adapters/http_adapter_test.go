@@ -73,6 +73,13 @@ func TestHTTPTargetInvokeRendersTemplateAndExtractsResponse(t *testing.T) {
 				"output_tokens": 7,
 				"total_tokens":  18,
 			},
+			"stream": map[string]any{
+				"ttft_ms":     42,
+				"duration_ms": 240,
+				"chunk_count": 6,
+				"error_count": 1,
+				"recovered":   true,
+			},
 		}), nil
 	})}
 
@@ -116,6 +123,94 @@ func TestHTTPTargetInvokeRendersTemplateAndExtractsResponse(t *testing.T) {
 	}
 	if resp.Usage.TotalTokens != 18 {
 		t.Fatalf("expected parsed usage, got %+v", resp.Usage)
+	}
+	if resp.Stream.TTFTMS != 42 || resp.Stream.DurationMS != 240 || resp.Stream.ChunkCount != 6 || !resp.Stream.Recovered {
+		t.Fatalf("expected parsed stream metrics, got %+v", resp.Stream)
+	}
+}
+
+func TestHTTPTargetInvokeParsesSSEStreamMetrics(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if got := r.Header.Get("Accept"); got != "text/event-stream" {
+			t.Fatalf("unexpected accept header: %q", got)
+		}
+		return sseResponse(http.StatusOK, strings.Join([]string{
+			"event: message",
+			`data: {"delta":"hello "}`,
+			"",
+			"event: message",
+			`data: {"delta":"world"}`,
+			"",
+			"event: message",
+			`data: {"delta":`,
+			"",
+			"data: [DONE]",
+			"",
+		}, "\n")), nil
+	})}
+
+	target := cleanr.NewHTTPTarget(cleanr.TargetConfig{
+		URL:           "https://example.test/http",
+		Method:        http.MethodPost,
+		ResponseField: "output.text",
+		Stream:        true,
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.Request{Timeout: time.Second})
+	if resp.Err != nil {
+		t.Fatalf("unexpected response error: %v", resp.Err)
+	}
+	if resp.Text != "hello world" {
+		t.Fatalf("unexpected stream text: %q", resp.Text)
+	}
+	if resp.Stream.ChunkCount != 4 || resp.Stream.ErrorCount != 1 || !resp.Stream.Recovered {
+		t.Fatalf("unexpected stream metrics: %+v", resp.Stream)
+	}
+	if resp.Stream.CompletionState != "completed" {
+		t.Fatalf("unexpected completion state: %+v", resp.Stream)
+	}
+}
+
+func TestHTTPTargetInjectsTranscriptMessages(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		var body map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if body["transcript"] == "" {
+			t.Fatalf("expected transcript text in body: %#v", body)
+		}
+		messages, ok := body["messages"].([]any)
+		if !ok || len(messages) != 3 {
+			t.Fatalf("unexpected transcript messages: %#v", body["messages"])
+		}
+		return jsonResponse(t, http.StatusOK, map[string]any{
+			"output": map[string]any{"text": "done"},
+		}), nil
+	})}
+
+	target := cleanr.NewHTTPTarget(cleanr.TargetConfig{
+		URL:           "https://example.test/http",
+		Method:        http.MethodPost,
+		PromptField:   "input",
+		SystemField:   "system",
+		ResponseField: "output.text",
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.BuildScenarioRequest(cleanr.Scenario{
+		Name: "transcript",
+		Turns: []cleanr.ConversationTurn{
+			{Role: "system", Content: "You are helpful."},
+			{Role: "user", Content: "Hello"},
+			{Role: "assistant", Content: "Hi"},
+		},
+	}, time.Second))
+	if resp.Err != nil || resp.Text != "done" {
+		t.Fatalf("unexpected transcript response: %+v", resp)
 	}
 }
 
@@ -236,8 +331,14 @@ func TestTargetFactoryReturnsConcreteTargetsAndInvalidErrors(t *testing.T) {
 	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "openai"}, client).(*adapterspkg.OpenAI); !ok {
 		t.Fatal("expected openai target")
 	}
+	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "openai_compatible"}, client).(*adapterspkg.OpenAI); !ok {
+		t.Fatal("expected openai-compatible target")
+	}
 	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "anthropic"}, client).(*adapterspkg.Anthropic); !ok {
 		t.Fatal("expected anthropic target")
+	}
+	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "mcp"}, client).(*adapterspkg.MCP); !ok {
+		t.Fatal("expected mcp target")
 	}
 
 	resp := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "bogus"}, client).Invoke(context.Background(), cleanr.Request{})

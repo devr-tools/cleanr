@@ -102,17 +102,61 @@ func (t *Anthropic) buildRequestBody(req core.Request) map[string]any {
 	body := map[string]any{
 		"model":      t.cfg.Anthropic.Model,
 		"max_tokens": t.cfg.Anthropic.MaxTokensValue(),
-		"messages": []map[string]any{
-			{
-				"role":    "user",
-				"content": req.Prompt,
-			},
-		},
+		"messages":   anthropicMessages(req),
 	}
-	if strings.TrimSpace(req.System) != "" {
-		body["system"] = req.System
+	if system := anthropicSystem(req); system != "" {
+		body["system"] = system
 	}
 	return body
+}
+
+func anthropicSystem(req core.Request) string {
+	if len(req.Messages) == 0 {
+		return strings.TrimSpace(req.System)
+	}
+	parts := make([]string, 0, len(req.Messages))
+	for _, turn := range req.Messages {
+		if strings.EqualFold(strings.TrimSpace(turn.Role), "system") {
+			parts = append(parts, strings.TrimSpace(turn.Content))
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, "\n\n"))
+}
+
+func anthropicMessages(req core.Request) []map[string]any {
+	if len(req.Messages) == 0 {
+		return []map[string]any{{
+			"role":    "user",
+			"content": req.Prompt,
+		}}
+	}
+	messages := make([]map[string]any, 0, len(req.Messages))
+	for _, turn := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(turn.Role))
+		content := strings.TrimSpace(turn.Content)
+		if role == "" || content == "" || role == "system" {
+			continue
+		}
+		msgRole := role
+		switch role {
+		case "assistant", "user":
+		case "tool":
+			msgRole = "user"
+		default:
+			msgRole = "user"
+		}
+		messages = append(messages, map[string]any{
+			"role":    msgRole,
+			"content": content,
+		})
+	}
+	if len(messages) == 0 {
+		return []map[string]any{{
+			"role":    "user",
+			"content": req.Prompt,
+		}}
+	}
+	return messages
 }
 
 func (t *Anthropic) endpointURL() string {

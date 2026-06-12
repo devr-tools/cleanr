@@ -128,10 +128,10 @@ Return only valid JSON with this exact shape and no markdown fences or commentar
 `), scale, scale, scale)
 
 	var b strings.Builder
-	if sys := strings.TrimSpace(scenario.System); sys != "" {
+	if sys := strings.TrimSpace(scenario.SystemValue()); sys != "" {
 		fmt.Fprintf(&b, "Assistant system instructions:\n%s\n\n", sys)
 	}
-	fmt.Fprintf(&b, "User request:\n%s\n\n", strings.TrimSpace(scenario.Input))
+	fmt.Fprintf(&b, "User request:\n%s\n\n", strings.TrimSpace(scenario.InputValue()))
 	b.WriteString("Evaluation criteria:\n")
 	for i, c := range criteria {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, c)
@@ -193,9 +193,17 @@ func judgeModelLabel(provider core.TargetConfig, resp core.Response) string {
 		if m := strings.TrimSpace(provider.OpenAI.Model); m != "" {
 			return "openai/" + m
 		}
+	case "openai_compatible":
+		if m := strings.TrimSpace(provider.OpenAI.Model); m != "" {
+			return provider.OpenAI.ProviderValue(provider.TargetType()) + "/" + m
+		}
 	case "anthropic":
 		if m := strings.TrimSpace(provider.Anthropic.Model); m != "" {
 			return "anthropic/" + m
+		}
+	case "mcp":
+		if tool := strings.TrimSpace(provider.MCP.Tool); tool != "" {
+			return "mcp/" + tool
 		}
 	}
 	if name := strings.TrimSpace(provider.Name); name != "" {

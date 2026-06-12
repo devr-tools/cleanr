@@ -33,19 +33,8 @@ func compareBuildMetadata(current, previous *core.RunMetadata) *core.BuildDiff {
 }
 
 func compareScenarioFingerprints(current, previous *core.RunMetadata) []core.ScenarioDiff {
-	currentByName := make(map[string]core.ScenarioFingerprint)
-	previousByName := make(map[string]core.ScenarioFingerprint)
-	if current != nil {
-		for _, scenario := range current.ScenarioFingerprints {
-			currentByName[scenario.Name] = scenario
-		}
-	}
-	if previous != nil {
-		for _, scenario := range previous.ScenarioFingerprints {
-			previousByName[scenario.Name] = scenario
-		}
-	}
-
+	currentByName := scenarioFingerprintsByName(current)
+	previousByName := scenarioFingerprintsByName(previous)
 	names := make(map[string]struct{}, len(currentByName)+len(previousByName))
 	for name := range currentByName {
 		names[name] = struct{}{}
@@ -56,26 +45,8 @@ func compareScenarioFingerprints(current, previous *core.RunMetadata) []core.Sce
 
 	out := make([]core.ScenarioDiff, 0)
 	for name := range names {
-		currentScenario, hasCurrent := currentByName[name]
-		previousScenario, hasPrevious := previousByName[name]
-		switch {
-		case hasCurrent && !hasPrevious:
-			out = append(out, core.ScenarioDiff{Name: name, Status: "new"})
-		case !hasCurrent && hasPrevious:
-			out = append(out, core.ScenarioDiff{Name: name, Status: "removed"})
-		default:
-			change := core.ScenarioDiff{
-				Name:                name,
-				Status:              "changed",
-				SystemChanged:       previousScenario.SystemHash != currentScenario.SystemHash,
-				InputChanged:        previousScenario.InputHash != currentScenario.InputHash,
-				ContextChanged:      previousScenario.ContextHash != currentScenario.ContextHash,
-				MemoryReplayChanged: previousScenario.MemoryReplayHash != currentScenario.MemoryReplayHash || previousScenario.MemoryReplaySteps != currentScenario.MemoryReplaySteps,
-				TagsChanged:         previousScenario.TagsHash != currentScenario.TagsHash,
-			}
-			if change.SystemChanged || change.InputChanged || change.ContextChanged || change.MemoryReplayChanged || change.TagsChanged {
-				out = append(out, change)
-			}
+		if change, ok := diffScenarioFingerprint(name, currentByName[name], previousByName[name]); ok {
+			out = append(out, change)
 		}
 	}
 
@@ -89,4 +60,44 @@ func compareScenarioFingerprints(current, previous *core.RunMetadata) []core.Sce
 		return nil
 	}
 	return out
+}
+
+func scenarioFingerprintsByName(metadata *core.RunMetadata) map[string]core.ScenarioFingerprint {
+	byName := make(map[string]core.ScenarioFingerprint)
+	if metadata == nil {
+		return byName
+	}
+	for _, scenario := range metadata.ScenarioFingerprints {
+		byName[scenario.Name] = scenario
+	}
+	return byName
+}
+
+func diffScenarioFingerprint(name string, currentScenario, previousScenario core.ScenarioFingerprint) (core.ScenarioDiff, bool) {
+	switch {
+	case currentScenario.Name != "" && previousScenario.Name == "":
+		return core.ScenarioDiff{Name: name, Status: "new"}, true
+	case currentScenario.Name == "" && previousScenario.Name != "":
+		return core.ScenarioDiff{Name: name, Status: "removed"}, true
+	}
+	change := core.ScenarioDiff{
+		Name:                name,
+		Status:              "changed",
+		SystemChanged:       previousScenario.SystemHash != currentScenario.SystemHash,
+		InputChanged:        previousScenario.InputHash != currentScenario.InputHash,
+		TurnsChanged:        previousScenario.TurnsHash != currentScenario.TurnsHash || previousScenario.TurnCount != currentScenario.TurnCount,
+		ContextChanged:      previousScenario.ContextHash != currentScenario.ContextHash,
+		MemoryReplayChanged: previousScenario.MemoryReplayHash != currentScenario.MemoryReplayHash || previousScenario.MemoryReplaySteps != currentScenario.MemoryReplaySteps,
+		TagsChanged:         previousScenario.TagsHash != currentScenario.TagsHash,
+	}
+	return change, scenarioDiffChanged(change)
+}
+
+func scenarioDiffChanged(change core.ScenarioDiff) bool {
+	return change.SystemChanged ||
+		change.InputChanged ||
+		change.TurnsChanged ||
+		change.ContextChanged ||
+		change.MemoryReplayChanged ||
+		change.TagsChanged
 }

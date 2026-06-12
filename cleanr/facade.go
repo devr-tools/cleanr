@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 	"net/http"
+	"time"
 
 	adapterspkg "github.com/devr-tools/cleanr/cleanr/adapters"
 	attestpkg "github.com/devr-tools/cleanr/cleanr/attest"
@@ -20,9 +21,11 @@ type Config = core.Config
 type TargetConfig = core.TargetConfig
 type OpenAIConfig = core.OpenAIConfig
 type AnthropicConfig = core.AnthropicConfig
+type MCPConfig = core.MCPConfig
 type ScenarioGenerationConfig = core.ScenarioGenerationConfig
 type ScenarioGenerationSpec = core.ScenarioGenerationSpec
 type Scenario = core.Scenario
+type ConversationTurn = core.ConversationTurn
 type ContextSource = core.ContextSource
 type MemoryReplaySession = core.MemoryReplaySession
 type ExpectedMutation = core.ExpectedMutation
@@ -58,6 +61,7 @@ type BuildDiff = core.BuildDiff
 type ScenarioDiff = core.ScenarioDiff
 type Request = core.Request
 type Response = core.Response
+type StreamMetrics = core.StreamMetrics
 type TokenUsage = core.TokenUsage
 type ProviderResponse = core.ProviderResponse
 type ToolCall = core.ToolCall
@@ -141,6 +145,10 @@ func ValidateConfig(cfg Config) error {
 
 func ExampleConfig() Config {
 	return configpkg.ExampleConfig()
+}
+
+func BuildScenarioRequest(scenario Scenario, timeout time.Duration) Request {
+	return core.BuildScenarioRequest(scenario, timeout)
 }
 
 func LoadSnapshotFile(path string) (SnapshotFile, error) {
@@ -329,4 +337,8 @@ func NewOpenAITarget(cfg TargetConfig, client *http.Client) Target {
 
 func NewAnthropicTarget(cfg TargetConfig, client *http.Client) Target {
 	return adapterspkg.NewAnthropic(cfg, client)
+}
+
+func NewMCPTarget(cfg TargetConfig, client *http.Client) Target {
+	return adapterspkg.NewMCP(cfg, client)
 }

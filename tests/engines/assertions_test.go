@@ -20,7 +20,7 @@ func TestSecurityEngineCoversScenarioAssertions(t *testing.T) {
 		Body:       []byte(`{"output":{"text":"hello world","items":[{"name":"refund"}]}}`),
 		Normalized: cleanr.ProviderResponse{
 			FinishReason: "stop",
-			ToolCalls:    []cleanr.ToolCall{{Name: "lookup_refund"}},
+			ToolCalls:    []cleanr.ToolCall{{Name: "lookup_refund", ParsedArgs: map[string]any{"policy_id": "refunds"}}},
 			Raw:          map[string]any{"mode": "demo"},
 		},
 	}}}
@@ -42,6 +42,7 @@ func TestSecurityEngineCoversScenarioAssertions(t *testing.T) {
 			{Type: "tool_call_name", Value: "lookup_refund"},
 			{Type: "contains", Path: "response.provider_raw", Value: "demo"},
 			{Type: "json_path", Path: "response.tool_calls.0.name", Value: "lookup_refund"},
+			{Type: "json_path", Path: "response.tool_calls.0.parsed_arguments.policy_id", Value: "refunds"},
 		},
 	}}
 	cfg.Suites.PromptInjection.Enabled = false
@@ -58,7 +59,7 @@ func TestSecurityEngineCoversScenarioAssertions(t *testing.T) {
 	if len(report.Suites) != 1 || !report.Suites[0].Passed {
 		t.Fatalf("unexpected assertion report: %+v", report)
 	}
-	if report.Suites[0].Cases[0].Details["assertion_count"] != 11 {
+	if report.Suites[0].Cases[0].Details["assertion_count"] != 12 {
 		t.Fatalf("expected assertion count in details, got %+v", report.Suites[0].Cases[0].Details)
 	}
 }

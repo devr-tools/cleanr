@@ -16,7 +16,7 @@ func inferTokenUsage(scenario core.Scenario, resp core.Response) core.TokenUsage
 		}
 		return usage
 	}
-	inputTokens := estimateTokens(strings.TrimSpace(scenario.System + "\n" + scenario.Input))
+	inputTokens := estimateTokens(scenarioPromptText(scenario))
 	outputTokens := estimateTokens(resp.Text)
 	return core.TokenUsage{
 		InputTokens:  inputTokens,

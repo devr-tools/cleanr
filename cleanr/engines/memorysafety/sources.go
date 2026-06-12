@@ -105,10 +105,10 @@ func classifyMemoryRisks(source core.ContextSource, scenarioUser string) []strin
 
 func buildMemorySafetyPrompt(scenario core.Scenario, sources []memorySource) string {
 	if len(sources) == 0 {
-		return scenario.Input
+		return scenario.InputValue()
 	}
 	var b strings.Builder
-	b.WriteString(strings.TrimSpace(scenario.Input))
+	b.WriteString(strings.TrimSpace(scenario.InputValue()))
 	b.WriteString("\n\nMemory sources:\n")
 	for _, source := range sources {
 		b.WriteString(fmt.Sprintf("[memory trust=%s name=%s", source.Trust, source.Name))

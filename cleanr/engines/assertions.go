@@ -62,6 +62,10 @@ func evaluateAssertion(assertion core.Assertion, view map[string]any, resp core.
 		return evaluateStatusCodeAssertion(assertion, resp)
 	case "latency_ms":
 		return evaluateLatencyAssertion(assertion, resp)
+	case "stream_ttft_ms":
+		return evaluateStreamTTFTAssertion(assertion, resp)
+	case "stream_duration_ms":
+		return evaluateStreamDurationAssertion(assertion, resp)
 	case "finish_reason":
 		return evaluateFinishReasonAssertion(assertion, resp)
 	case "tool_call_count":
@@ -129,6 +133,20 @@ func evaluateLatencyAssertion(assertion core.Assertion, resp core.Response) (cor
 	return core.Finding{}, false
 }
 
+func evaluateStreamTTFTAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if assertion.IntValue != nil && (resp.Stream.TTFTMS == 0 || resp.Stream.TTFTMS > int64(*assertion.IntValue)) {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected stream ttft <= %dms, got %dms", *assertion.IntValue, resp.Stream.TTFTMS)), true
+	}
+	return core.Finding{}, false
+}
+
+func evaluateStreamDurationAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if assertion.IntValue != nil && (resp.Stream.DurationMS == 0 || resp.Stream.DurationMS > int64(*assertion.IntValue)) {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected stream duration <= %dms, got %dms", *assertion.IntValue, resp.Stream.DurationMS)), true
+	}
+	return core.Finding{}, false
+}
+
 func evaluateFinishReasonAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
 	if resp.Normalized.FinishReason != assertion.Value {
 		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected finish reason %q, got %q", assertion.Value, resp.Normalized.FinishReason)), true
@@ -190,6 +208,7 @@ func buildAssertionView(resp core.Response) map[string]any {
 			"provider_status":        resp.Normalized.Status,
 			"finish_reason":          resp.Normalized.FinishReason,
 			"stop_sequence":          resp.Normalized.StopSequence,
+			"stream":                 normalizeAssertionValue(resp.Stream),
 			"tool_call_count":        len(resp.Normalized.ToolCalls),
 			"tool_calls":             normalizeAssertionValue(resp.Normalized.ToolCalls),
 			"source_use_count":       len(resp.Normalized.SourceUses),

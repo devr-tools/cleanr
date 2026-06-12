@@ -61,18 +61,8 @@ func (e LLMJudgeEngine) runPairwise(ctx context.Context, runCtx *core.RunContext
 
 func (e LLMJudgeEngine) runPairwiseCase(ctx context.Context, in pairwiseCaseInput) core.CaseResult {
 	start := time.Now()
-	candidateResp := in.runCtx.Target.Invoke(ctx, core.Request{
-		Scenario: in.scenario,
-		System:   in.scenario.System,
-		Prompt:   in.scenario.Input,
-		Timeout:  in.runCtx.Config.Target.Timeout(),
-	})
-	baselineResp := in.baseline.Invoke(ctx, core.Request{
-		Scenario: in.scenario,
-		System:   in.scenario.System,
-		Prompt:   in.scenario.Input,
-		Timeout:  in.cfg.Baseline.Timeout(),
-	})
+	candidateResp := in.runCtx.Target.Invoke(ctx, scenarioRequest(in.scenario, in.runCtx.Config.Target.Timeout()))
+	baselineResp := in.baseline.Invoke(ctx, scenarioRequest(in.scenario, in.cfg.Baseline.Timeout()))
 	findings := responseFindings(candidateResp, nil)
 	details := map[string]any{
 		"judge_model":        judgeModelLabel(in.cfg.Provider, candidateResp),
@@ -257,10 +247,10 @@ Return only valid JSON with this exact shape and no markdown fences or commentar
 `)
 
 	var b strings.Builder
-	if sys := strings.TrimSpace(scenario.System); sys != "" {
+	if sys := strings.TrimSpace(scenario.SystemValue()); sys != "" {
 		fmt.Fprintf(&b, "Assistant system instructions:\n%s\n\n", sys)
 	}
-	fmt.Fprintf(&b, "User request:\n%s\n\n", strings.TrimSpace(scenario.Input))
+	fmt.Fprintf(&b, "User request:\n%s\n\n", strings.TrimSpace(scenario.InputValue()))
 	b.WriteString("Evaluation criteria:\n")
 	for i, c := range criteria {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, c)
