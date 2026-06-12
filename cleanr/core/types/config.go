@@ -32,9 +32,23 @@ type TargetConfig struct {
 	SystemField     string            `json:"system_field"`
 	ResponseField   string            `json:"response_field"`
 	RequestTemplate any               `json:"request_template"`
+	CLI             CLIConfig         `json:"cli"`
+	GraphQL         GraphQLConfig     `json:"graphql"`
 	OpenAI          OpenAIConfig      `json:"openai"`
 	Anthropic       AnthropicConfig   `json:"anthropic"`
 	MCP             MCPConfig         `json:"mcp"`
+}
+
+type CLIConfig struct {
+	Command string            `json:"command"`
+	Args    []string          `json:"args,omitempty"`
+	Env     map[string]string `json:"env,omitempty"`
+}
+
+type GraphQLConfig struct {
+	Query             string `json:"query"`
+	OperationName     string `json:"operation_name,omitempty"`
+	VariablesTemplate any    `json:"variables_template,omitempty"`
 }
 
 type OpenAIConfig struct {
@@ -143,6 +157,7 @@ type Assertion struct {
 	Path     string `json:"path,omitempty"`
 	Value    string `json:"value,omitempty"`
 	Pattern  string `json:"pattern,omitempty"`
+	Schema   any    `json:"schema,omitempty"`
 	IntValue *int   `json:"int_value,omitempty"`
 	Severity string `json:"severity,omitempty"`
 	Message  string `json:"message,omitempty"`
@@ -177,11 +192,12 @@ type SecurityConfig struct {
 }
 
 type LoadConfig struct {
-	Enabled         bool `json:"enabled"`
-	VirtualUsers    int  `json:"virtual_users"`
-	RequestsPerUser int  `json:"requests_per_user"`
-	MaxErrorRatePct int  `json:"max_error_rate_pct"`
-	P95LatencyMS    int  `json:"p95_latency_ms"`
+	Enabled         bool     `json:"enabled"`
+	VirtualUsers    int      `json:"virtual_users"`
+	RequestsPerUser int      `json:"requests_per_user"`
+	MaxErrorRatePct int      `json:"max_error_rate_pct"`
+	P95LatencyMS    int      `json:"p95_latency_ms"`
+	ScenarioTags    []string `json:"scenario_tags,omitempty"`
 }
 
 type ChaosConfig struct {
@@ -388,6 +404,7 @@ type PluginManifest struct {
 	PolicyPacks   []string             `json:"policy_packs,omitempty"`
 	Suites        []PluginSuite        `json:"suites,omitempty"`
 	StateAdapters []PluginStateAdapter `json:"state_adapters,omitempty"`
+	Probes        []PluginProbe        `json:"probes,omitempty"`
 }
 
 type PluginSuite struct {
@@ -399,6 +416,14 @@ type PluginSuite struct {
 }
 
 type PluginStateAdapter struct {
+	Name      string            `json:"name"`
+	Command   string            `json:"command"`
+	Args      []string          `json:"args,omitempty"`
+	Env       map[string]string `json:"env,omitempty"`
+	TimeoutMS int               `json:"timeout_ms,omitempty"`
+}
+
+type PluginProbe struct {
 	Name      string            `json:"name"`
 	Command   string            `json:"command"`
 	Args      []string          `json:"args,omitempty"`

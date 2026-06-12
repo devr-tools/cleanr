@@ -13,6 +13,7 @@ func RenderAnalysisText(analysis Analysis) string {
 	writeAnalysisDelta(&b, analysis)
 	writeAnalysisBuildDiff(&b, analysis)
 	writeAnalysisDrift(&b, analysis)
+	writeAnalysisLoad(&b, analysis)
 	writeSuiteTrendSection(&b, "Regressions", analysis.Regressions)
 	writeCaseTrendSection(&b, "Case Regressions", analysis.CaseRegressions)
 	writeSuiteTrendSection(&b, "Improvements", analysis.Improvements)
@@ -90,6 +91,23 @@ func writeAnalysisDrift(b *strings.Builder, analysis Analysis) {
 	fmt.Fprintf(b, "MaxNormalizedDrift %.3f\n", analysis.Drift.MaxNormalizedDrift)
 	fmt.Fprintf(b, "MaxSemanticDrift   %.3f\n", analysis.Drift.MaxSemanticDrift)
 	fmt.Fprintf(b, "LatestSemantic     %.3f\n", analysis.Drift.LatestSemanticDrift)
+}
+
+func writeAnalysisLoad(b *strings.Builder, analysis Analysis) {
+	if analysis.Load == nil {
+		return
+	}
+	fmt.Fprintf(b, "\nLoad Window\n")
+	fmt.Fprintf(b, "-----------\n")
+	fmt.Fprintf(b, "Runs              %d\n", analysis.Load.Runs)
+	fmt.Fprintf(b, "AvgErrorRatePct   %.3f\n", analysis.Load.AverageErrorRatePct)
+	fmt.Fprintf(b, "AvgP50LatencyMS   %.3f\n", analysis.Load.AverageP50LatencyMS)
+	fmt.Fprintf(b, "AvgP95LatencyMS   %.3f\n", analysis.Load.AverageP95LatencyMS)
+	fmt.Fprintf(b, "AvgP99LatencyMS   %.3f\n", analysis.Load.AverageP99LatencyMS)
+	fmt.Fprintf(b, "AvgThroughputRPS  %.3f\n", analysis.Load.AverageThroughputRPS)
+	fmt.Fprintf(b, "LatestP95Latency  %dms\n", analysis.Load.LatestP95LatencyMS)
+	fmt.Fprintf(b, "LatestP99Latency  %dms\n", analysis.Load.LatestP99LatencyMS)
+	fmt.Fprintf(b, "LatestThroughput  %.3f rps\n", analysis.Load.LatestThroughputRPS)
 }
 
 func writeSuiteTrendSection(b *strings.Builder, title string, suites []core.SuiteTrend) {

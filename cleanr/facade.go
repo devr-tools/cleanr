@@ -19,6 +19,8 @@ import (
 
 type Config = core.Config
 type TargetConfig = core.TargetConfig
+type CLIConfig = core.CLIConfig
+type GraphQLConfig = core.GraphQLConfig
 type OpenAIConfig = core.OpenAIConfig
 type AnthropicConfig = core.AnthropicConfig
 type MCPConfig = core.MCPConfig
@@ -55,6 +57,7 @@ type SummaryConfig = core.SummaryConfig
 type PluginManifest = core.PluginManifest
 type PluginSuite = core.PluginSuite
 type PluginStateAdapter = core.PluginStateAdapter
+type PluginProbe = core.PluginProbe
 type RunMetadata = core.RunMetadata
 type ScenarioFingerprint = core.ScenarioFingerprint
 type BuildDiff = core.BuildDiff
@@ -76,10 +79,12 @@ type TrendHistoryRun = trendspkg.HistoryRun
 type HistorySuite = trendspkg.HistorySuite
 type HistoryCase = trendspkg.HistoryCase
 type HistoryDriftMetrics = trendspkg.HistoryDriftMetrics
+type HistoryLoadMetrics = trendspkg.HistoryLoadMetrics
 type TrendAnalysis = trendspkg.Analysis
 type TrendRunSnapshot = trendspkg.RunSnapshot
 type TrendAnalysisDelta = trendspkg.AnalysisDelta
 type TrendDriftWindow = trendspkg.DriftWindow
+type TrendLoadWindow = trendspkg.LoadWindow
 type Finding = core.Finding
 type CaseResult = core.CaseResult
 type SuiteResult = core.SuiteResult
@@ -329,6 +334,14 @@ func NewTarget(cfg TargetConfig, client *http.Client) Target {
 
 func NewHTTPTarget(cfg TargetConfig, client *http.Client) Target {
 	return adapterspkg.NewHTTP(cfg, client)
+}
+
+func NewCLITarget(cfg TargetConfig) Target {
+	return adapterspkg.NewCLI(cfg)
+}
+
+func NewGraphQLTarget(cfg TargetConfig, client *http.Client) Target {
+	return adapterspkg.NewGraphQL(cfg, client)
 }
 
 func NewOpenAITarget(cfg TargetConfig, client *http.Client) Target {

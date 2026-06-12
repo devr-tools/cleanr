@@ -17,7 +17,7 @@ func WrapTarget(base core.Target, manifests []core.PluginManifest) core.Target {
 	}
 	hasAdapters := false
 	for _, manifest := range manifests {
-		if len(manifest.StateAdapters) > 0 {
+		if len(manifest.StateAdapters) > 0 || len(manifest.Probes) > 0 {
 			hasAdapters = true
 			break
 		}

@@ -151,6 +151,9 @@ suites:
 state_adapters:
   - name: ticket-adapter
     command: /bin/echo
+probes:
+  - name: db-ticket-probe
+    command: /bin/echo
 `), 0o644); err != nil {
 		t.Fatalf("write plugin: %v", err)
 	}
@@ -177,6 +180,9 @@ scenarios:
 	if len(cfg.ResolvedPlugins) != 1 || cfg.ResolvedPlugins[0].Name != "workflow-plugin" {
 		t.Fatalf("expected resolved plugin manifest, got %+v", cfg.ResolvedPlugins)
 	}
+	if len(cfg.ResolvedPlugins[0].Probes) != 1 || cfg.ResolvedPlugins[0].Probes[0].Name != "db-ticket-probe" {
+		t.Fatalf("expected resolved plugin probes, got %+v", cfg.ResolvedPlugins[0].Probes)
+	}
 	if !cfg.Suites.Provenance.Enabled {
 		t.Fatalf("expected plugin policy pack to apply, got %+v", cfg.Suites.Provenance)
 	}
@@ -185,6 +191,40 @@ scenarios:
 	}
 	if len(cfg.Suites.ReleasePolicy.Rules) != 1 || len(cfg.Suites.ReleasePolicy.Rules[0].Tools) != 1 || cfg.Suites.ReleasePolicy.Rules[0].Tools[0] != "send_email" {
 		t.Fatalf("expected plugin policy rules, got %+v", cfg.Suites.ReleasePolicy.Rules)
+	}
+}
+
+func TestLoadConfigFileRejectsPluginProbeWithoutCommand(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	pluginPath := filepath.Join(dir, "workflow-plugin.yaml")
+	if err := os.WriteFile(pluginPath, []byte(`
+name: workflow-plugin
+probes:
+  - name: db-ticket-probe
+`), 0o644); err != nil {
+		t.Fatalf("write plugin: %v", err)
+	}
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+version: v1alpha1
+plugins:
+  - ./workflow-plugin.yaml
+target:
+  url: https://example.com/v1/chat
+  prompt_field: input
+  response_field: output.text
+scenarios:
+  - name: x
+    input: y
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := cleanr.LoadConfigFile(configPath)
+	if err == nil || !strings.Contains(err.Error(), "probe[0] is missing command") {
+		t.Fatalf("expected missing probe command error, got %v", err)
 	}
 }
 

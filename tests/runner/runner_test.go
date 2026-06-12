@@ -309,6 +309,53 @@ printf '%s\n' '{"state_changes":[{"kind":"ticket","action":"update","target":"ca
 	}
 }
 
+func TestRunnerAppliesPluginProbeWithScenarioContext(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:  "plugin-probe",
+		Input: "verify the ticket was updated",
+		ExpectedStateChanges: []cleanr.ExpectedStateChange{{
+			Kind:   "ticket",
+			Action: "update",
+			Target: "case-456",
+		}},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = true
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name: "org-plugin",
+		Probes: []cleanr.PluginProbe{{
+			Name: "ticket-probe",
+			Command: writeExecutableScript(t, `#!/bin/sh
+input=$(cat)
+if ! printf '%s' "$input" | grep -q '"name":"plugin-probe"' ; then
+  echo "missing scenario context" >&2
+  exit 7
+fi
+if ! printf '%s' "$input" | grep -q 'case-456' ; then
+  echo "missing expected state change" >&2
+  exit 8
+fi
+printf '%s\n' '{"state_changes":[{"kind":"ticket","action":"update","target":"case-456","status":"observed"}]}'
+`),
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected plugin probe to satisfy release-policy suite: %+v", report)
+	}
+}
+
 func writeExecutableScript(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "plugin.sh")

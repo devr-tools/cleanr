@@ -18,6 +18,23 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 		wantSub string
 	}{
 		{
+			name: "cli requires command",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "cli"
+				cfg.Target.CLI.Command = ""
+			},
+			wantSub: "target.cli.command",
+		},
+		{
+			name: "graphql requires query",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "graphql"
+				cfg.Target.URL = "https://example.test/graphql"
+				cfg.Target.GraphQL.Query = ""
+			},
+			wantSub: "target.graphql.query",
+		},
+		{
 			name: "openai requires model",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Target.Type = "openai"

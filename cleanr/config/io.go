@@ -316,55 +316,98 @@ func loadPluginManifestFile(path string, seen map[string]struct{}) (core.PluginM
 			resolved = abs
 		}
 	}
-	data, err := os.ReadFile(resolved)
+	manifest, err := decodePluginManifestFile(resolved)
 	if err != nil {
 		return core.PluginManifest{}, nil, err
 	}
-	generic, err := decodeGenericConfig(data, resolved)
+	defaults, err := loadPluginPolicyPackDefaults(manifest.PolicyPacks, filepath.Dir(resolved), seen)
 	if err != nil {
 		return core.PluginManifest{}, nil, err
-	}
-	raw, err := json.Marshal(generic)
-	if err != nil {
-		return core.PluginManifest{}, nil, fmt.Errorf("decode config: %w", err)
-	}
-	var manifest core.PluginManifest
-	if err := json.Unmarshal(raw, &manifest); err != nil {
-		return core.PluginManifest{}, nil, fmt.Errorf("decode config: %w", err)
-	}
-	if strings.TrimSpace(manifest.Name) == "" {
-		manifest.Name = strings.TrimSuffix(filepath.Base(resolved), filepath.Ext(resolved))
-	}
-	if err := validatePluginManifest(manifest, resolved); err != nil {
-		return core.PluginManifest{}, nil, err
-	}
-	defaults := map[string]any{}
-	for _, pack := range manifest.PolicyPacks {
-		packGeneric, err := loadPackGenericFile(resolveRelativePath(filepath.Dir(resolved), pack), seen)
-		if err != nil {
-			return core.PluginManifest{}, nil, err
-		}
-		delete(packGeneric, "plugins")
-		defaults = overlayConfig(defaults, packGeneric)
 	}
 	return manifest, defaults, nil
 }
 
-func validatePluginManifest(manifest core.PluginManifest, path string) error {
-	for i, suite := range manifest.Suites {
-		if strings.TrimSpace(suite.Name) == "" {
-			return fmt.Errorf("decode config: plugin %s suite[%d] is missing name", path, i)
-		}
-		if strings.TrimSpace(suite.Command) == "" {
-			return fmt.Errorf("decode config: plugin %s suite[%d] is missing command", path, i)
+func decodePluginManifestFile(path string) (core.PluginManifest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return core.PluginManifest{}, err
+	}
+	generic, err := decodeGenericConfig(data, path)
+	if err != nil {
+		return core.PluginManifest{}, err
+	}
+	manifest, err := decodePluginManifest(generic)
+	if err != nil {
+		return core.PluginManifest{}, err
+	}
+	if strings.TrimSpace(manifest.Name) == "" {
+		manifest.Name = strings.TrimSuffix(filepath.Base(path), filepath.Ext(path))
+	}
+	if err := validatePluginManifest(manifest, path); err != nil {
+		return core.PluginManifest{}, err
+	}
+	return manifest, nil
+}
+
+func decodePluginManifest(generic map[string]any) (core.PluginManifest, error) {
+	raw, err := json.Marshal(generic)
+	if err != nil {
+		return core.PluginManifest{}, fmt.Errorf("decode config: %w", err)
+	}
+	var manifest core.PluginManifest
+	if err := json.Unmarshal(raw, &manifest); err != nil {
+		return core.PluginManifest{}, fmt.Errorf("decode config: %w", err)
+	}
+	return manifest, nil
+}
+
+func loadPluginPolicyPackDefaults(packs []string, baseDir string, seen map[string]struct{}) (map[string]any, error) {
+	defaults := map[string]any{}
+	var err error
+	for _, pack := range packs {
+		defaults, err = overlayPluginPolicyPack(defaults, pack, baseDir, seen)
+		if err != nil {
+			return nil, err
 		}
 	}
-	for i, adapter := range manifest.StateAdapters {
-		if strings.TrimSpace(adapter.Name) == "" {
-			return fmt.Errorf("decode config: plugin %s state_adapter[%d] is missing name", path, i)
+	return defaults, nil
+}
+
+func overlayPluginPolicyPack(defaults map[string]any, pack, baseDir string, seen map[string]struct{}) (map[string]any, error) {
+	packGeneric, err := loadPackGenericFile(resolveRelativePath(baseDir, pack), seen)
+	if err != nil {
+		return nil, err
+	}
+	delete(packGeneric, "plugins")
+	return overlayConfig(defaults, packGeneric), nil
+}
+
+func validatePluginManifest(manifest core.PluginManifest, path string) error {
+	err := validateNamedPluginCommands(path, "suite", manifest.Suites, func(item core.PluginSuite) (string, string) {
+		return item.Name, item.Command
+	})
+	if err != nil {
+		return err
+	}
+	err = validateNamedPluginCommands(path, "state_adapter", manifest.StateAdapters, func(item core.PluginStateAdapter) (string, string) {
+		return item.Name, item.Command
+	})
+	if err != nil {
+		return err
+	}
+	return validateNamedPluginCommands(path, "probe", manifest.Probes, func(item core.PluginProbe) (string, string) {
+		return item.Name, item.Command
+	})
+}
+
+func validateNamedPluginCommands[T any](path, kind string, items []T, fields func(T) (string, string)) error {
+	for i, item := range items {
+		name, command := fields(item)
+		if strings.TrimSpace(name) == "" {
+			return fmt.Errorf("decode config: plugin %s %s[%d] is missing name", path, kind, i)
 		}
-		if strings.TrimSpace(adapter.Command) == "" {
-			return fmt.Errorf("decode config: plugin %s state_adapter[%d] is missing command", path, i)
+		if strings.TrimSpace(command) == "" {
+			return fmt.Errorf("decode config: plugin %s %s[%d] is missing command", path, kind, i)
 		}
 	}
 	return nil

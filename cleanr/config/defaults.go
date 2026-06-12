@@ -259,6 +259,10 @@ func applyTargetDefaults(target *core.TargetConfig, requireExplicitType bool) {
 	}
 	applyCommonTargetDefaults(target)
 	switch target.TargetType() {
+	case "cli":
+		applyCLITargetDefaults(target)
+	case "graphql":
+		applyGraphQLTargetDefaults(target)
 	case "openai", "openai_compatible":
 		applyOpenAITargetDefaults(target)
 	case "anthropic":
@@ -300,6 +304,33 @@ func applyOpenAITargetDefaults(target *core.TargetConfig) {
 	}
 	if target.OpenAI.AuthScheme == "" {
 		target.OpenAI.AuthScheme = "Bearer"
+	}
+}
+
+func applyCLITargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = "cli"
+	}
+	if target.CLI.Env == nil {
+		target.CLI.Env = map[string]string{}
+	}
+}
+
+func applyGraphQLTargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = "graphql"
+	}
+	if target.Method == "" {
+		target.Method = "POST"
+	}
+	if target.Headers == nil {
+		target.Headers = map[string]string{}
+	}
+	if _, ok := target.Headers["Content-Type"]; !ok {
+		target.Headers["Content-Type"] = "application/json"
+	}
+	if target.ResponseField == "" {
+		target.ResponseField = "data"
 	}
 }
 

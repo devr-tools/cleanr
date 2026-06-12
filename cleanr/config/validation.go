@@ -35,7 +35,7 @@ func validateScenarioGenerationConfig(errs *ValidationErrors, cfg core.ScenarioG
 		return
 	}
 	if strings.TrimSpace(cfg.Provider.Type) == "" {
-		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to openai, openai_compatible, anthropic, mcp, or http")
+		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to cli, graphql, openai, openai_compatible, anthropic, mcp, or http")
 	}
 	validateTargetConfig(errs, "scenario_generation.provider", cfg.Provider)
 	if cfg.Provider.TimeoutMS < 0 {
@@ -184,7 +184,7 @@ func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scen
 		return
 	}
 	if strings.TrimSpace(cfg.Provider.Type) == "" {
-		errs.Add("suites.llm_judge.provider.type", "is required", "set suites.llm_judge.provider.type to openai, openai_compatible, anthropic, mcp, or http so a judge model can grade responses")
+		errs.Add("suites.llm_judge.provider.type", "is required", "set suites.llm_judge.provider.type to cli, graphql, openai, openai_compatible, anthropic, mcp, or http so a judge model can grade responses")
 	}
 	validateTargetConfig(errs, "suites.llm_judge.provider", cfg.Provider)
 	if cfg.Provider.TimeoutMS < 0 {
@@ -197,7 +197,7 @@ func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scen
 	}
 	if cfg.ModeValue() == "pairwise" {
 		if strings.TrimSpace(cfg.Baseline.Type) == "" {
-			errs.Add("suites.llm_judge.baseline.type", "is required for pairwise mode", "set suites.llm_judge.baseline.type to openai, openai_compatible, anthropic, mcp, or http so the target can be compared against a baseline")
+			errs.Add("suites.llm_judge.baseline.type", "is required for pairwise mode", "set suites.llm_judge.baseline.type to cli, graphql, openai, openai_compatible, anthropic, mcp, or http so the target can be compared against a baseline")
 		}
 		validateTargetConfig(errs, "suites.llm_judge.baseline", cfg.Baseline)
 		if cfg.Baseline.TimeoutMS < 0 {
@@ -263,6 +263,7 @@ func validateLoadSuite(errs *ValidationErrors, cfg core.LoadConfig) {
 	if cfg.P95LatencyMS < 0 {
 		errs.Add("suites.load.p95_latency_ms", "must be >= 0", "set a positive latency budget in milliseconds")
 	}
+	validateStringList(errs, "suites.load.scenario_tags", cfg.ScenarioTags, "set one or more non-empty tags to scope the load profile, or omit the field to use every scenario")
 }
 
 func validateSecuritySuite(errs *ValidationErrors, cfg core.SecurityConfig) {

@@ -118,6 +118,84 @@ func TestAnalyzeTrendHistoryBuildsWindowSummary(t *testing.T) {
 	}
 }
 
+func TestAnalyzeTrendHistorySummarizesLoadWindow(t *testing.T) {
+	history := cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Runs: []cleanr.TrendHistoryRun{
+			{
+				BuildID:     "build-1",
+				GeneratedAt: time.Date(2026, 5, 10, 12, 0, 0, 0, time.UTC),
+				Passed:      true,
+				Duration:    2 * time.Second,
+				Suites: []cleanr.HistorySuite{{
+					Name: "load",
+					Load: &cleanr.HistoryLoadMetrics{
+						Requests:        20,
+						VirtualUsers:    4,
+						RequestsPerUser: 5,
+						ScenarioCount:   2,
+						ErrorRatePct:    0,
+						P50LatencyMS:    80,
+						P95LatencyMS:    150,
+						P99LatencyMS:    220,
+						ThroughputRPS:   10,
+					},
+				}},
+			},
+			{
+				BuildID:     "build-2",
+				GeneratedAt: time.Date(2026, 5, 11, 12, 0, 0, 0, time.UTC),
+				Passed:      true,
+				Duration:    3 * time.Second,
+				Suites: []cleanr.HistorySuite{{
+					Name: "load",
+					Load: &cleanr.HistoryLoadMetrics{
+						Requests:        20,
+						VirtualUsers:    4,
+						RequestsPerUser: 5,
+						ScenarioCount:   2,
+						ErrorRatePct:    5,
+						P50LatencyMS:    100,
+						P95LatencyMS:    180,
+						P99LatencyMS:    250,
+						ThroughputRPS:   8,
+					},
+				}},
+			},
+		},
+	}
+	path := t.TempDir() + "/load-trends.yaml"
+	if err := cleanr.WriteTrendHistoryFile(path, history); err != nil {
+		t.Fatalf("write trend history: %v", err)
+	}
+
+	analysis, err := cleanr.AnalyzeTrendHistoryFile(path, 2)
+	if err != nil {
+		t.Fatalf("analyze trend history: %v", err)
+	}
+	if analysis.Load == nil {
+		t.Fatalf("expected load window in analysis: %+v", analysis)
+	}
+	if analysis.Load.AverageP95LatencyMS != 165 || analysis.Load.LatestP99LatencyMS != 250 {
+		t.Fatalf("unexpected load summary: %+v", analysis.Load)
+	}
+
+	var text bytes.Buffer
+	if err := cleanr.WriteTrendAnalysis(&text, analysis, "text"); err != nil {
+		t.Fatalf("write text analysis: %v", err)
+	}
+	for _, want := range []string{
+		"Load Window",
+		"AvgP95LatencyMS   165.000",
+		"LatestP99Latency  250ms",
+	} {
+		if !strings.Contains(text.String(), want) {
+			t.Fatalf("expected %q in load analysis, got %s", want, text.String())
+		}
+	}
+}
+
 func TestAnalyzeTrendHistoryReportsBuildPromptAndModelDiffs(t *testing.T) {
 	history := cleanr.TrendHistoryFile{
 		Version: "v1alpha1",

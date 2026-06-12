@@ -17,8 +17,10 @@ type Request struct {
 
 type Response struct {
 	StatusCode   int
+	ExitCode     int
 	Body         []byte
 	Text         string
+	Stderr       string
 	Latency      time.Duration
 	Stream       StreamMetrics
 	Err          error

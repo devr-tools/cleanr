@@ -22,6 +22,7 @@ type StateAdapterDelta struct {
 }
 
 type StateAdapterInput struct {
+	Scenario core.Scenario `json:"scenario"`
 	Request  core.Request  `json:"request"`
 	Response core.Response `json:"response"`
 }
@@ -32,18 +33,33 @@ type SuiteInput struct {
 	Plugin core.PluginManifest `json:"plugin"`
 }
 
+type jsonCommandSpec struct {
+	command   string
+	args      []string
+	env       map[string]string
+	timeoutMS int
+}
+
 func ApplyStateAdapters(ctx context.Context, req core.Request, resp core.Response, manifests []core.PluginManifest) (core.Response, error) {
 	for _, manifest := range manifests {
+		input := StateAdapterInput{
+			Scenario: req.Scenario,
+			Request:  req,
+			Response: resp,
+		}
 		for _, adapter := range manifest.StateAdapters {
-			delta, err := runStateAdapter(ctx, adapter, StateAdapterInput{Request: req, Response: resp})
+			delta, err := runStateAdapter(ctx, adapter, input)
 			if err != nil {
 				return resp, err
 			}
-			resp.Normalized.ToolCalls = append(resp.Normalized.ToolCalls, delta.ToolCalls...)
-			resp.Normalized.SourceUses = append(resp.Normalized.SourceUses, delta.SourceUses...)
-			resp.Normalized.Approvals = append(resp.Normalized.Approvals, delta.Approvals...)
-			resp.Normalized.StateChanges = append(resp.Normalized.StateChanges, delta.StateChanges...)
-			resp.Normalized.MemoryOperations = append(resp.Normalized.MemoryOperations, delta.MemoryOperations...)
+			resp = applyStateAdapterDelta(resp, delta)
+		}
+		for _, probe := range manifest.Probes {
+			delta, err := runProbe(ctx, probe, input)
+			if err != nil {
+				return resp, err
+			}
+			resp = applyStateAdapterDelta(resp, delta)
 		}
 	}
 	return resp, nil
@@ -56,7 +72,12 @@ func RunPluginSuite(ctx context.Context, manifest core.PluginManifest, suite cor
 		Plugin: manifest,
 	}
 	var result core.SuiteResult
-	if err := runJSONCommand(ctx, suite.Command, suite.Args, suite.Env, suite.TimeoutMS, input, &result); err != nil {
+	if err := runJSONCommand(ctx, jsonCommandSpec{
+		command:   suite.Command,
+		args:      suite.Args,
+		env:       suite.Env,
+		timeoutMS: suite.TimeoutMS,
+	}, input, &result); err != nil {
 		return core.SuiteResult{}, err
 	}
 	if strings.TrimSpace(result.Name) == "" {
@@ -67,14 +88,41 @@ func RunPluginSuite(ctx context.Context, manifest core.PluginManifest, suite cor
 
 func runStateAdapter(ctx context.Context, adapter core.PluginStateAdapter, input StateAdapterInput) (StateAdapterDelta, error) {
 	var delta StateAdapterDelta
-	if err := runJSONCommand(ctx, adapter.Command, adapter.Args, adapter.Env, adapter.TimeoutMS, input, &delta); err != nil {
+	if err := runJSONCommand(ctx, jsonCommandSpec{
+		command:   adapter.Command,
+		args:      adapter.Args,
+		env:       adapter.Env,
+		timeoutMS: adapter.TimeoutMS,
+	}, input, &delta); err != nil {
 		return StateAdapterDelta{}, fmt.Errorf("plugin state adapter %s: %w", adapter.Name, err)
 	}
 	return delta, nil
 }
 
-func runJSONCommand(ctx context.Context, command string, args []string, env map[string]string, timeoutMS int, input any, output any) error {
-	timeout := time.Duration(timeoutMS) * time.Millisecond
+func runProbe(ctx context.Context, probe core.PluginProbe, input StateAdapterInput) (StateAdapterDelta, error) {
+	var delta StateAdapterDelta
+	if err := runJSONCommand(ctx, jsonCommandSpec{
+		command:   probe.Command,
+		args:      probe.Args,
+		env:       probe.Env,
+		timeoutMS: probe.TimeoutMS,
+	}, input, &delta); err != nil {
+		return StateAdapterDelta{}, fmt.Errorf("plugin probe %s: %w", probe.Name, err)
+	}
+	return delta, nil
+}
+
+func applyStateAdapterDelta(resp core.Response, delta StateAdapterDelta) core.Response {
+	resp.Normalized.ToolCalls = append(resp.Normalized.ToolCalls, delta.ToolCalls...)
+	resp.Normalized.SourceUses = append(resp.Normalized.SourceUses, delta.SourceUses...)
+	resp.Normalized.Approvals = append(resp.Normalized.Approvals, delta.Approvals...)
+	resp.Normalized.StateChanges = append(resp.Normalized.StateChanges, delta.StateChanges...)
+	resp.Normalized.MemoryOperations = append(resp.Normalized.MemoryOperations, delta.MemoryOperations...)
+	return resp
+}
+
+func runJSONCommand(ctx context.Context, spec jsonCommandSpec, input any, output any) error {
+	timeout := time.Duration(spec.timeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -86,14 +134,14 @@ func runJSONCommand(ctx context.Context, command string, args []string, env map[
 		return err
 	}
 
-	cmd := exec.CommandContext(cmdCtx, command, args...)
+	cmd := exec.CommandContext(cmdCtx, spec.command, spec.args...)
 	cmd.Stdin = bytes.NewReader(data)
 	var stdout bytes.Buffer
 	var stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Env = append([]string(nil), os.Environ()...)
-	for key, value := range env {
+	for key, value := range spec.env {
 		cmd.Env = append(cmd.Env, key+"="+value)
 	}
 

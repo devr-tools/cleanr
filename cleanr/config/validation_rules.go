@@ -10,10 +10,14 @@ import (
 )
 
 func validateTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
-	urlHint, promptHint, responseHint := targetHints(prefix)
+	hints := targetHints(prefix)
 	switch cfg.TargetType() {
+	case "cli":
+		validateCLITargetConfig(errs, prefix, cfg)
+	case "graphql":
+		validateGraphQLTargetConfig(errs, prefix, cfg, hints)
 	case "http":
-		validateHTTPTargetConfig(errs, prefix, cfg, urlHint, promptHint, responseHint)
+		validateHTTPTargetConfig(errs, prefix, cfg, hints)
 	case "openai", "openai_compatible":
 		validateOpenAITargetConfig(errs, prefix, cfg)
 	case "anthropic":
@@ -21,25 +25,46 @@ func validateTargetConfig(errs *ValidationErrors, prefix string, cfg core.Target
 	case "mcp":
 		validateMCPTargetConfig(errs, prefix, cfg)
 	default:
-		errs.Add(prefix+".type", "must be one of http, openai, openai_compatible, anthropic, or mcp", "set the target type to http, openai, openai_compatible, anthropic, or mcp")
+		errs.Add(prefix+".type", "must be one of cli, graphql, http, openai, openai_compatible, anthropic, or mcp", "set the target type to cli, graphql, http, openai, openai_compatible, anthropic, or mcp")
 	}
 }
 
-func targetHints(prefix string) (string, string, string) {
+type targetValidationHints struct {
+	url      string
+	prompt   string
+	response string
+}
+
+func validateCLITargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
+	requireNonEmpty(errs, prefix+".cli.command", cfg.CLI.Command, "set the executable path or command name to run for each scenario")
+}
+
+func validateGraphQLTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig, hints targetValidationHints) {
+	requireNonEmpty(errs, prefix+".url", cfg.URL, hints.url)
+	requireNonEmpty(errs, prefix+".graphql.query", cfg.GraphQL.Query, "set the GraphQL document to execute for each scenario")
+	requireNonEmpty(errs, prefix+".response_field", cfg.ResponseField, hints.response)
+	validateAbsoluteURL(errs, prefix+".url", cfg.URL, "use a value such as https://api.example.com/graphql or http://localhost:4000/graphql")
+}
+
+func targetHints(prefix string) targetValidationHints {
 	if prefix == "target" {
-		return "set target.url to the full API endpoint URL",
-			"set target.prompt_field to the request field that receives the prompt text",
-			"set target.response_field to the JSON path that contains the model text response"
+		return targetValidationHints{
+			url:      "set target.url to the full API endpoint URL",
+			prompt:   "set target.prompt_field to the request field that receives the prompt text",
+			response: "set target.response_field to the JSON path that contains the model text response",
+		}
 	}
-	return "set the full API endpoint URL",
-		"set the request field that receives the prompt text",
-		"set the JSON path that contains the model text response"
+	return targetValidationHints{
+		url:      "set the full API endpoint URL",
+		prompt:   "set the request field that receives the prompt text",
+		response: "set the JSON path that contains the model text response",
+	}
 }
 
-func validateHTTPTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig, urlHint, promptHint, responseHint string) {
-	requireNonEmpty(errs, prefix+".url", cfg.URL, urlHint)
-	requireNonEmpty(errs, prefix+".prompt_field", cfg.PromptField, promptHint)
-	requireNonEmpty(errs, prefix+".response_field", cfg.ResponseField, responseHint)
+func validateHTTPTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig, hints targetValidationHints) {
+	requireNonEmpty(errs, prefix+".url", cfg.URL, hints.url)
+	requireNonEmpty(errs, prefix+".prompt_field", cfg.PromptField, hints.prompt)
+	requireNonEmpty(errs, prefix+".response_field", cfg.ResponseField, hints.response)
 	validateAbsoluteURL(errs, prefix+".url", cfg.URL, "use a value such as http://localhost:8080/v1/chat or https://api.example.com/v1/chat")
 }
 
@@ -146,40 +171,26 @@ func validateOptionalUnitInterval(errs *ValidationErrors, path string, value *fl
 }
 
 func validateAssertion(errs *ValidationErrors, prefix string, assertion core.Assertion) {
-	switch strings.TrimSpace(assertion.Type) {
+	assertionType := strings.TrimSpace(assertion.Type)
+	switch assertionType {
 	case "contains", "not_contains":
 		requireNonEmpty(errs, prefix+".value", assertion.Value, "set the text fragment the response should include or exclude")
 	case "regex":
-		requireNonEmpty(errs, prefix+".pattern", assertion.Pattern, "set a valid Go regular expression to match against the response field")
-		if strings.TrimSpace(assertion.Pattern) != "" {
-			if _, err := regexp.Compile(assertion.Pattern); err != nil {
-				errs.Add(prefix+".pattern", "must be a valid Go regular expression", "fix the pattern syntax or remove the assertion")
-			}
-		}
+		validateRegexAssertion(errs, prefix, assertion)
+	case "json_schema":
+		validateJSONSchemaAssertion(errs, prefix, assertion)
 	case "json_path":
 		requireNonEmpty(errs, prefix+".path", assertion.Path, "set the response path to check, for example response.provider_model or response.body.output.0.content.0.text")
-	case "status_code":
-		if assertion.IntValue == nil {
-			errs.Add(prefix+".int_value", "is required", "set the expected HTTP status code such as 200")
-		} else if *assertion.IntValue < 100 || *assertion.IntValue > 599 {
-			errs.Add(prefix+".int_value", "must be between 100 and 599", "use a valid HTTP status code")
-		}
+	case "status_code", "exit_code":
+		validateCodeAssertion(errs, prefix, assertionType, assertion.IntValue)
 	case "latency_ms", "stream_ttft_ms", "stream_duration_ms":
-		if assertion.IntValue == nil {
-			errs.Add(prefix+".int_value", "is required", "set the maximum allowed latency in milliseconds")
-		} else if *assertion.IntValue < 0 {
-			errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative millisecond threshold")
-		}
+		validateThresholdAssertion(errs, prefix, assertion.IntValue)
 	case "finish_reason", "tool_call_name":
 		requireNonEmpty(errs, prefix+".value", assertion.Value, "set the expected provider finish reason or tool name")
 	case "tool_call_count":
-		if assertion.IntValue == nil {
-			errs.Add(prefix+".int_value", "is required", "set the expected number of tool calls, including 0 when no tool calls should be present")
-		} else if *assertion.IntValue < 0 {
-			errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative expected tool call count")
-		}
+		validateToolCallCountAssertion(errs, prefix, assertion.IntValue)
 	default:
-		errs.Add(prefix+".type", "must be one of contains, not_contains, regex, json_path, status_code, latency_ms, stream_ttft_ms, stream_duration_ms, finish_reason, tool_call_count, or tool_call_name", "pick one of the built-in assertion types")
+		errs.Add(prefix+".type", "must be one of contains, not_contains, regex, json_schema, json_path, status_code, exit_code, latency_ms, stream_ttft_ms, stream_duration_ms, finish_reason, tool_call_count, or tool_call_name", "pick one of the built-in assertion types")
 	}
 
 	if severity := strings.TrimSpace(assertion.Severity); severity != "" {
@@ -188,6 +199,63 @@ func validateAssertion(errs *ValidationErrors, prefix string, assertion core.Ass
 		default:
 			errs.Add(prefix+".severity", "must be one of low, medium, high, or critical", "omit severity to use the default, or pick a supported severity level")
 		}
+	}
+}
+
+func validateRegexAssertion(errs *ValidationErrors, prefix string, assertion core.Assertion) {
+	requireNonEmpty(errs, prefix+".pattern", assertion.Pattern, "set a valid Go regular expression to match against the response field")
+	if strings.TrimSpace(assertion.Pattern) == "" {
+		return
+	}
+	if _, err := regexp.Compile(assertion.Pattern); err != nil {
+		errs.Add(prefix+".pattern", "must be a valid Go regular expression", "fix the pattern syntax or remove the assertion")
+	}
+}
+
+func validateJSONSchemaAssertion(errs *ValidationErrors, prefix string, assertion core.Assertion) {
+	if assertion.Schema == nil {
+		errs.Add(prefix+".schema", "is required", "set an inline JSON Schema object to validate the selected response payload")
+	}
+}
+
+func validateCodeAssertion(errs *ValidationErrors, prefix, assertionType string, intValue *int) {
+	if intValue == nil {
+		hint := "set the expected HTTP status code such as 200"
+		if assertionType == "exit_code" {
+			hint = "set the expected process exit code such as 0"
+		}
+		errs.Add(prefix+".int_value", "is required", hint)
+		return
+	}
+	switch assertionType {
+	case "status_code":
+		if *intValue < 100 || *intValue > 599 {
+			errs.Add(prefix+".int_value", "must be between 100 and 599", "use a valid HTTP status code")
+		}
+	case "exit_code":
+		if *intValue < 0 {
+			errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative process exit code")
+		}
+	}
+}
+
+func validateThresholdAssertion(errs *ValidationErrors, prefix string, intValue *int) {
+	if intValue == nil {
+		errs.Add(prefix+".int_value", "is required", "set the maximum allowed latency in milliseconds")
+		return
+	}
+	if *intValue < 0 {
+		errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative millisecond threshold")
+	}
+}
+
+func validateToolCallCountAssertion(errs *ValidationErrors, prefix string, intValue *int) {
+	if intValue == nil {
+		errs.Add(prefix+".int_value", "is required", "set the expected number of tool calls, including 0 when no tool calls should be present")
+		return
+	}
+	if *intValue < 0 {
+		errs.Add(prefix+".int_value", "must be >= 0", "use a non-negative expected tool call count")
 	}
 }
 

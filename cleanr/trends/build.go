@@ -37,6 +37,9 @@ func buildSuite(suite core.SuiteResult) HistorySuite {
 	if suite.Name == "drift" {
 		historySuite.Drift = summarizeDriftSuite(suite)
 	}
+	if suite.Name == "load" {
+		historySuite.Load = summarizeLoadSuite(suite)
+	}
 	return historySuite
 }
 
@@ -64,26 +67,53 @@ func summarizeDriftSuite(suite core.SuiteResult) *HistoryDriftMetrics {
 	return metrics
 }
 
+func summarizeLoadSuite(suite core.SuiteResult) *HistoryLoadMetrics {
+	if len(suite.Cases) == 0 {
+		return nil
+	}
+	caseResult := suite.Cases[0]
+	return &HistoryLoadMetrics{
+		Requests:        detailInt(caseResult.Details, "requests"),
+		VirtualUsers:    detailInt(caseResult.Details, "virtual_users"),
+		RequestsPerUser: detailInt(caseResult.Details, "requests_per_user"),
+		ScenarioCount:   detailInt(caseResult.Details, "scenario_count"),
+		ErrorRatePct:    detailInt(caseResult.Details, "error_rate_pct"),
+		P50LatencyMS:    detailInt64(caseResult.Details, "latency_p50_ms"),
+		P95LatencyMS:    detailInt64(caseResult.Details, "latency_p95_ms"),
+		P99LatencyMS:    detailInt64(caseResult.Details, "latency_p99_ms"),
+		ThroughputRPS:   round3(detailFloat(caseResult.Details, "throughput_rps")),
+	}
+}
+
 func detailFloat(details map[string]any, key string) float64 {
-	if len(details) == 0 {
-		return 0
+	return numericDetail(details, key)
+}
+
+func detailInt(details map[string]any, key string) int {
+	return int(numericDetail(details, key))
+}
+
+func detailInt64(details map[string]any, key string) int64 {
+	return int64(numericDetail(details, key))
+}
+
+func numericDetail(details map[string]any, key string) float64 {
+	var value any
+	if len(details) > 0 {
+		value = details[key]
 	}
-	value, ok := details[key]
-	if !ok {
-		return 0
-	}
+	number := 0.0
 	switch typed := value.(type) {
 	case float64:
-		return typed
+		number = typed
 	case float32:
-		return float64(typed)
+		number = float64(typed)
 	case int:
-		return float64(typed)
+		number = float64(typed)
 	case int64:
-		return float64(typed)
-	default:
-		return 0
+		number = float64(typed)
 	}
+	return number
 }
 
 func countFailedCases(cases []core.CaseResult) int {

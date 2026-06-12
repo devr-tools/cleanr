@@ -34,6 +34,29 @@ func TestSecurityEngineCoversScenarioAssertions(t *testing.T) {
 			{Type: "contains", Value: "hello"},
 			{Type: "not_contains", Value: "secret"},
 			{Type: "regex", Pattern: "^hello"},
+			{Type: "json_schema", Schema: map[string]any{
+				"type":     "object",
+				"required": []any{"output"},
+				"properties": map[string]any{
+					"output": map[string]any{
+						"type":     "object",
+						"required": []any{"items"},
+						"properties": map[string]any{
+							"items": map[string]any{
+								"type":     "array",
+								"minItems": 1,
+								"items": map[string]any{
+									"type":     "object",
+									"required": []any{"name"},
+									"properties": map[string]any{
+										"name": map[string]any{"const": "refund"},
+									},
+								},
+							},
+						},
+					},
+				},
+			}},
 			{Type: "json_path", Path: "response.body.output.items.0.name", Value: "refund"},
 			{Type: "status_code", IntValue: intPtr(200)},
 			{Type: "latency_ms", IntValue: intPtr(30)},
@@ -59,7 +82,7 @@ func TestSecurityEngineCoversScenarioAssertions(t *testing.T) {
 	if len(report.Suites) != 1 || !report.Suites[0].Passed {
 		t.Fatalf("unexpected assertion report: %+v", report)
 	}
-	if report.Suites[0].Cases[0].Details["assertion_count"] != 12 {
+	if report.Suites[0].Cases[0].Details["assertion_count"] != 13 {
 		t.Fatalf("expected assertion count in details, got %+v", report.Suites[0].Cases[0].Details)
 	}
 }

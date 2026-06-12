@@ -30,6 +30,7 @@ type HistorySuite struct {
 	FailedCases  int                  `json:"failed_cases"`
 	AverageScore float64              `json:"average_score,omitempty"`
 	Drift        *HistoryDriftMetrics `json:"drift,omitempty"`
+	Load         *HistoryLoadMetrics  `json:"load,omitempty"`
 	Cases        []HistoryCase        `json:"cases,omitempty"`
 }
 
@@ -52,6 +53,18 @@ type HistoryDriftMetrics struct {
 	SemanticConsistencyScore float64 `json:"semantic_consistency_score,omitempty"`
 	BaselineDrift            float64 `json:"baseline_drift,omitempty"`
 	BaselineSemanticDrift    float64 `json:"baseline_semantic_drift,omitempty"`
+}
+
+type HistoryLoadMetrics struct {
+	Requests        int     `json:"requests,omitempty"`
+	VirtualUsers    int     `json:"virtual_users,omitempty"`
+	RequestsPerUser int     `json:"requests_per_user,omitempty"`
+	ScenarioCount   int     `json:"scenario_count,omitempty"`
+	ErrorRatePct    int     `json:"error_rate_pct,omitempty"`
+	P50LatencyMS    int64   `json:"p50_latency_ms,omitempty"`
+	P95LatencyMS    int64   `json:"p95_latency_ms,omitempty"`
+	P99LatencyMS    int64   `json:"p99_latency_ms,omitempty"`
+	ThroughputRPS   float64 `json:"throughput_rps,omitempty"`
 }
 
 type PersistOptions struct {
@@ -79,6 +92,7 @@ type Analysis struct {
 	CaseImprovements  []core.CaseTrend     `json:"case_improvements,omitempty"`
 	FailureBuckets    []core.FailureBucket `json:"failure_buckets,omitempty"`
 	Drift             *DriftWindow         `json:"drift,omitempty"`
+	Load              *LoadWindow          `json:"load,omitempty"`
 	RecentRuns        []RunSnapshot        `json:"recent_runs,omitempty"`
 }
 
@@ -110,6 +124,20 @@ type DriftWindow struct {
 	LatestSemanticDrift         float64 `json:"latest_semantic_drift,omitempty"`
 	LatestBaselineDrift         float64 `json:"latest_baseline_drift,omitempty"`
 	LatestBaselineSemanticDrift float64 `json:"latest_baseline_semantic_drift,omitempty"`
+}
+
+type LoadWindow struct {
+	Runs                 int     `json:"runs"`
+	AverageErrorRatePct  float64 `json:"average_error_rate_pct,omitempty"`
+	AverageP50LatencyMS  float64 `json:"average_p50_latency_ms,omitempty"`
+	AverageP95LatencyMS  float64 `json:"average_p95_latency_ms,omitempty"`
+	AverageP99LatencyMS  float64 `json:"average_p99_latency_ms,omitempty"`
+	AverageThroughputRPS float64 `json:"average_throughput_rps,omitempty"`
+	LatestErrorRatePct   int     `json:"latest_error_rate_pct,omitempty"`
+	LatestP50LatencyMS   int64   `json:"latest_p50_latency_ms,omitempty"`
+	LatestP95LatencyMS   int64   `json:"latest_p95_latency_ms,omitempty"`
+	LatestP99LatencyMS   int64   `json:"latest_p99_latency_ms,omitempty"`
+	LatestThroughputRPS  float64 `json:"latest_throughput_rps,omitempty"`
 }
 
 func NewHistory(target string) HistoryFile {

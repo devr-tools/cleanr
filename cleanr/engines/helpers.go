@@ -45,57 +45,68 @@ func responseDetails(resp core.Response, base map[string]any) map[string]any {
 		base = map[string]any{}
 	}
 	normalized := resp.Normalized
-	if normalized.Provider != "" {
-		base["provider"] = normalized.Provider
-	}
-	if normalized.ID != "" {
-		base["provider_id"] = normalized.ID
-	}
-	if normalized.Model != "" {
-		base["provider_model"] = normalized.Model
-	}
-	if normalized.Role != "" {
-		base["provider_role"] = normalized.Role
-	}
-	if normalized.Status != "" {
-		base["provider_status"] = normalized.Status
-	}
-	if normalized.FinishReason != "" {
-		base["finish_reason"] = normalized.FinishReason
-	}
-	if normalized.StopSequence != "" {
-		base["stop_sequence"] = normalized.StopSequence
-	}
-	if resp.Stream.TTFTMS > 0 || resp.Stream.DurationMS > 0 || resp.Stream.ChunkCount > 0 || resp.Stream.ErrorCount > 0 || resp.Stream.Recovered {
-		base["stream"] = resp.Stream
-	}
-	if len(normalized.ToolCalls) > 0 {
-		base["tool_call_count"] = len(normalized.ToolCalls)
-		base["tool_calls"] = normalized.ToolCalls
-	}
-	if len(normalized.SourceUses) > 0 {
-		base["source_use_count"] = len(normalized.SourceUses)
-		base["source_uses"] = normalized.SourceUses
-	}
-	if len(normalized.Approvals) > 0 {
-		base["approval_count"] = len(normalized.Approvals)
-		base["approvals"] = normalized.Approvals
-	}
-	if len(normalized.StateChanges) > 0 {
-		base["state_change_count"] = len(normalized.StateChanges)
-		base["state_changes"] = normalized.StateChanges
-	}
-	if len(normalized.MemoryOperations) > 0 {
-		base["memory_operation_count"] = len(normalized.MemoryOperations)
-		base["memory_operations"] = normalized.MemoryOperations
-	}
-	if len(normalized.Raw) > 0 {
-		base["provider_raw"] = normalized.Raw
-	}
+	applyProviderDetails(base, normalized)
+	applyProcessDetails(base, resp)
+	applyStreamDetails(base, resp.Stream)
+	applyEvidenceDetails(base, normalized)
 	return base
 }
 
+func applyProviderDetails(base map[string]any, normalized core.ProviderResponse) {
+	maybeSetDetail(base, "provider", normalized.Provider)
+	maybeSetDetail(base, "provider_id", normalized.ID)
+	maybeSetDetail(base, "provider_model", normalized.Model)
+	maybeSetDetail(base, "provider_role", normalized.Role)
+	maybeSetDetail(base, "provider_status", normalized.Status)
+	maybeSetDetail(base, "finish_reason", normalized.FinishReason)
+	maybeSetDetail(base, "stop_sequence", normalized.StopSequence)
+}
+
+func applyProcessDetails(base map[string]any, resp core.Response) {
+	if resp.ExitCode != 0 {
+		base["exit_code"] = resp.ExitCode
+	}
+	if strings.TrimSpace(resp.Stderr) != "" {
+		base["stderr"] = trimForReport(resp.Stderr)
+	}
+}
+
+func applyStreamDetails(base map[string]any, stream core.StreamMetrics) {
+	if stream.TTFTMS > 0 || stream.DurationMS > 0 || stream.ChunkCount > 0 || stream.ErrorCount > 0 || stream.Recovered {
+		base["stream"] = stream
+	}
+}
+
+func applyEvidenceDetails(base map[string]any, normalized core.ProviderResponse) {
+	maybeSetCountedDetail(base, "tool_call", normalized.ToolCalls)
+	maybeSetCountedDetail(base, "source_use", normalized.SourceUses)
+	maybeSetCountedDetail(base, "approval", normalized.Approvals)
+	maybeSetCountedDetail(base, "state_change", normalized.StateChanges)
+	maybeSetCountedDetail(base, "memory_operation", normalized.MemoryOperations)
+	if len(normalized.Raw) > 0 {
+		base["provider_raw"] = normalized.Raw
+	}
+}
+
+func maybeSetDetail(base map[string]any, key, value string) {
+	if strings.TrimSpace(value) != "" {
+		base[key] = value
+	}
+}
+
+func maybeSetCountedDetail[T any](base map[string]any, prefix string, items []T) {
+	if len(items) == 0 {
+		return
+	}
+	base[prefix+"_count"] = len(items)
+	base[prefix+"s"] = items
+}
+
 func filterStableScenarios(scenarios []core.Scenario, tags []string) []core.Scenario {
+	return filterScenariosByTags(scenarios, tags)
+}
+
+func filterScenariosByTags(scenarios []core.Scenario, tags []string) []core.Scenario {
 	if len(tags) == 0 {
 		return nil
 	}
