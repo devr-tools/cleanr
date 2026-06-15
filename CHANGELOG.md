@@ -8,6 +8,14 @@
 * add transcript-aware request construction plus normalized tool-call assertions for count, name, and structured arguments
 * expand trend analysis to capture load metrics and scenario transcript diffs across retained runs
 
+## [0.7.0](https://github.com/devr-tools/cleanr/compare/v0.6.0...v0.7.0) (2026-06-15)
+
+
+### Features
+
+* add openai-compatible target and trend reporting ([c060fdb](https://github.com/devr-tools/cleanr/commit/c060fdb5337f000dab5bec23ef8b3efd1fcf54ca))
+* feat: add openai-compatible target and trend reporting ([69f6d44](https://github.com/devr-tools/cleanr/commit/69f6d44d06bd1926c40b53dc1722ceaa32539eb7))
+
 ## [0.6.0](https://github.com/devr-tools/cleanr/compare/v0.5.0...v0.6.0) (2026-06-10)
 
 
