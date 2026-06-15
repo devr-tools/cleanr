@@ -9,6 +9,7 @@ type Request struct {
 	Scenario Scenario
 	System   string
 	Prompt   string
+	Messages []ConversationTurn
 	Timeout  time.Duration
 	Headers  map[string]string
 	Template any
@@ -16,13 +17,25 @@ type Request struct {
 
 type Response struct {
 	StatusCode   int
+	ExitCode     int
 	Body         []byte
 	Text         string
+	Stderr       string
 	Latency      time.Duration
+	Stream       StreamMetrics
 	Err          error
 	ExtractError error
 	Usage        TokenUsage
 	Normalized   ProviderResponse
+}
+
+type StreamMetrics struct {
+	TTFTMS          int64  `json:"ttft_ms,omitempty"`
+	DurationMS      int64  `json:"duration_ms,omitempty"`
+	ChunkCount      int    `json:"chunk_count,omitempty"`
+	ErrorCount      int    `json:"error_count,omitempty"`
+	Recovered       bool   `json:"recovered,omitempty"`
+	CompletionState string `json:"completion_state,omitempty"`
 }
 
 type TokenUsage struct {
@@ -49,14 +62,15 @@ type ProviderResponse struct {
 }
 
 type ToolCall struct {
-	ID        string         `json:"id,omitempty"`
-	CallID    string         `json:"call_id,omitempty"`
-	Type      string         `json:"type,omitempty"`
-	Name      string         `json:"name,omitempty"`
-	Arguments string         `json:"arguments,omitempty"`
-	Input     any            `json:"input,omitempty"`
-	Status    string         `json:"status,omitempty"`
-	Raw       map[string]any `json:"raw,omitempty"`
+	ID         string         `json:"id,omitempty"`
+	CallID     string         `json:"call_id,omitempty"`
+	Type       string         `json:"type,omitempty"`
+	Name       string         `json:"name,omitempty"`
+	Arguments  string         `json:"arguments,omitempty"`
+	ParsedArgs any            `json:"parsed_arguments,omitempty"`
+	Input      any            `json:"input,omitempty"`
+	Status     string         `json:"status,omitempty"`
+	Raw        map[string]any `json:"raw,omitempty"`
 }
 
 type SourceUse struct {

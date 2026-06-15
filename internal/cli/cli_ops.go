@@ -111,6 +111,9 @@ func pluginsCmd(args []string, stdout, stderr io.Writer) int {
 			for _, adapter := range plugin.StateAdapters {
 				_, _ = fmt.Fprintf(stdout, "  state_adapter: %s -> %s\n", adapter.Name, adapter.Command)
 			}
+			for _, probe := range plugin.Probes {
+				_, _ = fmt.Fprintf(stdout, "  probe: %s -> %s\n", probe.Name, probe.Command)
+			}
 		}
 		return 0
 	case "json":

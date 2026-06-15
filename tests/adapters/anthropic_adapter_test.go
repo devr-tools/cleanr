@@ -150,6 +150,57 @@ func TestAnthropicTargetNormalizesToolUseBlocks(t *testing.T) {
 	}
 }
 
+func TestAnthropicTargetBuildsTranscriptMessages(t *testing.T) {
+	t.Setenv("ANTHROPIC_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body := decodeRequestBody(t, req)
+			if body["system"] != "You are helpful." {
+				t.Fatalf("unexpected anthropic system: %#v", body["system"])
+			}
+			messages, ok := body["messages"].([]any)
+			if !ok || len(messages) != 3 {
+				t.Fatalf("unexpected anthropic messages: %#v", body["messages"])
+			}
+			if messages[2].(map[string]any)["role"] != "user" {
+				t.Fatalf("expected tool transcript to normalize to user message: %#v", messages[2])
+			}
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":    "msg_turns",
+				"model": "claude-sonnet-4-20250514",
+				"role":  "assistant",
+				"content": []any{
+					map[string]any{"type": "text", "text": "done"},
+				},
+				"usage": map[string]any{"input_tokens": 1, "output_tokens": 1},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewAnthropicTarget(cleanr.TargetConfig{
+		Type: "anthropic",
+		Anthropic: cleanr.AnthropicConfig{
+			Model:     "claude-sonnet-4-20250514",
+			APIKeyEnv: "ANTHROPIC_API_KEY",
+			BaseURL:   "https://anthropic.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.BuildScenarioRequest(cleanr.Scenario{
+		Name: "transcript",
+		Turns: []cleanr.ConversationTurn{
+			{Role: "system", Content: "You are helpful."},
+			{Role: "user", Content: "First turn"},
+			{Role: "assistant", Content: "First answer"},
+			{Role: "tool", Name: "lookup_policy", Content: "{\"policy\":\"refunds\"}"},
+		},
+	}, 2*time.Second))
+	if resp.Err != nil || resp.Text != "done" {
+		t.Fatalf("unexpected transcript response: %+v", resp)
+	}
+}
+
 func TestRunCommandSupportsAnthropicTarget(t *testing.T) {
 	t.Setenv("ANTHROPIC_API_KEY", "test-key")
 

@@ -18,6 +18,23 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 		wantSub string
 	}{
 		{
+			name: "cli requires command",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "cli"
+				cfg.Target.CLI.Command = ""
+			},
+			wantSub: "target.cli.command",
+		},
+		{
+			name: "graphql requires query",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "graphql"
+				cfg.Target.URL = "https://example.test/graphql"
+				cfg.Target.GraphQL.Query = ""
+			},
+			wantSub: "target.graphql.query",
+		},
+		{
 			name: "openai requires model",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Target.Type = "openai"
@@ -44,6 +61,15 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "target.openai.base_url",
 		},
 		{
+			name: "openai compatible invalid base url",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "openai_compatible"
+				cfg.Target.OpenAI.Model = "llama3.1"
+				cfg.Target.OpenAI.BaseURL = "not-a-url"
+			},
+			wantSub: "target.openai.base_url",
+		},
+		{
 			name: "anthropic invalid base url",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Target.Type = "anthropic"
@@ -60,6 +86,24 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 				cfg.Target.Anthropic.MaxTokens = -1
 			},
 			wantSub: "target.anthropic.max_tokens",
+		},
+		{
+			name: "mcp requires url",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "mcp"
+				cfg.Target.MCP.Tool = "cleanr_run"
+				cfg.Target.MCP.URL = ""
+			},
+			wantSub: "target.mcp.url",
+		},
+		{
+			name: "mcp requires tool",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "mcp"
+				cfg.Target.MCP.URL = "http://localhost:8080/mcp"
+				cfg.Target.MCP.Tool = ""
+			},
+			wantSub: "target.mcp.tool",
 		},
 		{
 			name: "negative timeout",
@@ -83,6 +127,44 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 				}}
 			},
 			wantSub: "scenarios[0].memory_replay",
+		},
+		{
+			name: "turns allow empty legacy input",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Turns = []cleanr.ConversationTurn{
+					{Role: "user", Content: "hello"},
+				}
+			},
+			wantSub: "",
+		},
+		{
+			name: "invalid turn role",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Turns = []cleanr.ConversationTurn{
+					{Role: "banana", Content: "hello"},
+				}
+			},
+			wantSub: "scenarios[0].turns[0].role",
+		},
+		{
+			name: "tool turn requires name",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Turns = []cleanr.ConversationTurn{
+					{Role: "tool", Content: "{\"ok\":true}"},
+				}
+			},
+			wantSub: "scenarios[0].turns[0].name",
+		},
+		{
+			name: "turns cannot combine with memory replay",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Turns = []cleanr.ConversationTurn{{Role: "user", Content: "hello"}}
+				cfg.Scenarios[0].MemoryReplay = []cleanr.MemoryReplaySession{{SessionID: "a"}, {SessionID: "b"}}
+			},
+			wantSub: "cannot combine turns with memory_replay",
 		},
 		{
 			name: "memory replay session ids must be unique",
@@ -330,6 +412,12 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			cfg := cleanr.ExampleConfig()
 			tt.mutate(&cfg)
 			err := cleanr.ValidateConfig(cfg)
+			if tt.wantSub == "" {
+				if err != nil {
+					t.Fatalf("expected config to be valid, got %v", err)
+				}
+				return
+			}
 			if err == nil || !strings.Contains(err.Error(), tt.wantSub) {
 				t.Fatalf("expected %q in error, got %v", tt.wantSub, err)
 			}

@@ -74,7 +74,9 @@ func SupportedTargets(_ context.Context, _ map[string]any) (toolkit.Result, erro
 		Targets: []toolkit.TargetDescriptor{
 			{Type: "http", Description: "Generic HTTP target for chat, completion, agent, or tool-calling APIs.", ConfigFields: []string{"name", "url", "method", "headers", "timeout_ms", "prompt_field", "system_field", "response_field", "request_template"}},
 			{Type: "openai", Description: "Native OpenAI target using the Responses or Chat Completions API.", ConfigFields: []string{"name", "timeout_ms", "headers", "openai.api_mode", "openai.model", "openai.api_key_env", "openai.base_url", "openai.organization", "openai.project"}},
+			{Type: "openai_compatible", Description: "Generic OpenAI-compatible target with configurable provider label, auth header, auth scheme, and quirks profile.", ConfigFields: []string{"name", "timeout_ms", "headers", "openai.api_mode", "openai.model", "openai.api_key_env", "openai.base_url", "openai.provider", "openai.auth_header", "openai.auth_scheme", "openai.quirks_profile"}},
 			{Type: "anthropic", Description: "Native Anthropic target using the Messages API.", ConfigFields: []string{"name", "timeout_ms", "headers", "anthropic.model", "anthropic.api_key_env", "anthropic.base_url", "anthropic.version", "anthropic.max_tokens"}},
+			{Type: "mcp", Description: "MCP target over HTTP JSON-RPC that invokes one configured tool per scenario.", ConfigFields: []string{"name", "timeout_ms", "headers", "mcp.url", "mcp.tool", "mcp.initialize", "mcp.result_text_path", "mcp.arguments_template"}},
 		},
 	}
 	return toolkit.StructuredToolResult(out, "described supported cleanr targets"), nil

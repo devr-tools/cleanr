@@ -31,12 +31,7 @@ func (SecurityEngine) Run(ctx context.Context, runCtx *core.RunContext) core.Sui
 	cases := make([]core.CaseResult, 0, len(runCtx.Config.Scenarios))
 	for _, scenario := range runCtx.Config.Scenarios {
 		start := time.Now()
-		resp := runCtx.Target.Invoke(ctx, core.Request{
-			Scenario: scenario,
-			System:   scenario.System,
-			Prompt:   scenario.Input,
-			Timeout:  runCtx.Config.Target.Timeout(),
-		})
+		resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 		findings := responseFindings(resp, nil)
 		findings = append(findings, evaluateScenarioAssertions(scenario, resp)...)
 		text := resp.Text

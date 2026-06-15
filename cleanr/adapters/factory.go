@@ -9,16 +9,24 @@ import (
 )
 
 func NewTargetFromConfig(cfg core.TargetConfig, client *http.Client) core.Target {
+	var target core.Target
 	switch cfg.TargetType() {
-	case "openai":
-		return NewOpenAI(cfg, client)
+	case "openai", "openai_compatible":
+		target = NewOpenAI(cfg, client)
+	case "cli":
+		target = NewCLI(cfg)
+	case "graphql":
+		target = NewGraphQL(cfg, client)
 	case "anthropic":
-		return NewAnthropic(cfg, client)
+		target = NewAnthropic(cfg, client)
+	case "mcp":
+		target = NewMCP(cfg, client)
 	case "http":
-		return NewHTTP(cfg, client)
+		target = NewHTTP(cfg, client)
 	default:
-		return invalidTarget{err: fmt.Errorf("unsupported target type %q", cfg.Type)}
+		target = invalidTarget{err: fmt.Errorf("unsupported target type %q", cfg.Type)}
 	}
+	return target
 }
 
 type invalidTarget struct {

@@ -1,0 +1,39 @@
+version: v1alpha1
+target:
+  type: openai_compatible
+  name: ollama-chat
+  timeout_ms: 5000
+  openai:
+    provider: ollama
+    api_mode: chat_completions
+    model: llama3.1
+    api_key_env: OLLAMA_API_KEY
+    base_url: https://compat.example.com/v1
+    auth_header: Authorization
+    auth_scheme: Bearer
+    quirks_profile: generic
+scenarios:
+  - name: happy-path
+    system: You are a concise support assistant.
+    input: Summarize the refund policy in one sentence.
+    assertions:
+      - type: contains
+        value: refund
+suites:
+  prompt_injection:
+    enabled: false
+  security:
+    enabled: true
+    max_pii_matches: 0
+    dangerous_tool_indicators: []
+    secret_exposure_indicators: []
+  load:
+    enabled: false
+  chaos:
+    enabled: false
+  drift:
+    enabled: false
+  token_optimization:
+    enabled: false
+reporting:
+  format: text

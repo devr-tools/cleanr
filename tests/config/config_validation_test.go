@@ -170,7 +170,7 @@ func TestValidateConfigInvalidAssertions(t *testing.T) {
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "banana"}}
 			},
-			wantErr: "invalid config: scenarios[0].assertions[0].type: must be one of contains, not_contains, regex, json_path, status_code, latency_ms, finish_reason, tool_call_count, or tool_call_name. Fix: pick one of the built-in assertion types",
+			wantErr: "invalid config: scenarios[0].assertions[0].type: must be one of contains, not_contains, regex, json_schema, json_path, status_code, exit_code, latency_ms, stream_ttft_ms, stream_duration_ms, finish_reason, tool_call_count, or tool_call_name. Fix: pick one of the built-in assertion types",
 		},
 		{
 			name: "invalid regex assertion",
@@ -187,12 +187,34 @@ func TestValidateConfigInvalidAssertions(t *testing.T) {
 			wantErr: "invalid config: scenarios[0].assertions[0].path: is required. Fix: set the response path to check, for example response.provider_model or response.body.output.0.content.0.text",
 		},
 		{
+			name: "json schema assertion requires schema",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "json_schema"}}
+			},
+			wantErr: "invalid config: scenarios[0].assertions[0].schema: is required. Fix: set an inline JSON Schema object to validate the selected response payload",
+		},
+		{
 			name: "tool call count accepts only non-negative values",
 			mutate: func(cfg *cleanr.Config) {
 				n := -1
 				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "tool_call_count", IntValue: &n}}
 			},
 			wantErr: "invalid config: scenarios[0].assertions[0].int_value: must be >= 0. Fix: use a non-negative expected tool call count",
+		},
+		{
+			name: "exit code assertion accepts only non-negative values",
+			mutate: func(cfg *cleanr.Config) {
+				n := -1
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "exit_code", IntValue: &n}}
+			},
+			wantErr: "invalid config: scenarios[0].assertions[0].int_value: must be >= 0. Fix: use a non-negative process exit code",
+		},
+		{
+			name: "stream ttft assertion requires int value",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "stream_ttft_ms"}}
+			},
+			wantErr: "invalid config: scenarios[0].assertions[0].int_value: is required. Fix: set the maximum allowed latency in milliseconds",
 		},
 	}
 

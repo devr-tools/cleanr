@@ -257,6 +257,22 @@ func applyTargetDefaults(target *core.TargetConfig, requireExplicitType bool) {
 	if !requireExplicitType && target.Type == "" {
 		target.Type = "http"
 	}
+	applyCommonTargetDefaults(target)
+	switch target.TargetType() {
+	case "cli":
+		applyCLITargetDefaults(target)
+	case "graphql":
+		applyGraphQLTargetDefaults(target)
+	case "openai", "openai_compatible":
+		applyOpenAITargetDefaults(target)
+	case "anthropic":
+		applyAnthropicTargetDefaults(target)
+	case "mcp":
+		applyMCPTargetDefaults(target)
+	}
+}
+
+func applyCommonTargetDefaults(target *core.TargetConfig) {
 	if target.Method == "" {
 		target.Method = "POST"
 	}
@@ -268,36 +284,92 @@ func applyTargetDefaults(target *core.TargetConfig, requireExplicitType bool) {
 			"Content-Type": "application/json",
 		}
 	}
-	if target.TargetType() == "openai" {
-		if target.Name == "" {
-			target.Name = "openai"
-		}
-		if target.OpenAI.APIMode == "" {
-			target.OpenAI.APIMode = "responses"
-		}
-		if target.OpenAI.APIKeyEnv == "" {
-			target.OpenAI.APIKeyEnv = "OPENAI_API_KEY"
-		}
-		if target.OpenAI.BaseURL == "" {
-			target.OpenAI.BaseURL = "https://api.openai.com/v1"
+}
+
+func applyOpenAITargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = defaultOpenAITargetName(target.TargetType())
+	}
+	if target.OpenAI.APIMode == "" {
+		target.OpenAI.APIMode = "responses"
+	}
+	if target.OpenAI.APIKeyEnv == "" {
+		target.OpenAI.APIKeyEnv = "OPENAI_API_KEY"
+	}
+	if target.OpenAI.BaseURL == "" {
+		target.OpenAI.BaseURL = "https://api.openai.com/v1"
+	}
+	if target.OpenAI.AuthHeader == "" {
+		target.OpenAI.AuthHeader = "Authorization"
+	}
+	if target.OpenAI.AuthScheme == "" {
+		target.OpenAI.AuthScheme = "Bearer"
+	}
+}
+
+func applyCLITargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = "cli"
+	}
+	if target.CLI.Env == nil {
+		target.CLI.Env = map[string]string{}
+	}
+}
+
+func applyGraphQLTargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = "graphql"
+	}
+	if target.Method == "" {
+		target.Method = "POST"
+	}
+	if target.Headers == nil {
+		target.Headers = map[string]string{}
+	}
+	if _, ok := target.Headers["Content-Type"]; !ok {
+		target.Headers["Content-Type"] = "application/json"
+	}
+	if target.ResponseField == "" {
+		target.ResponseField = "data"
+	}
+}
+
+func defaultOpenAITargetName(targetType string) string {
+	if targetType == "openai_compatible" {
+		return "openai-compatible"
+	}
+	return "openai"
+}
+
+func applyAnthropicTargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = "anthropic"
+	}
+	if target.Anthropic.APIKeyEnv == "" {
+		target.Anthropic.APIKeyEnv = "ANTHROPIC_API_KEY"
+	}
+	if target.Anthropic.BaseURL == "" {
+		target.Anthropic.BaseURL = "https://api.anthropic.com/v1"
+	}
+	if target.Anthropic.Version == "" {
+		target.Anthropic.Version = "2023-06-01"
+	}
+	if target.Anthropic.MaxTokens == 0 {
+		target.Anthropic.MaxTokens = 1024
+	}
+}
+
+func applyMCPTargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = "mcp-tool"
+	}
+	if target.MCP.Initialize || target.MCP.URL != "" {
+		if target.MCP.Headers == nil {
+			target.MCP.Headers = map[string]string{}
 		}
 	}
-	if target.TargetType() == "anthropic" {
-		if target.Name == "" {
-			target.Name = "anthropic"
-		}
-		if target.Anthropic.APIKeyEnv == "" {
-			target.Anthropic.APIKeyEnv = "ANTHROPIC_API_KEY"
-		}
-		if target.Anthropic.BaseURL == "" {
-			target.Anthropic.BaseURL = "https://api.anthropic.com/v1"
-		}
-		if target.Anthropic.Version == "" {
-			target.Anthropic.Version = "2023-06-01"
-		}
-		if target.Anthropic.MaxTokens == 0 {
-			target.Anthropic.MaxTokens = 1024
-		}
+	if !target.MCP.Initialize {
+		target.MCP.Initialize = true
 	}
 }
 

@@ -43,6 +43,14 @@ func jsonResponse(t *testing.T, statusCode int, body map[string]any) *http.Respo
 	}
 }
 
+func sseResponse(statusCode int, body string) *http.Response {
+	return &http.Response{
+		StatusCode: statusCode,
+		Header:     http.Header{"Content-Type": []string{"text/event-stream"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+	}
+}
+
 func runConfigAsJSONReport(t *testing.T, configPath string) cleanr.Report {
 	t.Helper()
 

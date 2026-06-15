@@ -155,6 +155,235 @@ func TestOpenAITargetNormalizesChatCompletionToolCalls(t *testing.T) {
 	if resp.Normalized.FinishReason != "tool_calls" || toolCall.Name != "lookup_policy" || toolCall.Arguments != "{\"policy_id\":\"refunds\"}" {
 		t.Fatalf("unexpected normalized tool call payload: normalized=%+v tool=%+v", resp.Normalized, toolCall)
 	}
+	parsedArgs, ok := toolCall.ParsedArgs.(map[string]any)
+	if !ok || parsedArgs["policy_id"] != "refunds" {
+		t.Fatalf("unexpected parsed tool arguments: %+v", toolCall.ParsedArgs)
+	}
+}
+
+func TestOpenAITargetParsesChatCompletionSSE(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body := decodeRequestBody(t, req)
+			if body["stream"] != true {
+				t.Fatalf("expected stream request body, got %#v", body)
+			}
+			return sseResponse(http.StatusOK, strings.Join([]string{
+				`data: {"id":"chatcmpl_stream","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"role":"assistant","content":"Hello "}}]}`,
+				"",
+				`data: {"id":"chatcmpl_stream","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"content":"world","tool_calls":[{"index":0,"id":"call_1","type":"function","function":{"name":"lookup_policy","arguments":"{\"policy_id\":\"refund"}}]}}]}`,
+				"",
+				`data: {"id":"chatcmpl_stream","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[{"index":0,"delta":{"tool_calls":[{"index":0,"function":{"arguments":"s\"}"}}]}}]}`,
+				"",
+				`data: {"id":"chatcmpl_stream","object":"chat.completion.chunk","model":"gpt-4o-mini","choices":[],"usage":{"prompt_tokens":18,"completion_tokens":4,"total_tokens":22}}`,
+				"",
+				`data: {"broken":`,
+				"",
+				`data: [DONE]`,
+				"",
+			}, "\n")), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type:   "openai",
+		Stream: true,
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:   "chat_completions",
+			Model:     "gpt-4o-mini",
+			APIKeyEnv: "OPENAI_API_KEY",
+			BaseURL:   "https://openai.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.Request{Prompt: "hello", Timeout: 2 * time.Second})
+	if resp.Err != nil {
+		t.Fatalf("unexpected response error: %v", resp.Err)
+	}
+	if resp.Text != "Hello world" {
+		t.Fatalf("unexpected stream text: %q", resp.Text)
+	}
+	if resp.Stream.CompletionState != "completed" || resp.Stream.ErrorCount < 1 || !resp.Stream.Recovered {
+		t.Fatalf("unexpected stream metrics: %+v", resp.Stream)
+	}
+	if resp.Usage.TotalTokens != 22 {
+		t.Fatalf("unexpected usage: %+v", resp.Usage)
+	}
+	if len(resp.Normalized.ToolCalls) != 1 || resp.Normalized.ToolCalls[0].Arguments != "{\"policy_id\":\"refunds\"}" {
+		t.Fatalf("unexpected tool calls: %+v", resp.Normalized.ToolCalls)
+	}
+}
+
+func TestOpenAITargetParsesResponsesSSE(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body := decodeRequestBody(t, req)
+			if body["stream"] != true {
+				t.Fatalf("expected stream request body, got %#v", body)
+			}
+			return sseResponse(http.StatusOK, strings.Join([]string{
+				"event: response.output_text.delta",
+				`data: {"delta":"Require MFA "}`,
+				"",
+				"event: response.output_text.delta",
+				`data: {"delta":"everywhere."}`,
+				"",
+				"event: response.completed",
+				`data: {"id":"resp_stream","model":"gpt-4.1-mini","status":"completed","output":[{"type":"message","role":"assistant","content":[{"type":"output_text","text":"Require MFA everywhere."}]}],"usage":{"input_tokens":21,"output_tokens":8,"total_tokens":29}}`,
+				"",
+			}, "\n")), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type:   "openai",
+		Stream: true,
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:   "responses",
+			Model:     "gpt-4.1-mini",
+			APIKeyEnv: "OPENAI_API_KEY",
+			BaseURL:   "https://openai.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.Request{Prompt: "hello", Timeout: 2 * time.Second})
+	if resp.Err != nil {
+		t.Fatalf("unexpected response error: %v", resp.Err)
+	}
+	if resp.Text != "Require MFA everywhere." {
+		t.Fatalf("unexpected stream text: %q", resp.Text)
+	}
+	if resp.Stream.CompletionState != "completed" {
+		t.Fatalf("unexpected stream metrics: %+v", resp.Stream)
+	}
+	if resp.Normalized.Status != "completed" || resp.Usage.TotalTokens != 29 {
+		t.Fatalf("unexpected normalized response: normalized=%+v usage=%+v", resp.Normalized, resp.Usage)
+	}
+}
+
+func TestOpenAITargetBuildsTranscriptMessages(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body := decodeRequestBody(t, req)
+			messages, ok := body["messages"].([]any)
+			if !ok || len(messages) != 4 {
+				t.Fatalf("unexpected transcript messages: %#v", body["messages"])
+			}
+			first := messages[0].(map[string]any)
+			last := messages[3].(map[string]any)
+			if first["role"] != "developer" || last["role"] != "tool" {
+				t.Fatalf("unexpected transcript roles: %#v %#v", first, last)
+			}
+			if last["tool_call_id"] != "call_1" || last["name"] != "lookup_policy" {
+				t.Fatalf("unexpected tool transcript payload: %#v", last)
+			}
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":     "chatcmpl_turns",
+				"object": "chat.completion",
+				"model":  "gpt-4o-mini",
+				"choices": []any{
+					map[string]any{"message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"},
+				},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type: "openai",
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:   "chat_completions",
+			Model:     "gpt-4o-mini",
+			APIKeyEnv: "OPENAI_API_KEY",
+			BaseURL:   "https://openai.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.BuildScenarioRequest(cleanr.Scenario{
+		Name: "transcript",
+		Turns: []cleanr.ConversationTurn{
+			{Role: "system", Content: "You are helpful."},
+			{Role: "user", Content: "First turn"},
+			{Role: "assistant", Content: "First answer"},
+			{Role: "tool", Name: "lookup_policy", ToolCallID: "call_1", Content: "{\"policy\":\"refunds\"}"},
+		},
+	}, 2*time.Second))
+	if resp.Err != nil || resp.Text != "done" {
+		t.Fatalf("unexpected transcript response: %+v", resp)
+	}
+}
+
+func TestOpenAICompatibleTargetSupportsCustomAuthAndProviderLabel(t *testing.T) {
+	t.Setenv("OLLAMA_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			if req.URL.String() != "https://compat.test/v1/chat/completions" {
+				t.Fatalf("unexpected url: %s", req.URL.String())
+			}
+			if req.Header.Get("api-key") != "test-key" {
+				t.Fatalf("unexpected custom auth header: %q", req.Header.Get("api-key"))
+			}
+			if got := req.Header.Get("Authorization"); got != "" {
+				t.Fatalf("expected bearer auth to stay unset, got %q", got)
+			}
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":     "chatcmpl_tool",
+				"object": "chat.completion",
+				"model":  "llama3.1",
+				"choices": []any{
+					map[string]any{
+						"index": 0,
+						"message": map[string]any{
+							"role":    "assistant",
+							"content": nil,
+							"tool_calls": []any{
+								map[string]any{
+									"id":   "call_compat",
+									"type": "function",
+									"function": map[string]any{
+										"name":      "lookup_policy",
+										"arguments": "{\"policy_id\":\"refunds\"}",
+									},
+								},
+							},
+						},
+						"finish_reason": "tool_calls",
+					},
+				},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type: "openai_compatible",
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:    "chat_completions",
+			Model:      "llama3.1",
+			APIKeyEnv:  "OLLAMA_API_KEY",
+			BaseURL:    "https://compat.test/v1",
+			Provider:   "ollama",
+			AuthHeader: "api-key",
+			AuthScheme: "none",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.Request{
+		Prompt:  "Use tools when needed.",
+		Timeout: 2 * time.Second,
+	})
+
+	if resp.Err != nil || resp.ExtractError != nil {
+		t.Fatalf("unexpected response errors: err=%v extract=%v", resp.Err, resp.ExtractError)
+	}
+	if resp.Normalized.Provider != "ollama" {
+		t.Fatalf("unexpected provider label: %+v", resp.Normalized)
+	}
 }
 
 func TestRunCommandSupportsOpenAIChatCompletionsTarget(t *testing.T) {

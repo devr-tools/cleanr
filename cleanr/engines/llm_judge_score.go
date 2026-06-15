@@ -63,12 +63,7 @@ func (e LLMJudgeEngine) runScore(ctx context.Context, runCtx *core.RunContext, c
 
 func (e LLMJudgeEngine) runScoreCase(ctx context.Context, in scoreCaseInput) core.CaseResult {
 	start := time.Now()
-	resp := in.runCtx.Target.Invoke(ctx, core.Request{
-		Scenario: in.scenario,
-		System:   in.scenario.System,
-		Prompt:   in.scenario.Input,
-		Timeout:  in.runCtx.Config.Target.Timeout(),
-	})
+	resp := in.runCtx.Target.Invoke(ctx, scenarioRequest(in.scenario, in.runCtx.Config.Target.Timeout()))
 	findings := responseFindings(resp, nil)
 	if resp.Err != nil || resp.StatusCode >= 500 {
 		return core.CaseResult{

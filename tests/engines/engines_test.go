@@ -95,6 +95,46 @@ func TestEngineNamesAndSecurityFindingsCoverage(t *testing.T) {
 	}
 }
 
+func TestSecurityEngineBuildsTranscriptAwareRequests(t *testing.T) {
+	t.Parallel()
+
+	target := &sequenceTarget{responses: []cleanr.Response{{
+		StatusCode: 200,
+		Text:       "ok",
+	}}}
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name: "transcript",
+		Turns: []cleanr.ConversationTurn{
+			{Role: "system", Content: "You are helpful."},
+			{Role: "user", Content: "First turn"},
+			{Role: "assistant", Content: "First answer"},
+			{Role: "user", Content: "Second turn"},
+		},
+	}}
+	cfg.Suites.Security.Enabled = true
+	cfg.Suites.Security.MaxPIIMatches = 0
+	cfg.Suites.Security.DangerousToolIndicators = nil
+	cfg.Suites.Security.SecretExposureIndicators = nil
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+
+	report := cleanr.NewRunner(cfg, target).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("unexpected transcript report: %+v", report)
+	}
+	if len(target.requests) != 1 || len(target.requests[0].Messages) != 4 {
+		t.Fatalf("expected transcript messages in request, got %+v", target.requests)
+	}
+	if target.requests[0].Prompt != "Second turn" || target.requests[0].System != "You are helpful." {
+		t.Fatalf("unexpected compiled request: %+v", target.requests[0])
+	}
+}
+
 func TestPromptChaosDriftAndTokenOptimizationCoverage(t *testing.T) {
 	t.Parallel()
 

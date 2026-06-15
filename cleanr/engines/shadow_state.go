@@ -48,12 +48,7 @@ func runShadowStateScenario(ctx context.Context, runCtx *core.RunContext, roots,
 	if err != nil {
 		findings = append(findings, core.Finding{Severity: "critical", Message: fmt.Sprintf("capture pre-run file state: %v", err)})
 	}
-	resp := runCtx.Target.Invoke(ctx, core.Request{
-		Scenario: scenario,
-		System:   scenario.System,
-		Prompt:   scenario.Input,
-		Timeout:  runCtx.Config.Target.Timeout(),
-	})
+	resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 	findings = append(findings, responseFindings(resp, nil)...)
 	after, err := captureObservedFiles(roots)
 	if err != nil {

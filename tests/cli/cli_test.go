@@ -2810,6 +2810,9 @@ suites:
 state_adapters:
   - name: ticket-adapter
     command: /bin/echo
+probes:
+  - name: db-ticket-probe
+    command: /bin/echo
 `), 0o644); err != nil {
 		t.Fatalf("write plugin: %v", err)
 	}
@@ -2840,6 +2843,7 @@ scenarios:
 		"policy_packs: ./plugin-pack.yaml",
 		"suite: org-policy -> /bin/echo",
 		"state_adapter: ticket-adapter -> /bin/echo",
+		"probe: db-ticket-probe -> /bin/echo",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("expected %q in plugin output:\n%s", want, output)
@@ -2857,6 +2861,9 @@ scenarios:
 	}
 	if len(decoded) != 1 || decoded[0].Name != "workflow-plugin" {
 		t.Fatalf("unexpected plugins json: %+v", decoded)
+	}
+	if len(decoded[0].Probes) != 1 || decoded[0].Probes[0].Name != "db-ticket-probe" {
+		t.Fatalf("unexpected plugin probes json: %+v", decoded[0].Probes)
 	}
 }
 

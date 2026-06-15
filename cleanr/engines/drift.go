@@ -81,12 +81,7 @@ func collectDriftResponses(ctx context.Context, runCtx *core.RunContext, cfg cor
 	var representative core.Response
 	var representativeSet bool
 	for i := 0; i < cfg.Iterations; i++ {
-		resp := runCtx.Target.Invoke(ctx, core.Request{
-			Scenario: scenario,
-			System:   scenario.System,
-			Prompt:   scenario.Input,
-			Timeout:  runCtx.Config.Target.Timeout(),
-		})
+		resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 		if resp.Err != nil {
 			findings = append(findings, core.Finding{Severity: "high", Message: resp.Err.Error()})
 			continue

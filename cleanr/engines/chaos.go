@@ -26,19 +26,14 @@ func (ChaosEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 	for _, scenario := range runCtx.Config.Scenarios {
 		for _, fault := range faults {
 			start := time.Now()
-			req := core.Request{
-				Scenario: scenario,
-				System:   scenario.System,
-				Prompt:   scenario.Input,
-				Timeout:  runCtx.Config.Target.Timeout(),
-			}
+			req := scenarioRequest(scenario, runCtx.Config.Target.Timeout())
 			switch fault {
 			case "tight_deadline":
 				req.Timeout = time.Duration(float64(req.Timeout) * cfg.TimeoutScale)
 			case "context_overflow":
-				req.Prompt = scenario.Input + "\n\n" + strings.Repeat("noise", max(1, cfg.NoiseBytes/5))
+				req.Prompt = scenario.InputValue() + "\n\n" + strings.Repeat("noise", max(1, cfg.NoiseBytes/5))
 			case "duplicate_turn":
-				req.Prompt = scenario.Input + "\n" + scenario.Input
+				req.Prompt = scenario.InputValue() + "\n" + scenario.InputValue()
 			}
 			resp := runCtx.Target.Invoke(ctx, req)
 			findings := responseFindings(resp, scenario.ForbiddenContains)

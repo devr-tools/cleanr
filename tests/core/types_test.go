@@ -19,6 +19,15 @@ func TestCoreHelperAccessorsAndFacadeMarshaling(t *testing.T) {
 	if (cleanr.TargetConfig{Type: " OpenAI "}).TargetType() != "openai" {
 		t.Fatalf("expected normalized openai target type")
 	}
+	if (cleanr.OpenAIConfig{}).ProviderValue("openai_compatible") != "openai_compatible" || (cleanr.OpenAIConfig{Provider: " Ollama "}).ProviderValue("openai_compatible") != "ollama" {
+		t.Fatal("unexpected openai provider normalization")
+	}
+	if (cleanr.OpenAIConfig{}).AuthHeaderValue() != "Authorization" || (cleanr.OpenAIConfig{AuthHeader: " api-key "}).AuthHeaderValue() != "api-key" {
+		t.Fatal("unexpected openai auth header normalization")
+	}
+	if (cleanr.OpenAIConfig{}).AuthSchemeValue() != "Bearer" || (cleanr.OpenAIConfig{AuthScheme: "Token"}).AuthSchemeValue() != "Token" {
+		t.Fatal("unexpected openai auth scheme normalization")
+	}
 	if (cleanr.OpenAIConfig{}).APIModeValue() != "responses" || (cleanr.OpenAIConfig{APIMode: " CHAT_COMPLETIONS "}).APIModeValue() != "chat_completions" {
 		t.Fatal("unexpected openai api mode normalization")
 	}
@@ -27,6 +36,22 @@ func TestCoreHelperAccessorsAndFacadeMarshaling(t *testing.T) {
 	}
 	if (cleanr.AnthropicConfig{}).MaxTokensValue() != 1024 || (cleanr.AnthropicConfig{MaxTokens: 2048}).MaxTokensValue() != 2048 {
 		t.Fatal("unexpected anthropic max_tokens normalization")
+	}
+	scenario := cleanr.Scenario{
+		Name: "multi-turn",
+		Turns: []cleanr.ConversationTurn{
+			{Role: "system", Content: "You are helpful."},
+			{Role: "user", Content: "First request"},
+			{Role: "assistant", Content: "First answer"},
+			{Role: "user", Content: "Second request"},
+		},
+	}
+	if scenario.SystemValue() != "You are helpful." || scenario.InputValue() != "Second request" {
+		t.Fatalf("unexpected transcript accessors: %+v", scenario)
+	}
+	req := cleanr.BuildScenarioRequest(scenario, targetCfg.Timeout())
+	if len(req.Messages) != 4 || req.System != "You are helpful." || req.Prompt != "Second request" {
+		t.Fatalf("unexpected scenario request: %+v", req)
 	}
 
 	cfg := cleanr.ExampleConfig()

@@ -119,6 +119,7 @@ OpenAI-native examples are available in:
 
 - `examples/openai-responses.yaml`
 - `examples/openai-chat-completions.yaml`
+- `examples/openai-compatible.yaml`
 - `examples/anthropic-messages.yaml`
 - `examples/openai-responses-tuned.yaml`
 - `examples/stateful-support-agent/cleanr.yaml`
@@ -329,6 +330,48 @@ Behavior:
 - `scenario.system` is sent as top-level `instructions` for `responses`, or as a `developer` message for `chat_completions`
 - `scenario.input` is sent as the user prompt
 - provider token usage is captured from the OpenAI response when available
+
+### OpenAI-compatible target
+
+Use `target.type: openai_compatible` when the provider speaks an OpenAI-style API surface but needs provider-specific metadata such as a non-default auth header, auth scheme, or provider label.
+
+```yaml
+target:
+  type: openai_compatible
+  name: ollama-chat
+  timeout_ms: 5000
+  openai:
+    provider: ollama
+    api_mode: chat_completions
+    model: llama3.1
+    api_key_env: OLLAMA_API_KEY
+    base_url: https://compat.example.com/v1
+    auth_header: Authorization
+    auth_scheme: Bearer
+    quirks_profile: generic
+```
+
+Supported fields:
+
+- `type`: must be `openai_compatible`
+- `name`: logical target name used in reporting
+- `timeout_ms`: per-request timeout in milliseconds
+- `headers`: optional extra request headers
+- `openai.api_mode`: `responses` or `chat_completions`
+- `openai.model`: provider model name
+- `openai.api_key_env`: environment variable containing the API key or token
+- `openai.base_url`: OpenAI-compatible API base URL
+- `openai.provider`: normalized provider label used in reporting, for example `ollama`, `vllm`, or `mistral`
+- `openai.auth_header`: auth header name, for example `Authorization` or `api-key`
+- `openai.auth_scheme`: auth scheme prefix such as `Bearer`; set to `none` to send the token value without a prefix
+- `openai.quirks_profile`: optional provider-profile label reserved for compatibility behavior differences
+
+Behavior:
+
+- request construction and response normalization reuse the OpenAI adapter surface, including token usage, finish reason, tool calls, approvals, and other trace-backed fields
+- `scenario.system` is sent as top-level `instructions` for `responses`, or as a `system` message for `chat_completions`
+- `scenario.turns` is supported for multi-turn OpenAI-compatible transcripts the same way it is for native OpenAI targets
+- `examples/openai-compatible.yaml` is the canonical starter example for this target type
 
 ### Anthropic target
 

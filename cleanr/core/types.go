@@ -4,11 +4,15 @@ import typespkg "github.com/devr-tools/cleanr/cleanr/core/types"
 
 type Config = typespkg.Config
 type TargetConfig = typespkg.TargetConfig
+type CLIConfig = typespkg.CLIConfig
+type GraphQLConfig = typespkg.GraphQLConfig
 type OpenAIConfig = typespkg.OpenAIConfig
 type AnthropicConfig = typespkg.AnthropicConfig
+type MCPConfig = typespkg.MCPConfig
 type ScenarioGenerationConfig = typespkg.ScenarioGenerationConfig
 type ScenarioGenerationSpec = typespkg.ScenarioGenerationSpec
 type Scenario = typespkg.Scenario
+type ConversationTurn = typespkg.ConversationTurn
 type ContextSource = typespkg.ContextSource
 type MemoryReplaySession = typespkg.MemoryReplaySession
 type ExpectedMutation = typespkg.ExpectedMutation
@@ -38,9 +42,11 @@ type SummaryConfig = typespkg.SummaryConfig
 type PluginManifest = typespkg.PluginManifest
 type PluginSuite = typespkg.PluginSuite
 type PluginStateAdapter = typespkg.PluginStateAdapter
+type PluginProbe = typespkg.PluginProbe
 type TrendGateConfig = typespkg.TrendGateConfig
 type Request = typespkg.Request
 type Response = typespkg.Response
+type StreamMetrics = typespkg.StreamMetrics
 type TokenUsage = typespkg.TokenUsage
 type ProviderResponse = typespkg.ProviderResponse
 type ToolCall = typespkg.ToolCall

@@ -45,6 +45,9 @@ func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
 	for k, v := range req.Headers {
 		httpReq.Header.Set(k, v)
 	}
+	if t.cfg.Stream && httpReq.Header.Get("Accept") == "" {
+		httpReq.Header.Set("Accept", "text/event-stream")
+	}
 
 	start := time.Now()
 	httpResp, err := t.client.Do(httpReq)
@@ -54,21 +57,54 @@ func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
 	}
 	defer httpResp.Body.Close()
 
+	if isSSEContentType(httpResp.Header.Get("Content-Type")) {
+		return t.invokeStream(httpResp, latency)
+	}
+
 	respBody, err := io.ReadAll(httpResp.Body)
 	if err != nil {
 		return core.Response{StatusCode: httpResp.StatusCode, Latency: latency, Err: err}
 	}
 
 	text, extractErr := extractResponseField(respBody, t.cfg.ResponseField)
-	normalized, usage := extractHTTPNormalized(respBody, httpResp.Status)
+	normalized, usage, stream := extractHTTPNormalized(respBody, httpResp.Status)
 	return core.Response{
 		StatusCode:   httpResp.StatusCode,
 		Body:         respBody,
 		Text:         text,
 		Latency:      latency,
+		Stream:       stream,
 		ExtractError: extractErr,
 		Usage:        usage,
 		Normalized:   normalized,
+	}
+}
+
+func (t *HTTP) invokeStream(httpResp *http.Response, latency time.Duration) core.Response {
+	events, stream, err := parseSSEStream(httpResp.Body)
+	if err != nil {
+		return core.Response{StatusCode: httpResp.StatusCode, Latency: latency, Stream: stream, Err: err}
+	}
+	text := collectHTTPStreamText(events, t.cfg.ResponseField, &stream)
+	stream.CompletionState = httpStreamCompletionState(events)
+	body := marshalSSEEvents(events)
+	normalized := core.ProviderResponse{
+		Provider: "http",
+		Status:   httpResp.Status,
+		Raw: map[string]any{
+			"stream_events": events,
+		},
+	}
+	if stream.CompletionState == "completed" {
+		markStreamParseRecovery(&stream)
+	}
+	return core.Response{
+		StatusCode: httpResp.StatusCode,
+		Body:       body,
+		Text:       text,
+		Latency:    latency,
+		Stream:     stream,
+		Normalized: normalized,
 	}
 }
 
@@ -84,6 +120,7 @@ func buildRequestBody(req core.Request, cfg core.TargetConfig) any {
 	replacements := map[string]string{
 		"prompt":        req.Prompt,
 		"system":        req.System,
+		"transcript":    req.Scenario.TranscriptText(),
 		"scenario.name": req.Scenario.Name,
 	}
 	return interpolateValue(rendered, replacements, req.Scenario.Metadata, cfg, req)
@@ -104,37 +141,69 @@ func deepClone(v any) any {
 func interpolateValue(v any, replacements map[string]string, metadata map[string]string, cfg core.TargetConfig, req core.Request) any {
 	switch typed := v.(type) {
 	case map[string]any:
-		for k, item := range typed {
-			typed[k] = interpolateValue(item, replacements, metadata, cfg, req)
-		}
-		typed[cfg.PromptField] = req.Prompt
-		if cfg.SystemField != "" {
-			typed[cfg.SystemField] = req.System
-		}
-		if len(metadata) > 0 {
-			if _, ok := typed["metadata"]; !ok {
-				typed["metadata"] = map[string]any{}
-			}
-			if metaMap, ok := typed["metadata"].(map[string]any); ok {
-				for k, v := range metadata {
-					metaMap[k] = v
-				}
-			}
-		}
-		return typed
+		return interpolateMapValue(typed, replacements, metadata, cfg, req)
 	case []any:
-		for i, item := range typed {
-			typed[i] = interpolateValue(item, replacements, metadata, cfg, req)
-		}
-		return typed
+		return interpolateSliceValue(typed, replacements, metadata, cfg, req)
 	case string:
-		out := typed
-		for key, value := range replacements {
-			out = strings.ReplaceAll(out, "{{"+key+"}}", value)
-		}
-		return out
+		return interpolateStringValue(typed, replacements)
 	default:
 		return typed
+	}
+}
+
+func interpolateMapValue(typed map[string]any, replacements map[string]string, metadata map[string]string, cfg core.TargetConfig, req core.Request) any {
+	for k, item := range typed {
+		typed[k] = interpolateValue(item, replacements, metadata, cfg, req)
+	}
+	applyPromptFields(typed, cfg, req)
+	applyTranscriptFields(typed, req)
+	applyMetadataFields(typed, metadata)
+	return typed
+}
+
+func interpolateSliceValue(typed []any, replacements map[string]string, metadata map[string]string, cfg core.TargetConfig, req core.Request) any {
+	for i, item := range typed {
+		typed[i] = interpolateValue(item, replacements, metadata, cfg, req)
+	}
+	return typed
+}
+
+func interpolateStringValue(value string, replacements map[string]string) string {
+	out := value
+	for key, replacement := range replacements {
+		out = strings.ReplaceAll(out, "{{"+key+"}}", replacement)
+	}
+	return out
+}
+
+func applyPromptFields(payload map[string]any, cfg core.TargetConfig, req core.Request) {
+	if cfg.PromptField != "" {
+		payload[cfg.PromptField] = req.Prompt
+	}
+	if cfg.SystemField != "" {
+		payload[cfg.SystemField] = req.System
+	}
+}
+
+func applyTranscriptFields(payload map[string]any, req core.Request) {
+	if len(req.Messages) == 0 {
+		return
+	}
+	payload["messages"] = deepClone(req.Messages)
+	payload["transcript"] = req.Scenario.TranscriptText()
+}
+
+func applyMetadataFields(payload map[string]any, metadata map[string]string) {
+	if len(metadata) == 0 {
+		return
+	}
+	metaMap, ok := payload["metadata"].(map[string]any)
+	if !ok {
+		metaMap = map[string]any{}
+		payload["metadata"] = metaMap
+	}
+	for key, value := range metadata {
+		metaMap[key] = value
 	}
 }
 
@@ -168,14 +237,14 @@ func extractResponseField(body []byte, path string) (string, error) {
 	}
 }
 
-func extractHTTPNormalized(body []byte, status string) (core.ProviderResponse, core.TokenUsage) {
+func extractHTTPNormalized(body []byte, status string) (core.ProviderResponse, core.TokenUsage, core.StreamMetrics) {
 	normalized := core.ProviderResponse{
 		Provider: "http",
 		Status:   status,
 	}
 	var payload map[string]any
 	if err := json.Unmarshal(body, &payload); err != nil {
-		return normalized, core.TokenUsage{}
+		return normalized, core.TokenUsage{}, core.StreamMetrics{}
 	}
 
 	trace := payload
@@ -213,7 +282,119 @@ func extractHTTPNormalized(body []byte, status string) (core.ProviderResponse, c
 	if usage.TotalTokens == 0 {
 		usage.TotalTokens = usage.InputTokens + usage.OutputTokens
 	}
-	return normalized, usage
+	streamPayload := payload
+	if nested, ok := payload["stream"].(map[string]any); ok {
+		streamPayload = nested
+	} else if nested, ok := trace["stream"].(map[string]any); ok {
+		streamPayload = nested
+	}
+	stream := core.StreamMetrics{
+		TTFTMS:          int64(intValue(streamPayload["ttft_ms"])),
+		DurationMS:      int64(intValue(streamPayload["duration_ms"])),
+		ChunkCount:      intValue(streamPayload["chunk_count"]),
+		ErrorCount:      intValue(streamPayload["error_count"]),
+		Recovered:       boolValue(streamPayload["recovered"]),
+		CompletionState: stringValue(streamPayload["completion_state"]),
+	}
+	return normalized, usage, stream
+}
+
+func isSSEContentType(contentType string) bool {
+	return strings.Contains(strings.ToLower(contentType), "text/event-stream")
+}
+
+func collectHTTPStreamText(events []sseEvent, responseField string, metrics *core.StreamMetrics) string {
+	parts := make([]string, 0, len(events))
+	for _, event := range events {
+		text, ok := extractHTTPStreamEventText(event.Data, responseField)
+		if ok {
+			parts = append(parts, text)
+			continue
+		}
+		if shouldCountHTTPStreamParseError(event.Data, responseField) {
+			metrics.ErrorCount++
+		}
+	}
+	return strings.TrimSpace(strings.Join(parts, ""))
+}
+
+func extractHTTPStreamEventText(data, responseField string) (string, bool) {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" || trimmed == "[DONE]" {
+		return "", false
+	}
+	if responseField == "" {
+		if text, ok := extractHTTPStreamJSONText(trimmed, "text", "delta", "content"); ok {
+			return text, true
+		}
+		return trimmed, true
+	}
+	var payload any
+	if err := json.Unmarshal([]byte(trimmed), &payload); err != nil {
+		return "", false
+	}
+	if text, err := extractResponseField([]byte(trimmed), responseField); err == nil && strings.TrimSpace(text) != "" {
+		return text, true
+	}
+	if obj, ok := payload.(map[string]any); ok {
+		if text, ok := extractHTTPStreamJSONTextFromObject(obj, "text", "delta", "content"); ok {
+			return text, true
+		}
+	}
+	return "", false
+}
+
+func shouldCountHTTPStreamParseError(data, responseField string) bool {
+	trimmed := strings.TrimSpace(data)
+	if trimmed == "" || trimmed == "[DONE]" || !strings.HasPrefix(trimmed, "{") {
+		return false
+	}
+	if responseField == "" {
+		return false
+	}
+	return true
+}
+
+func extractHTTPStreamJSONText(data string, keys ...string) (string, bool) {
+	var payload map[string]any
+	if err := json.Unmarshal([]byte(data), &payload); err != nil {
+		return "", false
+	}
+	return extractHTTPStreamJSONTextFromObject(payload, keys...)
+}
+
+func extractHTTPStreamJSONTextFromObject(payload map[string]any, keys ...string) (string, bool) {
+	for _, key := range keys {
+		if value := stringValue(payload[key]); strings.TrimSpace(value) != "" {
+			return value, true
+		}
+	}
+	return "", false
+}
+
+func httpStreamCompletionState(events []sseEvent) string {
+	if len(events) == 0 {
+		return ""
+	}
+	for i := len(events) - 1; i >= 0; i-- {
+		data := strings.TrimSpace(events[i].Data)
+		name := strings.TrimSpace(events[i].Name)
+		switch {
+		case data == "[DONE]":
+			return "completed"
+		case strings.EqualFold(name, "error"):
+			return "error"
+		}
+	}
+	return "eof"
+}
+
+func marshalSSEEvents(events []sseEvent) []byte {
+	data, err := json.Marshal(map[string]any{"events": events})
+	if err != nil {
+		return nil
+	}
+	return data
 }
 
 func decodeStructuredSlice[T any](value any) []T {
@@ -248,4 +429,9 @@ func intValue(value any) int {
 	default:
 		return 0
 	}
+}
+
+func boolValue(value any) bool {
+	typed, ok := value.(bool)
+	return ok && typed
 }

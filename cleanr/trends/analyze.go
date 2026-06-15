@@ -72,6 +72,7 @@ func Analyze(history HistoryFile, window int) Analysis {
 	analysis.FailedRuns = failedRuns
 	analysis.PassRate = round3(float64(passedRuns) / float64(len(selected)))
 	analysis.AverageDuration = averageDuration(totalDuration, len(selected))
+	analysis.Load = analyzeLoadWindow(selected)
 	return analysis
 }
 
@@ -166,6 +167,42 @@ func analyzeDriftWindow(runs []HistoryRun) *DriftWindow {
 	summary.LatestSemanticDrift = round3(summary.LatestSemanticDrift)
 	summary.LatestBaselineDrift = round3(summary.LatestBaselineDrift)
 	summary.LatestBaselineSemanticDrift = round3(summary.LatestBaselineSemanticDrift)
+	return summary
+}
+
+func analyzeLoadWindow(runs []HistoryRun) *LoadWindow {
+	loadRuns := 0
+	summary := &LoadWindow{}
+	for _, run := range runs {
+		suite, ok := findSuite(run, "load")
+		if !ok || suite.Load == nil {
+			continue
+		}
+		loadRuns++
+		summary.AverageErrorRatePct += float64(suite.Load.ErrorRatePct)
+		summary.AverageP50LatencyMS += float64(suite.Load.P50LatencyMS)
+		summary.AverageP95LatencyMS += float64(suite.Load.P95LatencyMS)
+		summary.AverageP99LatencyMS += float64(suite.Load.P99LatencyMS)
+		summary.AverageThroughputRPS += suite.Load.ThroughputRPS
+	}
+	if loadRuns == 0 {
+		return nil
+	}
+	summary.Runs = loadRuns
+	latestSuite, _ := findSuite(runs[len(runs)-1], "load")
+	if latestSuite.Load != nil {
+		summary.LatestErrorRatePct = latestSuite.Load.ErrorRatePct
+		summary.LatestP50LatencyMS = latestSuite.Load.P50LatencyMS
+		summary.LatestP95LatencyMS = latestSuite.Load.P95LatencyMS
+		summary.LatestP99LatencyMS = latestSuite.Load.P99LatencyMS
+		summary.LatestThroughputRPS = round3(latestSuite.Load.ThroughputRPS)
+	}
+	divisor := float64(loadRuns)
+	summary.AverageErrorRatePct = round3(summary.AverageErrorRatePct / divisor)
+	summary.AverageP50LatencyMS = round3(summary.AverageP50LatencyMS / divisor)
+	summary.AverageP95LatencyMS = round3(summary.AverageP95LatencyMS / divisor)
+	summary.AverageP99LatencyMS = round3(summary.AverageP99LatencyMS / divisor)
+	summary.AverageThroughputRPS = round3(summary.AverageThroughputRPS / divisor)
 	return summary
 }
 
