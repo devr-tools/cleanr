@@ -115,6 +115,7 @@ More CI, Docker, SDK, and release patterns are in [docs/ci.md](docs/ci.md), [doc
 
 - [OpenAI Responses](examples/openai-responses.yaml)
 - [OpenAI Chat Completions](examples/openai-chat-completions.yaml)
+- [OpenAI-Compatible Target](examples/openai-compatible.yaml)
 - [Anthropic Messages](examples/anthropic-messages.yaml)
 - [Containerized Assistant](examples/containerized-assistant/README.md)
 - [Best Practice Profiles](examples/best-practices/cleanr-pr.yaml)
