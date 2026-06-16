@@ -116,36 +116,6 @@ func resolveCICoverageThreshold(explicit float64) float64 {
 	return value
 }
 
-func resolveCIMaxFileCodeLines(explicit int) int {
-	if explicit > 0 {
-		return explicit
-	}
-	raw := strings.TrimSpace(os.Getenv("MAX_GO_FILE_CODE_LINES"))
-	if raw == "" {
-		return defaultCIMaxFileCodeLines
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return defaultCIMaxFileCodeLines
-	}
-	return value
-}
-
-func resolveCIMaxFunctionComplexity(explicit int) int {
-	if explicit > 0 {
-		return explicit
-	}
-	raw := strings.TrimSpace(os.Getenv("MAX_FUNCTION_COMPLEXITY"))
-	if raw == "" {
-		return defaultCIMaxFunctionComplexity
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return defaultCIMaxFunctionComplexity
-	}
-	return value
-}
-
 func shouldFallbackToPrebuiltGoTool(err error) bool {
 	if err == nil {
 		return false

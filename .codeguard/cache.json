@@ -137,7 +137,7 @@
       "findings": []
     },
     "ci-test-file-location|.|tests/devtools/ci_test.go": {
-      "file_hash": "3422d6eb4fa126b7d71cf774b365fa6dd775b1c6",
+      "file_hash": "0fda9e0295ab5e121e54f963b2752898beca4978",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -442,7 +442,7 @@
       "findings": []
     },
     "ci|.|tests/devtools/ci_test.go": {
-      "file_hash": "3422d6eb4fa126b7d71cf774b365fa6dd775b1c6",
+      "file_hash": "0fda9e0295ab5e121e54f963b2752898beca4978",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -1067,7 +1067,7 @@
       "findings": []
     },
     "quality-clone|.|cmd/cleanr-dev/main.go": {
-      "file_hash": "65344aa3636fac54af5423a7c17398032396e0ce",
+      "file_hash": "404aaf5166a575e2072a05f42b6e37a690ad4b74",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -1267,17 +1267,22 @@
       "findings": []
     },
     "quality-clone|.|internal/devtools/ci.go": {
-      "file_hash": "4872714d9daab012d85e7446c75d4198ae6c8291",
+      "file_hash": "bd1177a4a4b21ba99b2b66fe207113fe877f2e20",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
     "quality-clone|.|internal/devtools/ci_codeguard.go": {
-      "file_hash": "3e9b0aec42150206488f951b20bdc90858187fae",
+      "file_hash": "c85c166dccfceb50bc0b63ce5b7a24b06aa5908b",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
     "quality-clone|.|internal/devtools/ci_codeguard_package.go": {
       "file_hash": "5775eae99d74b67d048de4c937f3c531f202e062",
+      "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
+      "findings": []
+    },
+    "quality-clone|.|internal/devtools/ci_compat.go": {
+      "file_hash": "0437403a951cdb3ce2ba64da27b3622099f39732",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -1297,7 +1302,7 @@
       "findings": []
     },
     "quality-clone|.|internal/devtools/ci_patterns.go": {
-      "file_hash": "0db67da00399956248b1783e893f1c2ecc809839",
+      "file_hash": "be4dea4f198c5c89871f02ef84293de36db59db3",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -1312,7 +1317,7 @@
       "findings": []
     },
     "quality-clone|.|internal/devtools/ci_utils.go": {
-      "file_hash": "2399267ec4bc269988d983a614c90eecf47cc4ad",
+      "file_hash": "2c26e30451e459eef32202edc223e09279ee8a65",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -1392,7 +1397,7 @@
       "findings": []
     },
     "quality-clone|.|internal/devtools/runner.go": {
-      "file_hash": "2286bac0d2b9c03ca0dc94316cd50864f73e140a",
+      "file_hash": "87e6345e3f6f4dc5b18a2844a5755ff6413e45f7",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -2710,7 +2715,7 @@
       ]
     },
     "quality|.|cmd/cleanr-dev/main.go": {
-      "file_hash": "65344aa3636fac54af5423a7c17398032396e0ce",
+      "file_hash": "404aaf5166a575e2072a05f42b6e37a690ad4b74",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": [
         {
@@ -2719,13 +2724,13 @@
           "severity": "warn",
           "title": "Cyclomatic complexity",
           "section": "Code Quality",
-          "message": "function run has cyclomatic complexity 21; max is 15",
-          "why": "function run has cyclomatic complexity 21; max is 15",
+          "message": "function run has cyclomatic complexity 18; max is 15",
+          "why": "function run has cyclomatic complexity 18; max is 15",
           "how_to_fix": "Reduce branching in the function or refactor logic into smaller units.",
           "path": "cmd/cleanr-dev/main.go",
           "line": 16,
           "column": 1,
-          "fingerprint": "b1cd8e89d764078eb9d902f6f588fad7dc39da04"
+          "fingerprint": "e36e76c1848176ccc9d3815ac8d0fb47cb1961ce"
         }
       ]
     },
@@ -3085,32 +3090,22 @@
       "findings": []
     },
     "quality|.|internal/devtools/ci.go": {
-      "file_hash": "4872714d9daab012d85e7446c75d4198ae6c8291",
+      "file_hash": "bd1177a4a4b21ba99b2b66fe207113fe877f2e20",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
     "quality|.|internal/devtools/ci_codeguard.go": {
-      "file_hash": "3e9b0aec42150206488f951b20bdc90858187fae",
+      "file_hash": "c85c166dccfceb50bc0b63ce5b7a24b06aa5908b",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
-      "findings": [
-        {
-          "rule_id": "design.max-decls-per-file",
-          "level": "warn",
-          "severity": "warn",
-          "title": "Declarations per file",
-          "section": "Design Patterns",
-          "message": "file has 18 declarations; max is 16",
-          "why": "file has 18 declarations; max is 16",
-          "how_to_fix": "Move related declarations into smaller files with clearer ownership.",
-          "path": "internal/devtools/ci_codeguard.go",
-          "line": 1,
-          "column": 1,
-          "fingerprint": "b7829d48fd9e0eab6460fd12e69164dbd732b046"
-        }
-      ]
+      "findings": []
     },
     "quality|.|internal/devtools/ci_codeguard_package.go": {
       "file_hash": "5775eae99d74b67d048de4c937f3c531f202e062",
+      "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
+      "findings": []
+    },
+    "quality|.|internal/devtools/ci_compat.go": {
+      "file_hash": "0437403a951cdb3ce2ba64da27b3622099f39732",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -3130,7 +3125,7 @@
       "findings": []
     },
     "quality|.|internal/devtools/ci_patterns.go": {
-      "file_hash": "0db67da00399956248b1783e893f1c2ecc809839",
+      "file_hash": "be4dea4f198c5c89871f02ef84293de36db59db3",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -3160,7 +3155,7 @@
       "findings": []
     },
     "quality|.|internal/devtools/ci_utils.go": {
-      "file_hash": "2399267ec4bc269988d983a614c90eecf47cc4ad",
+      "file_hash": "2c26e30451e459eef32202edc223e09279ee8a65",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -3270,7 +3265,7 @@
       "findings": []
     },
     "quality|.|internal/devtools/runner.go": {
-      "file_hash": "2286bac0d2b9c03ca0dc94316cd50864f73e140a",
+      "file_hash": "87e6345e3f6f4dc5b18a2844a5755ff6413e45f7",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -3902,50 +3897,22 @@
       ]
     },
     "quality|.|tests/devtools/ci_test.go": {
-      "file_hash": "3422d6eb4fa126b7d71cf774b365fa6dd775b1c6",
+      "file_hash": "0fda9e0295ab5e121e54f963b2752898beca4978",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": [
-        {
-          "rule_id": "quality.max-file-lines",
-          "level": "warn",
-          "severity": "warn",
-          "title": "File length",
-          "section": "Code Quality",
-          "message": "file has 947 lines; max is 600",
-          "why": "file has 947 lines; max is 600",
-          "how_to_fix": "Split the file into smaller units, reduce branching in the file's functions, or raise the configured threshold intentionally.",
-          "path": "tests/devtools/ci_test.go",
-          "line": 947,
-          "column": 1,
-          "fingerprint": "3762574182b46f5d5974a5df53abc0b99ea59619"
-        },
         {
           "rule_id": "design.max-decls-per-file",
           "level": "warn",
           "severity": "warn",
           "title": "Declarations per file",
           "section": "Design Patterns",
-          "message": "file has 34 declarations; max is 16",
-          "why": "file has 34 declarations; max is 16",
+          "message": "file has 21 declarations; max is 16",
+          "why": "file has 21 declarations; max is 16",
           "how_to_fix": "Move related declarations into smaller files with clearer ownership.",
           "path": "tests/devtools/ci_test.go",
           "line": 1,
           "column": 1,
-          "fingerprint": "d47b46772c980a3b2c8f536702f0dc6c35e3b21a"
-        },
-        {
-          "rule_id": "quality.max-function-lines",
-          "level": "warn",
-          "severity": "warn",
-          "title": "Function length",
-          "section": "Code Quality",
-          "message": "function fakeGoScript has 149 lines; max is 120",
-          "why": "function fakeGoScript has 149 lines; max is 120",
-          "how_to_fix": "Break the function into smaller helpers or raise the threshold intentionally.",
-          "path": "tests/devtools/ci_test.go",
-          "line": 756,
-          "column": 1,
-          "fingerprint": "2c319c32e044ec9ebcdda210d1a768b9a4be8a44"
+          "fingerprint": "dfe48adc84f4f7d3d7171e7a4c6418d1c7aebea1"
         }
       ]
     },
@@ -4398,7 +4365,7 @@
       "findings": []
     },
     "security|.|Makefile": {
-      "file_hash": "c177f1dd4e21ac24fad93106db92ec391c666b7c",
+      "file_hash": "34e904190d6060698359df821ad8099f2e7332b5",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -5048,7 +5015,7 @@
       "findings": []
     },
     "security|.|cmd/cleanr-dev/main.go": {
-      "file_hash": "65344aa3636fac54af5423a7c17398032396e0ce",
+      "file_hash": "404aaf5166a575e2072a05f42b6e37a690ad4b74",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -5093,7 +5060,7 @@
       "findings": []
     },
     "security|.|docs/development.md": {
-      "file_hash": "62caed8936c9c931ca78ac861d5e70a9037b1327",
+      "file_hash": "26884ace0331c7e2571e1a5502987b45b5862653",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -5612,32 +5579,22 @@
       "findings": []
     },
     "security|.|internal/devtools/ci.go": {
-      "file_hash": "4872714d9daab012d85e7446c75d4198ae6c8291",
+      "file_hash": "bd1177a4a4b21ba99b2b66fe207113fe877f2e20",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
     "security|.|internal/devtools/ci_codeguard.go": {
-      "file_hash": "3e9b0aec42150206488f951b20bdc90858187fae",
+      "file_hash": "c85c166dccfceb50bc0b63ce5b7a24b06aa5908b",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
-      "findings": [
-        {
-          "rule_id": "security.taint.go",
-          "level": "fail",
-          "severity": "fail",
-          "title": "Go taint flow",
-          "section": "Security",
-          "message": "tainted data from os.Getenv (line 340) reaches os.OpenFile (line 344) via os.Getenv -\u003e strings.TrimSpace -\u003e summaryPath -\u003e os.OpenFile",
-          "why": "tainted data from os.Getenv (line 340) reaches os.OpenFile (line 344) via os.Getenv -\u003e strings.TrimSpace -\u003e summaryPath -\u003e os.OpenFile",
-          "how_to_fix": "Validate or sanitize the value before the sink: use parameterized queries, strconv parsing, allow-lists for commands and paths, or static templates.",
-          "path": "internal/devtools/ci_codeguard.go",
-          "line": 344,
-          "column": 1,
-          "fingerprint": "2bc0a9caf74837ba97902a478d55d79552d61a05"
-        }
-      ]
+      "findings": []
     },
     "security|.|internal/devtools/ci_codeguard_package.go": {
       "file_hash": "5775eae99d74b67d048de4c937f3c531f202e062",
+      "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
+      "findings": []
+    },
+    "security|.|internal/devtools/ci_compat.go": {
+      "file_hash": "0437403a951cdb3ce2ba64da27b3622099f39732",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -5657,7 +5614,7 @@
       "findings": []
     },
     "security|.|internal/devtools/ci_patterns.go": {
-      "file_hash": "0db67da00399956248b1783e893f1c2ecc809839",
+      "file_hash": "be4dea4f198c5c89871f02ef84293de36db59db3",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -5687,7 +5644,7 @@
       ]
     },
     "security|.|internal/devtools/ci_utils.go": {
-      "file_hash": "2399267ec4bc269988d983a614c90eecf47cc4ad",
+      "file_hash": "2c26e30451e459eef32202edc223e09279ee8a65",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -5812,7 +5769,7 @@
       "findings": []
     },
     "security|.|internal/devtools/runner.go": {
-      "file_hash": "2286bac0d2b9c03ca0dc94316cd50864f73e140a",
+      "file_hash": "87e6345e3f6f4dc5b18a2844a5755ff6413e45f7",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": []
     },
@@ -6100,7 +6057,7 @@
       "findings": []
     },
     "security|.|tests/devtools/ci_test.go": {
-      "file_hash": "3422d6eb4fa126b7d71cf774b365fa6dd775b1c6",
+      "file_hash": "0fda9e0295ab5e121e54f963b2752898beca4978",
       "config_hash": "a8a2db3f37971b44665033f95b61f16cd79815fa",
       "findings": [
         {
@@ -6113,9 +6070,9 @@
           "why": "shell execution primitive should be reviewed",
           "how_to_fix": "Prefer direct library calls, or tightly validate and constrain command execution.",
           "path": "tests/devtools/ci_test.go",
-          "line": 10,
+          "line": 7,
           "column": 1,
-          "fingerprint": "94c70c77f39a30ae9384e4e249fbc3015504ec95"
+          "fingerprint": "a9878d8b9bc97d7b9ec3e703bff4da9f8f886d91"
         },
         {
           "rule_id": "security.shell-execution",
@@ -6127,9 +6084,9 @@
           "why": "shell execution primitive should be reviewed",
           "how_to_fix": "Prefer direct library calls, or tightly validate and constrain command execution.",
           "path": "tests/devtools/ci_test.go",
-          "line": 666,
+          "line": 353,
           "column": 1,
-          "fingerprint": "e0df7412371fd1264d110098d228093bc6e88a6f"
+          "fingerprint": "c1b68ad13895d9a21d4f80f709def75af7e6b37f"
         }
       ]
     },

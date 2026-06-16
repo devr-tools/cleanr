@@ -92,8 +92,7 @@ check:
 	$(GO) run ./cmd/cleanr-dev check
 
 ci:
-	$(GO) run ./cmd/cleanr-dev ci-package-codeguard $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),) -codeguard-version $(CODEGUARD_VERSION)
-	$(GO) run ./cmd/cleanr-dev ci -skip-codeguard $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),)
+	$(GO) run ./cmd/cleanr-dev ci $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),) -codeguard-version $(CODEGUARD_VERSION)
 
 commit:
 	@./scripts/commit.sh

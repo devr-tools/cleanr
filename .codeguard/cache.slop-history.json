@@ -58,6 +58,63 @@
             "contribution": 30
           }
         ]
+      },
+      {
+        "timestamp": "2026-06-16T18:49:46Z",
+        "score": 100,
+        "signals": 25,
+        "components": [
+          {
+            "rule_id": "quality.ai.dead-code",
+            "count": 10,
+            "weight": 3,
+            "contribution": 30
+          },
+          {
+            "rule_id": "quality.ai.error-style-drift",
+            "count": 15,
+            "weight": 2,
+            "contribution": 30
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-06-16T18:52:35Z",
+        "score": 100,
+        "signals": 25,
+        "components": [
+          {
+            "rule_id": "quality.ai.dead-code",
+            "count": 10,
+            "weight": 3,
+            "contribution": 30
+          },
+          {
+            "rule_id": "quality.ai.error-style-drift",
+            "count": 15,
+            "weight": 2,
+            "contribution": 30
+          }
+        ]
+      },
+      {
+        "timestamp": "2026-06-16T18:55:08Z",
+        "score": 100,
+        "signals": 25,
+        "components": [
+          {
+            "rule_id": "quality.ai.dead-code",
+            "count": 10,
+            "weight": 3,
+            "contribution": 30
+          },
+          {
+            "rule_id": "quality.ai.error-style-drift",
+            "count": 15,
+            "weight": 2,
+            "contribution": 30
+          }
+        ]
       }
     ]
   }
