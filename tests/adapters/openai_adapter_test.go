@@ -318,6 +318,178 @@ func TestOpenAITargetBuildsTranscriptMessages(t *testing.T) {
 	}
 }
 
+func TestOpenAITargetExpandsMockToolResultFixtures(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body := decodeRequestBody(t, req)
+			messages, ok := body["messages"].([]any)
+			if !ok || len(messages) != 3 {
+				t.Fatalf("unexpected fixture transcript messages: %#v", body["messages"])
+			}
+			assistant := messages[1].(map[string]any)
+			tool := messages[2].(map[string]any)
+			if assistant["role"] != "assistant" || assistant["content"] != "[mock tool call] lookup_policy {\"policy_id\":\"refunds\"}" {
+				t.Fatalf("unexpected mocked assistant turn: %#v", assistant)
+			}
+			if tool["role"] != "tool" || tool["name"] != "lookup_policy" || tool["tool_call_id"] != "call_fixture_1" {
+				t.Fatalf("unexpected mocked tool turn: %#v", tool)
+			}
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":     "chatcmpl_fixture",
+				"object": "chat.completion",
+				"model":  "gpt-4o-mini",
+				"choices": []any{
+					map[string]any{"message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"},
+				},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type: "openai",
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:   "chat_completions",
+			Model:     "gpt-4o-mini",
+			APIKeyEnv: "OPENAI_API_KEY",
+			BaseURL:   "https://openai.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.BuildScenarioRequest(cleanr.Scenario{
+		Name: "fixture-transcript",
+		Turns: []cleanr.ConversationTurn{{
+			Role:    "user",
+			Content: "Check the refund policy",
+			MockToolResults: []cleanr.MockToolResult{{
+				Name:       "lookup_policy",
+				ToolCallID: "call_fixture_1",
+				Arguments:  `{"policy_id":"refunds"}`,
+				Content:    `{"policy":"Refunds take 30 days."}`,
+			}},
+		}},
+	}, 2*time.Second))
+	if resp.Err != nil || resp.Text != "done" {
+		t.Fatalf("unexpected fixture transcript response: %+v", resp)
+	}
+}
+
+func TestOpenAITargetBuildsMultimodalResponsesInput(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body := decodeRequestBody(t, req)
+			input, ok := body["input"].([]any)
+			if !ok || len(input) != 1 {
+				t.Fatalf("unexpected responses input: %#v", body["input"])
+			}
+			msg := input[0].(map[string]any)
+			content, ok := msg["content"].([]any)
+			if !ok || len(content) < 3 {
+				t.Fatalf("unexpected multimodal content: %#v", msg["content"])
+			}
+			image := content[1].(map[string]any)
+			file := content[2].(map[string]any)
+			if image["type"] != "input_image" || image["image_url"] != "https://example.test/refund.png" {
+				t.Fatalf("unexpected image payload: %#v", image)
+			}
+			if file["type"] != "input_file" || file["file_url"] != "https://example.test/policy.pdf" {
+				t.Fatalf("unexpected file payload: %#v", file)
+			}
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":     "resp_mm",
+				"model":  "gpt-4.1-mini",
+				"status": "completed",
+				"output": []any{
+					map[string]any{
+						"type": "message",
+						"content": []any{
+							map[string]any{"type": "output_text", "text": "done"},
+						},
+					},
+				},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type: "openai",
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:   "responses",
+			Model:     "gpt-4.1-mini",
+			APIKeyEnv: "OPENAI_API_KEY",
+			BaseURL:   "https://openai.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.BuildScenarioRequest(cleanr.Scenario{
+		Name:  "multimodal",
+		Input: "Review these artifacts",
+		Images: []cleanr.MediaInput{{
+			URL:    "https://example.test/refund.png",
+			Detail: "high",
+		}},
+		PDFs: []cleanr.MediaInput{{
+			URL:       "https://example.test/policy.pdf",
+			MediaType: "application/pdf",
+		}},
+	}, 2*time.Second))
+	if resp.Err != nil || resp.Text != "done" {
+		t.Fatalf("unexpected multimodal response: %+v", resp)
+	}
+}
+
+func TestOpenAITargetBuildsChatImageContent(t *testing.T) {
+	t.Setenv("OPENAI_API_KEY", "test-key")
+
+	client := &http.Client{
+		Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+			body := decodeRequestBody(t, req)
+			messages := body["messages"].([]any)
+			content := messages[0].(map[string]any)["content"].([]any)
+			if len(content) != 2 {
+				t.Fatalf("unexpected chat multimodal content: %#v", content)
+			}
+			image := content[1].(map[string]any)["image_url"].(map[string]any)
+			if image["url"] != "https://example.test/refund.png" || image["detail"] != "low" {
+				t.Fatalf("unexpected chat image payload: %#v", image)
+			}
+			return jsonResponse(t, http.StatusOK, map[string]any{
+				"id":     "chat_mm",
+				"object": "chat.completion",
+				"model":  "gpt-4o-mini",
+				"choices": []any{
+					map[string]any{"message": map[string]any{"role": "assistant", "content": "done"}, "finish_reason": "stop"},
+				},
+			}), nil
+		}),
+	}
+
+	target := cleanr.NewOpenAITarget(cleanr.TargetConfig{
+		Type: "openai_compatible",
+		OpenAI: cleanr.OpenAIConfig{
+			APIMode:   "chat_completions",
+			Model:     "gpt-4o-mini",
+			APIKeyEnv: "OPENAI_API_KEY",
+			BaseURL:   "https://compat.test/v1",
+		},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.BuildScenarioRequest(cleanr.Scenario{
+		Name:  "chat-image",
+		Input: "What is in this image?",
+		Images: []cleanr.MediaInput{{
+			URL:    "https://example.test/refund.png",
+			Detail: "low",
+		}},
+	}, 2*time.Second))
+	if resp.Err != nil || resp.Text != "done" {
+		t.Fatalf("unexpected chat multimodal response: %+v", resp)
+	}
+}
+
 func TestOpenAICompatibleTargetSupportsCustomAuthAndProviderLabel(t *testing.T) {
 	t.Setenv("OLLAMA_API_KEY", "test-key")
 
@@ -568,6 +740,156 @@ func TestValidateCommandAcceptsOpenAIConfig(t *testing.T) {
 	}
 	if !strings.Contains(stdout.String(), "valid config for openai-validate with 1 scenarios") {
 		t.Fatalf("unexpected stdout: %s", stdout.String())
+	}
+}
+
+func TestNativeProviderTargetsApplyProviderSpecificAuthAndEndpoints(t *testing.T) {
+	t.Setenv("AZURE_OPENAI_API_KEY", "azure-key")
+	t.Setenv("GEMINI_API_KEY", "gemini-key")
+	t.Setenv("VERTEX_AI_ACCESS_TOKEN", "vertex-token")
+	t.Setenv("BEDROCK_API_KEY", "bedrock-key")
+	t.Setenv("MISTRAL_API_KEY", "mistral-key")
+
+	tests := []struct {
+		name            string
+		cfg             cleanr.TargetConfig
+		wantURL         string
+		wantHeader      string
+		wantHeaderValue string
+		wantProvider    string
+		wantSystemRole  string
+	}{
+		{
+			name: "azure openai",
+			cfg: cleanr.TargetConfig{
+				Type: "azure_openai",
+				OpenAI: cleanr.OpenAIConfig{
+					APIMode:    "chat_completions",
+					Model:      "gpt-4o-mini",
+					BaseURL:    "https://azure.test/openai/deployments/test-deployment",
+					APIVersion: "2025-03-01-preview",
+				},
+			},
+			wantURL:         "https://azure.test/openai/deployments/test-deployment/chat/completions?api-version=2025-03-01-preview",
+			wantHeader:      "api-key",
+			wantHeaderValue: "azure-key",
+			wantProvider:    "azure_openai",
+			wantSystemRole:  "system",
+		},
+		{
+			name: "gemini",
+			cfg: cleanr.TargetConfig{
+				Type: "gemini",
+				OpenAI: cleanr.OpenAIConfig{
+					APIMode: "chat_completions",
+					Model:   "gemini-2.5-flash",
+				},
+			},
+			wantURL:         "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+			wantHeader:      "Authorization",
+			wantHeaderValue: "Bearer gemini-key",
+			wantProvider:    "gemini",
+			wantSystemRole:  "system",
+		},
+		{
+			name: "vertex",
+			cfg: cleanr.TargetConfig{
+				Type: "vertex",
+				OpenAI: cleanr.OpenAIConfig{
+					APIMode: "chat_completions",
+					Model:   "gemini-2.5-pro",
+					BaseURL: "https://vertex.test/v1/openapi",
+				},
+			},
+			wantURL:         "https://vertex.test/v1/openapi/chat/completions",
+			wantHeader:      "Authorization",
+			wantHeaderValue: "Bearer vertex-token",
+			wantProvider:    "vertex",
+			wantSystemRole:  "system",
+		},
+		{
+			name: "bedrock",
+			cfg: cleanr.TargetConfig{
+				Type: "bedrock",
+				OpenAI: cleanr.OpenAIConfig{
+					APIMode: "chat_completions",
+					Model:   "anthropic.claude-3-5-sonnet-20240620-v1:0",
+					BaseURL: "https://bedrock.test/openai/v1",
+				},
+			},
+			wantURL:         "https://bedrock.test/openai/v1/chat/completions",
+			wantHeader:      "Authorization",
+			wantHeaderValue: "Bearer bedrock-key",
+			wantProvider:    "bedrock",
+			wantSystemRole:  "system",
+		},
+		{
+			name: "mistral",
+			cfg: cleanr.TargetConfig{
+				Type: "mistral",
+				OpenAI: cleanr.OpenAIConfig{
+					APIMode: "chat_completions",
+					Model:   "mistral-small-latest",
+				},
+			},
+			wantURL:         "https://api.mistral.ai/v1/chat/completions",
+			wantHeader:      "Authorization",
+			wantHeaderValue: "Bearer mistral-key",
+			wantProvider:    "mistral",
+			wantSystemRole:  "system",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			client := &http.Client{
+				Transport: roundTripperFunc(func(req *http.Request) (*http.Response, error) {
+					if req.URL.String() != tt.wantURL {
+						t.Fatalf("unexpected url: %s", req.URL.String())
+					}
+					if got := req.Header.Get(tt.wantHeader); got != tt.wantHeaderValue {
+						t.Fatalf("unexpected auth header %s=%q", tt.wantHeader, got)
+					}
+					body := decodeRequestBody(t, req)
+					messages, ok := body["messages"].([]any)
+					if !ok || len(messages) == 0 {
+						t.Fatalf("unexpected chat messages: %#v", body["messages"])
+					}
+					first, ok := messages[0].(map[string]any)
+					if !ok || first["role"] != tt.wantSystemRole {
+						t.Fatalf("unexpected first message: %#v", body["messages"])
+					}
+					return jsonResponse(t, http.StatusOK, map[string]any{
+						"id":     "chatcmpl_native",
+						"object": "chat.completion",
+						"model":  tt.cfg.OpenAI.Model,
+						"choices": []any{
+							map[string]any{
+								"index": 0,
+								"message": map[string]any{
+									"role":    "assistant",
+									"content": "ok",
+								},
+								"finish_reason": "stop",
+							},
+						},
+					}), nil
+				}),
+			}
+
+			resp := cleanr.NewOpenAITarget(tt.cfg, client).Invoke(context.Background(), cleanr.Request{
+				System:  "You are a concise assistant.",
+				Prompt:  "Say ok.",
+				Timeout: 2 * time.Second,
+			})
+			if resp.Err != nil || resp.Text != "ok" {
+				t.Fatalf("unexpected response: %+v", resp)
+			}
+			if resp.Normalized.Provider != tt.wantProvider {
+				t.Fatalf("unexpected provider label: %+v", resp.Normalized)
+			}
+		})
 	}
 }
 

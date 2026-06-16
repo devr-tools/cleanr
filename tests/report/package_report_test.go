@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -99,5 +100,17 @@ func TestReportPackageSupportsPlainAndColorText(t *testing.T) {
 	}
 	if !strings.Contains(color.String(), "\x1b[") {
 		t.Fatalf("expected ANSI color codes in report:\n%s", color.String())
+	}
+
+	var agent bytes.Buffer
+	if err := reportpkg.Write(&agent, report, "agent"); err != nil {
+		t.Fatalf("write agent report: %v", err)
+	}
+	var decoded cleanr.AgentReport
+	if err := json.Unmarshal(agent.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode agent report: %v", err)
+	}
+	if decoded.Contract.Kind != "cleanr.report.agent" || decoded.Summary.Target != "demo" {
+		t.Fatalf("unexpected agent report: %+v", decoded)
 	}
 }

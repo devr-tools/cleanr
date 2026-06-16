@@ -12,6 +12,7 @@ type Config struct {
 	Plugins            []string                 `json:"plugins,omitempty"`
 	Target             TargetConfig             `json:"target"`
 	ScenarioGeneration ScenarioGenerationConfig `json:"scenario_generation,omitempty"`
+	OpenAPI            OpenAPIConfig            `json:"openapi,omitempty"`
 	Scenarios          []Scenario               `json:"scenarios"`
 	Suites             SuitesConfig             `json:"suites"`
 	Reporting          ReportingConfig          `json:"reporting"`
@@ -21,22 +22,24 @@ type Config struct {
 }
 
 type TargetConfig struct {
-	Type            string            `json:"type"`
-	Name            string            `json:"name"`
-	URL             string            `json:"url"`
-	Method          string            `json:"method"`
-	Stream          bool              `json:"stream,omitempty"`
-	Headers         map[string]string `json:"headers"`
-	TimeoutMS       int               `json:"timeout_ms"`
-	PromptField     string            `json:"prompt_field"`
-	SystemField     string            `json:"system_field"`
-	ResponseField   string            `json:"response_field"`
-	RequestTemplate any               `json:"request_template"`
-	CLI             CLIConfig         `json:"cli"`
-	GraphQL         GraphQLConfig     `json:"graphql"`
-	OpenAI          OpenAIConfig      `json:"openai"`
-	Anthropic       AnthropicConfig   `json:"anthropic"`
-	MCP             MCPConfig         `json:"mcp"`
+	Type            string              `json:"type"`
+	Name            string              `json:"name"`
+	URL             string              `json:"url"`
+	Method          string              `json:"method"`
+	Stream          bool                `json:"stream,omitempty"`
+	Headers         map[string]string   `json:"headers"`
+	TimeoutMS       int                 `json:"timeout_ms"`
+	PromptField     string              `json:"prompt_field"`
+	SystemField     string              `json:"system_field"`
+	ResponseField   string              `json:"response_field"`
+	RequestTemplate any                 `json:"request_template"`
+	CLI             CLIConfig           `json:"cli"`
+	GraphQL         GraphQLConfig       `json:"graphql"`
+	GRPC            GRPCConfig          `json:"grpc"`
+	OpenAI          OpenAIConfig        `json:"openai"`
+	OpenAPI         OpenAPITargetConfig `json:"openapi,omitempty"`
+	Anthropic       AnthropicConfig     `json:"anthropic"`
+	MCP             MCPConfig           `json:"mcp"`
 }
 
 type CLIConfig struct {
@@ -51,11 +54,18 @@ type GraphQLConfig struct {
 	VariablesTemplate any    `json:"variables_template,omitempty"`
 }
 
+type GRPCConfig struct {
+	Address   string `json:"address,omitempty"`
+	Method    string `json:"method,omitempty"`
+	Plaintext bool   `json:"plaintext,omitempty"`
+}
+
 type OpenAIConfig struct {
 	APIMode       string `json:"api_mode"`
 	Model         string `json:"model"`
 	APIKeyEnv     string `json:"api_key_env"`
 	BaseURL       string `json:"base_url"`
+	APIVersion    string `json:"api_version,omitempty"`
 	Organization  string `json:"organization"`
 	Project       string `json:"project"`
 	Provider      string `json:"provider,omitempty"`
@@ -91,16 +101,77 @@ type ScenarioGenerationConfig struct {
 }
 
 type ScenarioGenerationSpec struct {
-	AppKind      string   `json:"app_kind"`
-	Goals        []string `json:"goals,omitempty"`
-	RiskAreas    []string `json:"risk_areas,omitempty"`
-	Instructions string   `json:"instructions,omitempty"`
+	AppKind        string   `json:"app_kind"`
+	Mode           string   `json:"mode,omitempty"`
+	Goals          []string `json:"goals,omitempty"`
+	RiskAreas      []string `json:"risk_areas,omitempty"`
+	AttackFamilies []string `json:"attack_families,omitempty"`
+	Instructions   string   `json:"instructions,omitempty"`
+}
+
+type OpenAPIConfig struct {
+	Source             OpenAPISource                   `json:"source,omitempty"`
+	ScenarioGeneration OpenAPIScenarioGenerationConfig `json:"scenario_generation,omitempty"`
+	ContractDiff       OpenAPIContractDiffConfig       `json:"contract_diff,omitempty"`
+}
+
+type OpenAPISource struct {
+	Path   string `json:"path,omitempty"`
+	URL    string `json:"url,omitempty"`
+	Inline any    `json:"inline,omitempty"`
+}
+
+type OpenAPIScenarioGenerationConfig struct {
+	Enabled           bool     `json:"enabled,omitempty"`
+	OutputFile        string   `json:"output_file,omitempty"`
+	IncludeTags       []string `json:"include_tags,omitempty"`
+	IncludeMethods    []string `json:"include_methods,omitempty"`
+	IncludeDeprecated bool     `json:"include_deprecated,omitempty"`
+}
+
+type OpenAPIContractDiffConfig struct {
+	Enabled        bool          `json:"enabled,omitempty"`
+	Baseline       OpenAPISource `json:"baseline,omitempty"`
+	OutputFile     string        `json:"output_file,omitempty"`
+	FailOnBreaking bool          `json:"fail_on_breaking,omitempty"`
+}
+
+type OpenAPITargetConfig struct {
+	Enabled bool `json:"enabled,omitempty"`
+}
+
+type OpenAPIContractDiff struct {
+	Breaking bool                       `json:"breaking,omitempty"`
+	Summary  OpenAPIContractDiffSummary `json:"summary"`
+	Changes  []OpenAPIContractChange    `json:"changes,omitempty"`
+}
+
+type OpenAPIContractDiffSummary struct {
+	BreakingChanges    int `json:"breaking_changes,omitempty"`
+	NonBreakingChanges int `json:"non_breaking_changes,omitempty"`
+	OperationsAdded    int `json:"operations_added,omitempty"`
+	OperationsRemoved  int `json:"operations_removed,omitempty"`
+	OperationsChanged  int `json:"operations_changed,omitempty"`
+}
+
+type OpenAPIContractChange struct {
+	Kind        string `json:"kind"`
+	Level       string `json:"level,omitempty"`
+	Method      string `json:"method,omitempty"`
+	Path        string `json:"path,omitempty"`
+	OperationID string `json:"operation_id,omitempty"`
+	Location    string `json:"location,omitempty"`
+	Detail      string `json:"detail,omitempty"`
 }
 
 type Scenario struct {
 	Name                 string                `json:"name"`
 	System               string                `json:"system"`
 	Input                string                `json:"input"`
+	Images               []MediaInput          `json:"images,omitempty"`
+	Audio                []MediaInput          `json:"audio,omitempty"`
+	PDFs                 []MediaInput          `json:"pdfs,omitempty"`
+	JudgeOutputs         []JudgeOutput         `json:"judge_outputs,omitempty"`
 	Turns                []ConversationTurn    `json:"turns,omitempty"`
 	Metadata             map[string]string     `json:"metadata"`
 	ContextSources       []ContextSource       `json:"context_sources,omitempty"`
@@ -115,11 +186,43 @@ type Scenario struct {
 	Rubric               []string              `json:"rubric,omitempty"`
 }
 
+type MediaInput struct {
+	URL       string `json:"url,omitempty"`
+	Path      string `json:"path,omitempty"`
+	Data      string `json:"data,omitempty"`
+	MediaType string `json:"media_type,omitempty"`
+	Detail    string `json:"detail,omitempty"`
+	Filename  string `json:"filename,omitempty"`
+	Caption   string `json:"caption,omitempty"`
+}
+
+type JudgeOutput struct {
+	Name      string `json:"name,omitempty"`
+	Type      string `json:"type"`
+	Path      string `json:"path,omitempty"`
+	Value     string `json:"value,omitempty"`
+	MediaType string `json:"media_type,omitempty"`
+}
+
 type ConversationTurn struct {
-	Role       string `json:"role"`
-	Content    string `json:"content"`
-	Name       string `json:"name,omitempty"`
-	ToolCallID string `json:"tool_call_id,omitempty"`
+	Role            string           `json:"role"`
+	Content         string           `json:"content"`
+	Images          []MediaInput     `json:"images,omitempty"`
+	Audio           []MediaInput     `json:"audio,omitempty"`
+	PDFs            []MediaInput     `json:"pdfs,omitempty"`
+	MockToolResults []MockToolResult `json:"mock_tool_results,omitempty"`
+	Name            string           `json:"name,omitempty"`
+	ToolCallID      string           `json:"tool_call_id,omitempty"`
+}
+
+type MockToolResult struct {
+	Name       string       `json:"name"`
+	Arguments  string       `json:"arguments,omitempty"`
+	Content    string       `json:"content"`
+	Images     []MediaInput `json:"images,omitempty"`
+	Audio      []MediaInput `json:"audio,omitempty"`
+	PDFs       []MediaInput `json:"pdfs,omitempty"`
+	ToolCallID string       `json:"tool_call_id,omitempty"`
 }
 
 type ContextSource struct {
@@ -192,12 +295,16 @@ type SecurityConfig struct {
 }
 
 type LoadConfig struct {
-	Enabled         bool     `json:"enabled"`
-	VirtualUsers    int      `json:"virtual_users"`
-	RequestsPerUser int      `json:"requests_per_user"`
-	MaxErrorRatePct int      `json:"max_error_rate_pct"`
-	P95LatencyMS    int      `json:"p95_latency_ms"`
-	ScenarioTags    []string `json:"scenario_tags,omitempty"`
+	Enabled               bool     `json:"enabled"`
+	VirtualUsers          int      `json:"virtual_users"`
+	RequestsPerUser       int      `json:"requests_per_user"`
+	MaxErrorRatePct       int      `json:"max_error_rate_pct"`
+	P95LatencyMS          int      `json:"p95_latency_ms"`
+	MaxCostPerRequest     float64  `json:"max_cost_per_request,omitempty"`
+	MinTokensPerSecond    float64  `json:"min_tokens_per_second,omitempty"`
+	InputCostPer1MTokens  float64  `json:"input_cost_per_1m_tokens,omitempty"`
+	OutputCostPer1MTokens float64  `json:"output_cost_per_1m_tokens,omitempty"`
+	ScenarioTags          []string `json:"scenario_tags,omitempty"`
 }
 
 type ChaosConfig struct {
@@ -220,6 +327,9 @@ type DriftConfig struct {
 	StableTags                  []string `json:"stable_tags"`
 	MinConsistencyScore         float64  `json:"min_consistency_score"`
 	MinSemanticConsistencyScore float64  `json:"min_semantic_consistency_score"`
+	ConfidenceLevel             float64  `json:"confidence_level,omitempty"`
+	MinPassRate                 float64  `json:"min_pass_rate,omitempty"`
+	MaxFlakeRate                float64  `json:"max_flake_rate,omitempty"`
 }
 
 type ShadowStateConfig struct {
@@ -290,18 +400,27 @@ type TokenOptimizationConfig struct {
 // when the aggregated normalized score meets MinScore. Self-consistency
 // sampling (Samples > 1) gates out judges that disagree with themselves.
 type LLMJudgeConfig struct {
-	Enabled          bool         `json:"enabled"`
-	Mode             string       `json:"mode,omitempty"`
-	Provider         TargetConfig `json:"provider"`
-	Baseline         TargetConfig `json:"baseline,omitempty"`
-	Criteria         []string     `json:"criteria,omitempty"`
-	Scale            int          `json:"scale,omitempty"`
-	MinScore         float64      `json:"min_score,omitempty"`
-	MinWinRate       float64      `json:"min_win_rate,omitempty"`
-	Samples          int          `json:"samples,omitempty"`
-	MaxDisagreement  float64      `json:"max_disagreement,omitempty"`
-	RequireReference bool         `json:"require_reference,omitempty"`
-	StableTags       []string     `json:"stable_tags,omitempty"`
+	Enabled                bool           `json:"enabled"`
+	Mode                   string         `json:"mode,omitempty"`
+	Provider               TargetConfig   `json:"provider"`
+	Baseline               TargetConfig   `json:"baseline,omitempty"`
+	Criteria               []string       `json:"criteria,omitempty"`
+	Scale                  int            `json:"scale,omitempty"`
+	MinScore               float64        `json:"min_score,omitempty"`
+	MinWinRate             float64        `json:"min_win_rate,omitempty"`
+	Samples                int            `json:"samples,omitempty"`
+	MaxDisagreement        float64        `json:"max_disagreement,omitempty"`
+	ConfidenceLevel        float64        `json:"confidence_level,omitempty"`
+	MinPassRate            float64        `json:"min_pass_rate,omitempty"`
+	MaxFlakeRate           float64        `json:"max_flake_rate,omitempty"`
+	RequireReference       bool           `json:"require_reference,omitempty"`
+	StableTags             []string       `json:"stable_tags,omitempty"`
+	Ensemble               []TargetConfig `json:"ensemble,omitempty"`
+	CascadeMargin          float64        `json:"cascade_margin,omitempty"`
+	ComparisonTargets      []TargetConfig `json:"comparison_targets,omitempty"`
+	CalibrationFile        string         `json:"calibration_file,omitempty"`
+	MinCalibrationAccuracy float64        `json:"min_calibration_accuracy,omitempty"`
+	MaxCalibrationMAE      float64        `json:"max_calibration_mae,omitempty"`
 }
 
 // ModeValue returns the grading mode, defaulting to rubric "score" grading.
@@ -330,6 +449,20 @@ func (c LLMJudgeConfig) SamplesValue() int {
 		return 1
 	}
 	return c.Samples
+}
+
+func (c LLMJudgeConfig) ConfidenceLevelValue() float64 {
+	if c.ConfidenceLevel <= 0 {
+		return 0.95
+	}
+	return c.ConfidenceLevel
+}
+
+func (c DriftConfig) ConfidenceLevelValue() float64 {
+	if c.ConfidenceLevel <= 0 {
+		return 0.95
+	}
+	return c.ConfidenceLevel
 }
 
 type ReportingConfig struct {
@@ -425,10 +558,34 @@ type PluginStateAdapter struct {
 
 type PluginProbe struct {
 	Name      string            `json:"name"`
+	Kind      string            `json:"kind,omitempty"`
 	Command   string            `json:"command"`
 	Args      []string          `json:"args,omitempty"`
 	Env       map[string]string `json:"env,omitempty"`
 	TimeoutMS int               `json:"timeout_ms,omitempty"`
+}
+
+type DBProbeObservation struct {
+	Engine    string         `json:"engine,omitempty"`
+	Database  string         `json:"database,omitempty"`
+	Table     string         `json:"table,omitempty"`
+	Operation string         `json:"operation,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Summary   string         `json:"summary,omitempty"`
+	Count     int            `json:"count,omitempty"`
+	Raw       map[string]any `json:"raw,omitempty"`
+}
+
+type QueueProbeObservation struct {
+	Provider  string         `json:"provider,omitempty"`
+	Queue     string         `json:"queue,omitempty"`
+	Topic     string         `json:"topic,omitempty"`
+	Operation string         `json:"operation,omitempty"`
+	Status    string         `json:"status,omitempty"`
+	Summary   string         `json:"summary,omitempty"`
+	MessageID string         `json:"message_id,omitempty"`
+	Depth     int            `json:"depth,omitempty"`
+	Raw       map[string]any `json:"raw,omitempty"`
 }
 
 type TrendGateConfig struct {
@@ -445,6 +602,25 @@ type TrendGateConfig struct {
 
 func (c TargetConfig) Timeout() time.Duration {
 	return time.Duration(c.TimeoutMS) * time.Millisecond
+}
+
+func (c OpenAPIConfig) HasSource() bool {
+	return strings.TrimSpace(c.Source.Path) != "" || strings.TrimSpace(c.Source.URL) != "" || c.Source.Inline != nil
+}
+
+func (c OpenAPIConfig) ScenarioGenerationEnabled() bool {
+	return c.ScenarioGeneration.Enabled
+}
+
+func (c OpenAPIConfig) ContractDiffEnabled() bool {
+	return c.ContractDiff.Enabled
+}
+
+func (c ScenarioGenerationSpec) ModeValue() string {
+	if strings.ToLower(strings.TrimSpace(c.Mode)) == "adversarial" {
+		return "adversarial"
+	}
+	return "standard"
 }
 
 func (c TargetConfig) TargetType() string {
@@ -465,8 +641,11 @@ func (c OpenAIConfig) ProviderValue(targetType string) string {
 	if provider := strings.TrimSpace(c.Provider); provider != "" {
 		return strings.ToLower(provider)
 	}
-	if strings.EqualFold(strings.TrimSpace(targetType), "openai_compatible") {
+	switch strings.ToLower(strings.TrimSpace(targetType)) {
+	case "openai_compatible":
 		return "openai_compatible"
+	case "azure_openai", "gemini", "bedrock", "vertex", "mistral":
+		return strings.ToLower(strings.TrimSpace(targetType))
 	}
 	return "openai"
 }
@@ -483,6 +662,66 @@ func (c OpenAIConfig) AuthSchemeValue() string {
 		return ""
 	} else if scheme != "" {
 		return scheme
+	}
+	return "Bearer"
+}
+
+func (c OpenAIConfig) APIKeyEnvValue(targetType string) string {
+	if env := strings.TrimSpace(c.APIKeyEnv); env != "" {
+		return env
+	}
+	switch strings.ToLower(strings.TrimSpace(targetType)) {
+	case "azure_openai":
+		return "AZURE_OPENAI_API_KEY"
+	case "gemini":
+		return "GEMINI_API_KEY"
+	case "bedrock":
+		return "BEDROCK_API_KEY"
+	case "vertex":
+		return "VERTEX_AI_ACCESS_TOKEN"
+	case "mistral":
+		return "MISTRAL_API_KEY"
+	default:
+		return "OPENAI_API_KEY"
+	}
+}
+
+func (c OpenAIConfig) BaseURLValue(targetType string) string {
+	if base := strings.TrimSpace(c.BaseURL); base != "" {
+		return strings.TrimRight(base, "/")
+	}
+	switch strings.ToLower(strings.TrimSpace(targetType)) {
+	case "gemini":
+		return "https://generativelanguage.googleapis.com/v1beta/openai"
+	case "mistral":
+		return "https://api.mistral.ai/v1"
+	default:
+		return "https://api.openai.com/v1"
+	}
+}
+
+func (c OpenAIConfig) APIVersionValue() string {
+	return strings.TrimSpace(c.APIVersion)
+}
+
+func (c OpenAIConfig) AuthHeaderForTarget(targetType string) string {
+	if header := strings.TrimSpace(c.AuthHeader); header != "" {
+		return header
+	}
+	if strings.EqualFold(strings.TrimSpace(targetType), "azure_openai") {
+		return "api-key"
+	}
+	return "Authorization"
+}
+
+func (c OpenAIConfig) AuthSchemeForTarget(targetType string) string {
+	if scheme := strings.TrimSpace(c.AuthScheme); strings.EqualFold(scheme, "none") {
+		return ""
+	} else if scheme != "" {
+		return scheme
+	}
+	if strings.EqualFold(strings.TrimSpace(targetType), "azure_openai") {
+		return ""
 	}
 	return "Bearer"
 }
@@ -507,15 +746,20 @@ func (s Scenario) TurnsValue() []ConversationTurn {
 		for _, turn := range s.Turns {
 			role := strings.ToLower(strings.TrimSpace(turn.Role))
 			content := strings.TrimSpace(turn.Content)
-			if role == "" || content == "" {
+			if role == "" || !turnHasContent(turn, content) {
 				continue
 			}
-			out = append(out, ConversationTurn{
+			normalized := ConversationTurn{
 				Role:       role,
 				Content:    content,
+				Images:     normalizeMediaInputs(turn.Images),
+				Audio:      normalizeMediaInputs(turn.Audio),
+				PDFs:       normalizeMediaInputs(turn.PDFs),
 				Name:       strings.TrimSpace(turn.Name),
 				ToolCallID: strings.TrimSpace(turn.ToolCallID),
-			})
+			}
+			out = append(out, normalized)
+			out = append(out, expandMockToolResults(turn.MockToolResults)...)
 		}
 		return out
 	}
@@ -524,10 +768,32 @@ func (s Scenario) TurnsValue() []ConversationTurn {
 	if sys := strings.TrimSpace(s.System); sys != "" {
 		out = append(out, ConversationTurn{Role: "system", Content: sys})
 	}
-	if input := strings.TrimSpace(s.Input); input != "" {
-		out = append(out, ConversationTurn{Role: "user", Content: input})
+	if input := strings.TrimSpace(s.Input); input != "" || len(s.Images) > 0 || len(s.Audio) > 0 || len(s.PDFs) > 0 {
+		out = append(out, ConversationTurn{
+			Role:    "user",
+			Content: input,
+			Images:  normalizeMediaInputs(s.Images),
+			Audio:   normalizeMediaInputs(s.Audio),
+			PDFs:    normalizeMediaInputs(s.PDFs),
+		})
 	}
 	return out
+}
+
+func (s Scenario) ImagesValue() []MediaInput {
+	return normalizeMediaInputs(s.Images)
+}
+
+func (s Scenario) AudioValue() []MediaInput {
+	return normalizeMediaInputs(s.Audio)
+}
+
+func (s Scenario) PDFsValue() []MediaInput {
+	return normalizeMediaInputs(s.PDFs)
+}
+
+func (s Scenario) JudgeOutputsValue() []JudgeOutput {
+	return normalizeJudgeOutputs(s.JudgeOutputs)
 }
 
 func (s Scenario) SystemValue() string {
@@ -545,12 +811,20 @@ func (s Scenario) SystemValue() string {
 
 func (s Scenario) InputValue() string {
 	if len(s.Turns) == 0 {
-		return strings.TrimSpace(s.Input)
+		if input := strings.TrimSpace(s.Input); input != "" {
+			return input
+		}
+		return renderTurnText(ConversationTurn{
+			Role:   "user",
+			Images: s.ImagesValue(),
+			Audio:  s.AudioValue(),
+			PDFs:   s.PDFsValue(),
+		})
 	}
 	for i := len(s.Turns) - 1; i >= 0; i-- {
 		turn := s.Turns[i]
 		if strings.EqualFold(strings.TrimSpace(turn.Role), "user") {
-			return strings.TrimSpace(turn.Content)
+			return renderTurnText(turn)
 		}
 	}
 	return ""
@@ -567,7 +841,168 @@ func (s Scenario) TranscriptText() string {
 		if turn.Name != "" {
 			label = fmt.Sprintf("%s:%s", label, turn.Name)
 		}
-		lines = append(lines, fmt.Sprintf("%s: %s", label, turn.Content))
+		lines = append(lines, fmt.Sprintf("%s: %s", label, renderTurnText(turn)))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func turnHasContent(turn ConversationTurn, content string) bool {
+	return content != "" || len(turn.Images) > 0 || len(turn.Audio) > 0 || len(turn.PDFs) > 0 || len(turn.MockToolResults) > 0
+}
+
+func normalizeMediaInputs(items []MediaInput) []MediaInput {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]MediaInput, 0, len(items))
+	for _, item := range items {
+		if normalized, ok := normalizeMediaInput(item); ok {
+			out = append(out, normalized)
+		}
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeMediaInput(item MediaInput) (MediaInput, bool) {
+	normalized := MediaInput{
+		URL:       strings.TrimSpace(item.URL),
+		Path:      strings.TrimSpace(item.Path),
+		Data:      strings.TrimSpace(item.Data),
+		MediaType: strings.TrimSpace(item.MediaType),
+		Detail:    strings.TrimSpace(item.Detail),
+		Filename:  strings.TrimSpace(item.Filename),
+		Caption:   strings.TrimSpace(item.Caption),
+	}
+	if normalized.URL == "" && normalized.Path == "" && normalized.Data == "" {
+		return MediaInput{}, false
+	}
+	return normalized, true
+}
+
+func normalizeJudgeOutputs(items []JudgeOutput) []JudgeOutput {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]JudgeOutput, 0, len(items))
+	for _, item := range items {
+		normalized := JudgeOutput{
+			Name:      strings.TrimSpace(item.Name),
+			Type:      strings.ToLower(strings.TrimSpace(item.Type)),
+			Path:      strings.TrimSpace(item.Path),
+			Value:     strings.TrimSpace(item.Value),
+			MediaType: strings.TrimSpace(item.MediaType),
+		}
+		if normalized.Type == "" && normalized.Path == "" && normalized.Value == "" && normalized.Name == "" && normalized.MediaType == "" {
+			continue
+		}
+		out = append(out, normalized)
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func renderTurnText(turn ConversationTurn) string {
+	parts := make([]string, 0, 1+len(turn.Images)+len(turn.Audio)+len(turn.PDFs))
+	if content := strings.TrimSpace(turn.Content); content != "" {
+		parts = append(parts, content)
+	}
+	parts = append(parts, renderMediaSummary("image", turn.Images)...)
+	parts = append(parts, renderMediaSummary("audio", turn.Audio)...)
+	parts = append(parts, renderMediaSummary("pdf", turn.PDFs)...)
+	return strings.TrimSpace(strings.Join(parts, "\n"))
+}
+
+func expandMockToolResults(items []MockToolResult) []ConversationTurn {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]ConversationTurn, 0, len(items)*2)
+	for i, item := range items {
+		normalized, ok := normalizeMockToolResult(item, i)
+		if !ok {
+			continue
+		}
+		out = append(out, ConversationTurn{
+			Role:    "assistant",
+			Content: renderMockToolCall(normalized),
+		})
+		out = append(out, ConversationTurn{
+			Role:       "tool",
+			Name:       normalized.Name,
+			ToolCallID: normalized.ToolCallID,
+			Content:    normalized.Content,
+			Images:     normalized.Images,
+			Audio:      normalized.Audio,
+			PDFs:       normalized.PDFs,
+		})
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
+}
+
+func normalizeMockToolResult(item MockToolResult, index int) (MockToolResult, bool) {
+	normalized := MockToolResult{
+		Name:       strings.TrimSpace(item.Name),
+		Arguments:  strings.TrimSpace(item.Arguments),
+		Content:    strings.TrimSpace(item.Content),
+		Images:     normalizeMediaInputs(item.Images),
+		Audio:      normalizeMediaInputs(item.Audio),
+		PDFs:       normalizeMediaInputs(item.PDFs),
+		ToolCallID: strings.TrimSpace(item.ToolCallID),
+	}
+	if normalized.Name == "" {
+		return MockToolResult{}, false
+	}
+	if normalized.ToolCallID == "" {
+		normalized.ToolCallID = fmt.Sprintf("mock_tool_call_%d", index+1)
+	}
+	if normalized.Content == "" && len(normalized.Images) == 0 && len(normalized.Audio) == 0 && len(normalized.PDFs) == 0 {
+		return MockToolResult{}, false
+	}
+	return normalized, true
+}
+
+func renderMockToolCall(item MockToolResult) string {
+	if item.Arguments == "" {
+		return fmt.Sprintf("[mock tool call] %s", item.Name)
+	}
+	return fmt.Sprintf("[mock tool call] %s %s", item.Name, item.Arguments)
+}
+
+func renderMediaSummary(kind string, items []MediaInput) []string {
+	if len(items) == 0 {
+		return nil
+	}
+	lines := make([]string, 0, len(items))
+	for _, item := range items {
+		label := mediaInputLabel(item)
+		if caption := strings.TrimSpace(item.Caption); caption != "" {
+			lines = append(lines, fmt.Sprintf("[%s] %s (%s)", kind, label, caption))
+			continue
+		}
+		lines = append(lines, fmt.Sprintf("[%s] %s", kind, label))
+	}
+	return lines
+}
+
+func mediaInputLabel(item MediaInput) string {
+	switch {
+	case strings.TrimSpace(item.Filename) != "":
+		return strings.TrimSpace(item.Filename)
+	case strings.TrimSpace(item.Path) != "":
+		return strings.TrimSpace(item.Path)
+	case strings.TrimSpace(item.URL) != "":
+		return strings.TrimSpace(item.URL)
+	case strings.TrimSpace(item.MediaType) != "":
+		return strings.TrimSpace(item.MediaType)
+	default:
+		return "embedded"
+	}
 }

@@ -103,7 +103,7 @@ func parseRunOptions(args []string, stderr io.Writer) (runOptions, error) {
 	opts := runOptions{}
 	fs.StringVar(&opts.configPath, "config", "", "Path to cleanr config")
 	fs.StringVar(&opts.profile, "profile", "", "Optional staged config profile: pr, main, or release")
-	fs.StringVar(&opts.format, "format", "", "Report format: text, json, junit")
+	fs.StringVar(&opts.format, "format", "", "Report format: text, json, junit, sarif, or agent")
 	fs.StringVar(&opts.output, "output", "", "Optional output file")
 	fs.StringVar(&opts.trendFile, "trend-file", "", "Optional trend history file")
 	fs.StringVar(&opts.replayArtifactPath, "replay-artifact", "", "Optional replay artifact file")
@@ -302,6 +302,10 @@ func snapshotCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func generateCmd(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && !strings.HasPrefix(strings.TrimSpace(args[0]), "-") {
+		return generateAuthoringCmd(args, stdout, stderr)
+	}
+
 	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")

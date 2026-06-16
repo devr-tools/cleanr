@@ -214,8 +214,10 @@ scenario_generation:
       api_key_env: OPENAI_API_KEY
   spec:
     app_kind: support-assistant
+    mode: adversarial
     goals: [refund policy, account recovery]
     risk_areas: [prompt injection, pii leakage, unsafe tool use]
+    attack_families: [jailbreak, tool abuse, data exfiltration]
     instructions: Focus on realistic customer phrasing and concise prompts.
   output_file: generated/cleanr.dataset.yaml
   count: 12
@@ -227,8 +229,10 @@ Supported fields:
 - `enabled`: enables the generation feature for `cleanr generate`
 - `provider`: the generator target, using the same target adapter shape as `target`
 - `spec.app_kind`: short description of the application under test
+- `spec.mode`: `standard` or `adversarial`; adversarial mode produces red-team prompts and automatically tags scenarios with `adversarial`
 - `spec.goals`: product behaviors or jobs-to-be-done to cover
 - `spec.risk_areas`: adversarial or safety concerns to cover
+- `spec.attack_families`: required in adversarial mode; concrete attack categories such as jailbreak, prompt injection, tool abuse, or exfiltration
 - `spec.instructions`: optional extra guidance for scenario synthesis
 - `output_file`: where `cleanr generate` writes the scenario dataset artifact
 - `count`: requested number of generated scenarios
@@ -237,9 +241,29 @@ Supported fields:
 Behavior:
 
 - `cleanr generate -config cleanr.yaml` writes a persisted scenario dataset artifact instead of mutating the config directly
+- `cleanr generate "test that ..."` writes a runnable config with one authored scenario, so agents or humans can bootstrap test cases from natural language before moving into dataset review loops
 - generated datasets record generator provenance such as provider, model, requested count, and prompt hash
+- adversarial generation mode records `generation.mode: adversarial` in scenario metadata and adds the `adversarial` tag
 - `cleanr` warns when the generator provider matches the provider under test, because that weakens evaluation diversity
 - generation-only configs may omit `scenarios`, but `cleanr run` still requires imported or hand-authored scenarios before tests execute
+
+## `integrations.trend_sources`
+
+`integrations.trend_sources` can load retained history from local files, remote history endpoints, native Braintrust experiments, or imported external trace exports.
+
+Supported types:
+
+- `file`: reads a retained `cleanr` history artifact from `path`
+- `http`: fetches a retained `cleanr` history artifact from `url`
+- `braintrust`: reads retained runs from native Braintrust experiments
+- `langsmith`: imports LangSmith export JSON from `path` or `url`
+- `openllmetry`: imports OpenLLMetry trace or log JSON from `path` or `url`
+- `provider_logs`: imports generic provider log or trace JSON from `path` or `url`
+
+Imported external sources currently support two stable shapes:
+
+- records that embed `cleanr.history_run` or `cleanr.report`
+- generic rows containing fields such as `generated_at`, `passed`, `failed_suites`, `failed_cases`, `duration_ms`, `model`, and `provider`
 
 ## `target`
 

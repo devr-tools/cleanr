@@ -47,8 +47,9 @@ func responseDetails(resp core.Response, base map[string]any) map[string]any {
 	normalized := resp.Normalized
 	applyProviderDetails(base, normalized)
 	applyProcessDetails(base, resp)
+	applyUsageDetails(base, resp.Usage)
 	applyStreamDetails(base, resp.Stream)
-	applyEvidenceDetails(base, normalized)
+	applyEvidenceDetails(base, normalized, resp.Usage)
 	return base
 }
 
@@ -77,12 +78,22 @@ func applyStreamDetails(base map[string]any, stream core.StreamMetrics) {
 	}
 }
 
-func applyEvidenceDetails(base map[string]any, normalized core.ProviderResponse) {
+func applyUsageDetails(base map[string]any, usage core.TokenUsage) {
+	if usage.TotalTokens == 0 && usage.InputTokens == 0 && usage.OutputTokens == 0 {
+		return
+	}
+	base["usage"] = usage
+}
+
+func applyEvidenceDetails(base map[string]any, normalized core.ProviderResponse, usage core.TokenUsage) {
 	maybeSetCountedDetail(base, "tool_call", normalized.ToolCalls)
 	maybeSetCountedDetail(base, "source_use", normalized.SourceUses)
 	maybeSetCountedDetail(base, "approval", normalized.Approvals)
 	maybeSetCountedDetail(base, "state_change", normalized.StateChanges)
 	maybeSetCountedDetail(base, "memory_operation", normalized.MemoryOperations)
+	if summary := trajectorySummary(normalized, usage); summary["steps"].(int) > 0 || summary["token_cost_signal"].(int) > 0 {
+		base["trajectory"] = summary
+	}
 	if len(normalized.Raw) > 0 {
 		base["provider_raw"] = normalized.Raw
 	}
@@ -244,4 +255,142 @@ func max(a, b int) int {
 
 func round3(v float64) float64 {
 	return math.Round(v*1000) / 1000
+}
+
+func round4(v float64) float64 {
+	return math.Round(v*10000) / 10000
+}
+
+func trajectorySummary(normalized core.ProviderResponse, usage core.TokenUsage) map[string]any {
+	steps := len(normalized.ToolCalls) + len(normalized.Approvals) + len(normalized.StateChanges) + len(normalized.MemoryOperations)
+	deadEnds := countDeadEnds(normalized)
+	tokenCost := usage.TotalTokens
+	if tokenCost == 0 {
+		tokenCost = usage.InputTokens + usage.OutputTokens
+	}
+	coverageBonus := math.Min(0.4, float64(steps)*0.1)
+	deadEndPenalty := 0.0
+	if steps > 0 {
+		deadEndPenalty = math.Min(0.6, float64(deadEnds)/float64(steps)*0.6)
+	}
+	costPenalty := math.Min(0.3, float64(tokenCost)/5000*0.3)
+	score := clamp01(0.5 + coverageBonus - deadEndPenalty - costPenalty)
+	return map[string]any{
+		"steps":             steps,
+		"dead_ends":         deadEnds,
+		"token_cost_signal": tokenCost,
+		"score":             round3(score),
+	}
+}
+
+func countDeadEnds(normalized core.ProviderResponse) int {
+	count := 0
+	for _, tool := range normalized.ToolCalls {
+		if evidenceDeadEnd(tool.Status) {
+			count++
+		}
+	}
+	for _, approval := range normalized.Approvals {
+		if evidenceDeadEnd(approval.Status) {
+			count++
+		}
+	}
+	for _, change := range normalized.StateChanges {
+		if evidenceDeadEnd(change.Status) {
+			count++
+		}
+	}
+	for _, op := range normalized.MemoryOperations {
+		if evidenceDeadEnd(op.Status) {
+			count++
+		}
+	}
+	return count
+}
+
+func evidenceDeadEnd(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "error", "failed", "failure", "denied", "rejected", "cancelled", "canceled", "timeout", "timed_out":
+		return true
+	default:
+		return false
+	}
+}
+
+func clamp01(v float64) float64 {
+	switch {
+	case v < 0:
+		return 0
+	case v > 1:
+		return 1
+	default:
+		return v
+	}
+}
+
+type passRateInterval struct {
+	rate       float64
+	lowerBound float64
+	upperBound float64
+}
+
+func passRateCI(passes, total int, confidence float64) passRateInterval {
+	if total <= 0 {
+		return passRateInterval{}
+	}
+	rate := float64(passes) / float64(total)
+	z := zForConfidence(confidence)
+	n := float64(total)
+	denom := 1 + (z*z)/n
+	center := (rate + (z*z)/(2*n)) / denom
+	margin := (z / denom) * math.Sqrt((rate*(1-rate)+(z*z)/(4*n))/n)
+	return passRateInterval{
+		rate:       round3(rate),
+		lowerBound: round3(math.Max(0, center-margin)),
+		upperBound: round3(math.Min(1, center+margin)),
+	}
+}
+
+func zForConfidence(confidence float64) float64 {
+	switch {
+	case confidence >= 0.99:
+		return 2.576
+	case confidence >= 0.975:
+		return 2.241
+	case confidence >= 0.95:
+		return 1.96
+	case confidence >= 0.90:
+		return 1.645
+	case confidence >= 0.80:
+		return 1.282
+	default:
+		return 1.0
+	}
+}
+
+func flakeRate(passes, total int) float64 {
+	if total <= 0 {
+		return 0
+	}
+	fails := total - passes
+	majority := passes
+	if fails > majority {
+		majority = fails
+	}
+	return round3(1 - (float64(majority) / float64(total)))
+}
+
+func majorityTextFlakeRate(samples []string) float64 {
+	if len(samples) <= 1 {
+		return 0
+	}
+	counts := map[string]int{}
+	maxCount := 0
+	for _, sample := range samples {
+		counts[sample]++
+		if counts[sample] > maxCount {
+			maxCount = counts[sample]
+		}
+	}
+	return round3(1 - (float64(maxCount) / float64(len(samples))))
 }

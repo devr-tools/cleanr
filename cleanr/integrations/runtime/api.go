@@ -181,6 +181,8 @@ func loadTrendSource(ctx context.Context, source core.TrendSourceConfig, baseDir
 		return trendspkg.LoadData(data, source.URL)
 	case "braintrust":
 		return loadBraintrustTrendSource(ctx, source)
+	case "langsmith", "openllmetry", "provider_logs":
+		return loadExternalTrendSource(ctx, source, baseDir)
 	default:
 		return trendspkg.HistoryFile{}, fmt.Errorf("unsupported trend source type %q", source.Type)
 	}

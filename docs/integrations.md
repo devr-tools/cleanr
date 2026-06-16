@@ -30,6 +30,9 @@ These integrations pull comparison history into `cleanr` before remote compariso
 | Local retained history | `file` | implemented | Loads a local `cleanr` trend history file |
 | Generic remote history | `http` | implemented | Fetches a remote `cleanr` trend history file over HTTP |
 | Braintrust | `braintrust` | implemented | Loads prior `cleanr` history rows from Braintrust experiments for comparison |
+| LangSmith import | `langsmith` | implemented | Imports exported LangSmith run JSON from `path` or `url` when records contain embedded `cleanr` report/history metadata or normalized run rows |
+| OpenLLMetry import | `openllmetry` | implemented | Imports exported trace or log JSON from `path` or `url` when records contain embedded `cleanr` report/history metadata or normalized run rows |
+| Provider-log import | `provider_logs` | implemented | Imports generic provider trace or log exports from `path` or `url` and normalizes embedded `cleanr` metadata or simple run rows into retained history |
 
 ### Summary Outputs
 
@@ -54,8 +57,8 @@ The following are not implemented yet:
 
 - native Langfuse trend-source loading
 - native PostHog trend-source loading
-- provider-backed dataset import or export flows
-- provider-specific UI integrations beyond returned run URLs, local summary files, and the `cleanr sync braintrust` review loop
+- provider-backed dataset import or export flows beyond file or HTTP exports
+- provider-specific UI integrations beyond returned run URLs, local summary files, imported run rows, and the `cleanr sync braintrust` review loop
 
 ## Where To Configure
 

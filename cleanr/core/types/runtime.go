@@ -6,13 +6,17 @@ import (
 )
 
 type Request struct {
-	Scenario Scenario
-	System   string
-	Prompt   string
-	Messages []ConversationTurn
-	Timeout  time.Duration
-	Headers  map[string]string
-	Template any
+	Scenario     Scenario
+	System       string
+	Prompt       string
+	Messages     []ConversationTurn
+	Images       []MediaInput
+	Audio        []MediaInput
+	PDFs         []MediaInput
+	JudgeOutputs []JudgeOutput
+	Timeout      time.Duration
+	Headers      map[string]string
+	Template     any
 }
 
 type Response struct {

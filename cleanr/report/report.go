@@ -27,6 +27,13 @@ func Write(w io.Writer, report core.Report, format string) error {
 		}
 		_, err = w.Write(append(data, '\n'))
 		return err
+	case "agent":
+		data, err := renderAgentReport(report)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(append(data, '\n'))
+		return err
 	default:
 		return fmt.Errorf("unsupported report format: %s", format)
 	}

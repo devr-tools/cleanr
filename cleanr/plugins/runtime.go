@@ -14,11 +14,13 @@ import (
 )
 
 type StateAdapterDelta struct {
-	ToolCalls        []core.ToolCall         `json:"tool_calls,omitempty"`
-	SourceUses       []core.SourceUse        `json:"source_uses,omitempty"`
-	Approvals        []core.ApprovalArtifact `json:"approvals,omitempty"`
-	StateChanges     []core.StateChange      `json:"state_changes,omitempty"`
-	MemoryOperations []core.MemoryOperation  `json:"memory_operations,omitempty"`
+	ToolCalls         []core.ToolCall              `json:"tool_calls,omitempty"`
+	SourceUses        []core.SourceUse             `json:"source_uses,omitempty"`
+	Approvals         []core.ApprovalArtifact      `json:"approvals,omitempty"`
+	StateChanges      []core.StateChange           `json:"state_changes,omitempty"`
+	MemoryOperations  []core.MemoryOperation       `json:"memory_operations,omitempty"`
+	DBObservations    []core.DBProbeObservation    `json:"db_observations,omitempty"`
+	QueueObservations []core.QueueProbeObservation `json:"queue_observations,omitempty"`
 }
 
 type StateAdapterInput struct {
@@ -109,6 +111,8 @@ func runProbe(ctx context.Context, probe core.PluginProbe, input StateAdapterInp
 	}, input, &delta); err != nil {
 		return StateAdapterDelta{}, fmt.Errorf("plugin probe %s: %w", probe.Name, err)
 	}
+	delta.StateChanges = append(delta.StateChanges, normalizeDBProbeObservations(probe, delta.DBObservations)...)
+	delta.StateChanges = append(delta.StateChanges, normalizeQueueProbeObservations(probe, delta.QueueObservations)...)
 	return delta, nil
 }
 
@@ -119,6 +123,138 @@ func applyStateAdapterDelta(resp core.Response, delta StateAdapterDelta) core.Re
 	resp.Normalized.StateChanges = append(resp.Normalized.StateChanges, delta.StateChanges...)
 	resp.Normalized.MemoryOperations = append(resp.Normalized.MemoryOperations, delta.MemoryOperations...)
 	return resp
+}
+
+func normalizeDBProbeObservations(probe core.PluginProbe, observations []core.DBProbeObservation) []core.StateChange {
+	out := make([]core.StateChange, 0, len(observations))
+	for _, observation := range observations {
+		raw := cloneRawMap(observation.Raw)
+		raw["probe"] = probe.Name
+		raw["probe_kind"] = probeKindValue(probe, "db")
+		if observation.Engine != "" {
+			raw["engine"] = observation.Engine
+		}
+		if observation.Database != "" {
+			raw["database"] = observation.Database
+		}
+		if observation.Table != "" {
+			raw["table"] = observation.Table
+		}
+		if observation.Count != 0 {
+			raw["count"] = observation.Count
+		}
+		out = append(out, core.StateChange{
+			Kind:    "db",
+			Target:  dbProbeTarget(observation),
+			Action:  defaultString(observation.Operation, "observe"),
+			Status:  observation.Status,
+			Summary: defaultString(observation.Summary, renderDBProbeSummary(observation)),
+			Raw:     raw,
+		})
+	}
+	return out
+}
+
+func normalizeQueueProbeObservations(probe core.PluginProbe, observations []core.QueueProbeObservation) []core.StateChange {
+	out := make([]core.StateChange, 0, len(observations))
+	for _, observation := range observations {
+		raw := cloneRawMap(observation.Raw)
+		raw["probe"] = probe.Name
+		raw["probe_kind"] = probeKindValue(probe, "queue")
+		if observation.Provider != "" {
+			raw["provider"] = observation.Provider
+		}
+		if observation.Queue != "" {
+			raw["queue"] = observation.Queue
+		}
+		if observation.Topic != "" {
+			raw["topic"] = observation.Topic
+		}
+		if observation.MessageID != "" {
+			raw["message_id"] = observation.MessageID
+		}
+		if observation.Depth != 0 {
+			raw["depth"] = observation.Depth
+		}
+		out = append(out, core.StateChange{
+			Kind:    "queue",
+			Target:  queueProbeTarget(observation),
+			Action:  defaultString(observation.Operation, "observe"),
+			Status:  observation.Status,
+			Summary: defaultString(observation.Summary, renderQueueProbeSummary(observation)),
+			Raw:     raw,
+		})
+	}
+	return out
+}
+
+func dbProbeTarget(observation core.DBProbeObservation) string {
+	switch {
+	case observation.Database != "" && observation.Table != "":
+		return observation.Database + "." + observation.Table
+	case observation.Table != "":
+		return observation.Table
+	default:
+		return observation.Database
+	}
+}
+
+func queueProbeTarget(observation core.QueueProbeObservation) string {
+	switch {
+	case observation.Queue != "" && observation.Topic != "":
+		return observation.Queue + ":" + observation.Topic
+	case observation.Queue != "":
+		return observation.Queue
+	default:
+		return observation.Topic
+	}
+}
+
+func renderDBProbeSummary(observation core.DBProbeObservation) string {
+	target := dbProbeTarget(observation)
+	if target == "" {
+		target = "database"
+	}
+	if observation.Count > 0 {
+		return fmt.Sprintf("%s %s count=%d", target, defaultString(observation.Operation, "observe"), observation.Count)
+	}
+	return fmt.Sprintf("%s %s", target, defaultString(observation.Operation, "observe"))
+}
+
+func renderQueueProbeSummary(observation core.QueueProbeObservation) string {
+	target := queueProbeTarget(observation)
+	if target == "" {
+		target = "queue"
+	}
+	if observation.Depth > 0 {
+		return fmt.Sprintf("%s %s depth=%d", target, defaultString(observation.Operation, "observe"), observation.Depth)
+	}
+	return fmt.Sprintf("%s %s", target, defaultString(observation.Operation, "observe"))
+}
+
+func defaultString(value, fallback string) string {
+	if strings.TrimSpace(value) == "" {
+		return fallback
+	}
+	return value
+}
+
+func probeKindValue(probe core.PluginProbe, fallback string) string {
+	if strings.TrimSpace(probe.Kind) == "" {
+		return fallback
+	}
+	return strings.TrimSpace(probe.Kind)
+}
+
+func cloneRawMap(src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return map[string]any{}
+	}
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+	return dst
 }
 
 func runJSONCommand(ctx context.Context, spec jsonCommandSpec, input any, output any) error {

@@ -6,6 +6,7 @@
 
 * add `openai_compatible` as a first-class target with configurable provider labels, auth headers, auth schemes, and compatibility metadata
 * add transcript-aware request construction plus normalized tool-call assertions for count, name, and structured arguments
+* add native OpenAPI-driven scenario generation, contract diffing, and HTTP target request overrides for REST contract testing
 * expand trend analysis to capture load metrics and scenario transcript diffs across retained runs
 
 ## [0.7.0](https://github.com/devr-tools/cleanr/compare/v0.6.0...v0.7.0) (2026-06-15)

@@ -16,16 +16,18 @@ func validateTargetConfig(errs *ValidationErrors, prefix string, cfg core.Target
 		validateCLITargetConfig(errs, prefix, cfg)
 	case "graphql":
 		validateGraphQLTargetConfig(errs, prefix, cfg, hints)
+	case "grpc":
+		validateGRPCTargetConfig(errs, prefix, cfg)
 	case "http":
 		validateHTTPTargetConfig(errs, prefix, cfg, hints)
-	case "openai", "openai_compatible":
+	case "openai", "openai_compatible", "azure_openai", "gemini", "bedrock", "vertex", "mistral":
 		validateOpenAITargetConfig(errs, prefix, cfg)
 	case "anthropic":
 		validateAnthropicTargetConfig(errs, prefix, cfg)
 	case "mcp":
 		validateMCPTargetConfig(errs, prefix, cfg)
 	default:
-		errs.Add(prefix+".type", "must be one of cli, graphql, http, openai, openai_compatible, anthropic, or mcp", "set the target type to cli, graphql, http, openai, openai_compatible, anthropic, or mcp")
+		errs.Add(prefix+".type", "must be one of cli, graphql, grpc, http, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, or mcp", "set the target type to cli, graphql, grpc, http, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, or mcp")
 	}
 }
 
@@ -44,6 +46,11 @@ func validateGraphQLTargetConfig(errs *ValidationErrors, prefix string, cfg core
 	requireNonEmpty(errs, prefix+".graphql.query", cfg.GraphQL.Query, "set the GraphQL document to execute for each scenario")
 	requireNonEmpty(errs, prefix+".response_field", cfg.ResponseField, hints.response)
 	validateAbsoluteURL(errs, prefix+".url", cfg.URL, "use a value such as https://api.example.com/graphql or http://localhost:4000/graphql")
+}
+
+func validateGRPCTargetConfig(errs *ValidationErrors, prefix string, cfg core.TargetConfig) {
+	requireNonEmpty(errs, prefix+".grpc.address", cfg.GRPC.Address, "set the gRPC server address, for example 127.0.0.1:50051")
+	requireNonEmpty(errs, prefix+".grpc.method", cfg.GRPC.Method, "set the fully-qualified gRPC method such as grpc.testing.TestService/UnaryCall")
 }
 
 func targetHints(prefix string) targetValidationHints {
@@ -74,6 +81,13 @@ func validateOpenAITargetConfig(errs *ValidationErrors, prefix string, cfg core.
 	validateAbsoluteURL(errs, prefix+".openai.base_url", cfg.OpenAI.BaseURL, "use a value such as https://api.openai.com/v1 or a compatible base URL for testing")
 	if strings.TrimSpace(cfg.OpenAI.AuthHeader) == "" && cfg.TargetType() == "openai_compatible" {
 		errs.Add(prefix+".openai.auth_header", "is required for openai_compatible targets", "set the auth header name, usually Authorization or api-key")
+	}
+	switch cfg.TargetType() {
+	case "azure_openai", "vertex", "bedrock":
+		requireNonEmpty(errs, prefix+".openai.base_url", cfg.OpenAI.BaseURL, "set the provider endpoint base URL, including any required deployment or gateway path")
+	}
+	if cfg.TargetType() == "azure_openai" {
+		requireNonEmpty(errs, prefix+".openai.api_version", cfg.OpenAI.APIVersion, "set the Azure OpenAI api_version, for example 2025-03-01-preview")
 	}
 }
 
@@ -107,6 +121,40 @@ func validateAbsoluteURL(errs *ValidationErrors, path, rawURL, hint string) {
 	parsed, err := url.Parse(rawURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		errs.Add(path, "must be an absolute http(s) URL", hint)
+	}
+}
+
+func validateOpenAPISource(errs *ValidationErrors, prefix string, source core.OpenAPISource, hint string) {
+	count := 0
+	if strings.TrimSpace(source.Path) != "" {
+		count++
+	}
+	if strings.TrimSpace(source.URL) != "" {
+		count++
+		validateAbsoluteURL(errs, prefix+".url", source.URL, "use an absolute http(s) URL to a reachable OpenAPI document")
+	}
+	if source.Inline != nil {
+		count++
+	}
+	if count == 0 {
+		errs.Add(prefix, "is required", hint)
+		return
+	}
+	if count > 1 {
+		errs.Add(prefix, "must set exactly one of path, url, or inline", "keep a single OpenAPI source so cleanr loads one unambiguous contract document")
+	}
+}
+
+func validateOpenAPIMethodList(errs *ValidationErrors, path string, methods []string) {
+	for i, method := range methods {
+		switch strings.ToUpper(strings.TrimSpace(method)) {
+		case "", "GET", "POST", "PUT", "PATCH", "DELETE", "HEAD", "OPTIONS", "TRACE":
+			if strings.TrimSpace(method) == "" {
+				errs.Add(fmt.Sprintf("%s[%d]", path, i), "cannot be empty", "remove empty values or set a concrete HTTP method such as GET or POST")
+			}
+		default:
+			errs.Add(fmt.Sprintf("%s[%d]", path, i), "must be a supported HTTP method", "use GET, POST, PUT, PATCH, DELETE, HEAD, OPTIONS, or TRACE")
+		}
 	}
 }
 
@@ -183,14 +231,21 @@ func validateAssertion(errs *ValidationErrors, prefix string, assertion core.Ass
 		requireNonEmpty(errs, prefix+".path", assertion.Path, "set the response path to check, for example response.provider_model or response.body.output.0.content.0.text")
 	case "status_code", "exit_code":
 		validateCodeAssertion(errs, prefix, assertionType, assertion.IntValue)
-	case "latency_ms", "stream_ttft_ms", "stream_duration_ms":
+	case "latency_ms", "stream_ttft_ms", "stream_duration_ms", "stream_chunk_cadence_ms":
 		validateThresholdAssertion(errs, prefix, assertion.IntValue)
 	case "finish_reason", "tool_call_name":
 		requireNonEmpty(errs, prefix+".value", assertion.Value, "set the expected provider finish reason or tool name")
+	case "stream_tool_call_name":
+		requireNonEmpty(errs, prefix+".value", assertion.Value, "set the expected streamed tool name")
 	case "tool_call_count":
 		validateToolCallCountAssertion(errs, prefix, assertion.IntValue)
+	case "tool_call_order":
+		requireNonEmpty(errs, prefix+".value", assertion.Value, "set a comma-separated ordered tool list such as lookup_policy, create_ticket")
+	case "tool_call_arguments_schema":
+		requireNonEmpty(errs, prefix+".path", assertion.Path, "set the tool call path to validate, for example response.tool_calls.0 or response.tool_calls.0.parsed_arguments")
+		validateJSONSchemaAssertion(errs, prefix, assertion)
 	default:
-		errs.Add(prefix+".type", "must be one of contains, not_contains, regex, json_schema, json_path, status_code, exit_code, latency_ms, stream_ttft_ms, stream_duration_ms, finish_reason, tool_call_count, or tool_call_name", "pick one of the built-in assertion types")
+		errs.Add(prefix+".type", "must be one of contains, not_contains, regex, json_schema, json_path, status_code, exit_code, latency_ms, stream_ttft_ms, stream_duration_ms, stream_chunk_cadence_ms, finish_reason, tool_call_count, tool_call_name, stream_tool_call_name, tool_call_order, or tool_call_arguments_schema", "pick one of the built-in assertion types")
 	}
 
 	if severity := strings.TrimSpace(assertion.Severity); severity != "" {
@@ -297,7 +352,21 @@ func validateMemoryReplaySession(errs *ValidationErrors, prefix string, session 
 
 func validateConversationTurn(errs *ValidationErrors, prefix string, turn core.ConversationTurn) {
 	requireNonEmpty(errs, prefix+".role", turn.Role, "set the turn role, for example system, user, assistant, or tool")
-	requireNonEmpty(errs, prefix+".content", turn.Content, "set the message content for this transcript turn")
+	if strings.TrimSpace(turn.Content) == "" && len(turn.Images) == 0 && len(turn.Audio) == 0 && len(turn.PDFs) == 0 {
+		errs.Add(prefix+".content", "is required", "set the message content or attach images, audio, or pdfs for this transcript turn")
+	}
+	for i, item := range turn.Images {
+		validateMediaInput(errs, fmt.Sprintf("%s.images[%d]", prefix, i), "image", item)
+	}
+	for i, item := range turn.Audio {
+		validateMediaInput(errs, fmt.Sprintf("%s.audio[%d]", prefix, i), "audio", item)
+	}
+	for i, item := range turn.PDFs {
+		validateMediaInput(errs, fmt.Sprintf("%s.pdfs[%d]", prefix, i), "pdf", item)
+	}
+	for i, item := range turn.MockToolResults {
+		validateMockToolResult(errs, fmt.Sprintf("%s.mock_tool_results[%d]", prefix, i), item)
+	}
 
 	switch strings.TrimSpace(turn.Role) {
 	case "system", "user", "assistant", "tool":
@@ -307,6 +376,51 @@ func validateConversationTurn(errs *ValidationErrors, prefix string, turn core.C
 	}
 	if strings.TrimSpace(turn.Role) == "tool" {
 		requireNonEmpty(errs, prefix+".name", turn.Name, "set the tool name for tool transcript turns")
+	}
+}
+
+func validateMockToolResult(errs *ValidationErrors, prefix string, item core.MockToolResult) {
+	requireNonEmpty(errs, prefix+".name", item.Name, "set the mocked tool name such as lookup_policy or fetch_customer")
+	if strings.TrimSpace(item.Content) == "" && len(item.Images) == 0 && len(item.Audio) == 0 && len(item.PDFs) == 0 {
+		errs.Add(prefix+".content", "is required", "set the mocked tool result payload or attach mocked media output")
+	}
+	for i, media := range item.Images {
+		validateMediaInput(errs, fmt.Sprintf("%s.images[%d]", prefix, i), "image", media)
+	}
+	for i, media := range item.Audio {
+		validateMediaInput(errs, fmt.Sprintf("%s.audio[%d]", prefix, i), "audio", media)
+	}
+	for i, media := range item.PDFs {
+		validateMediaInput(errs, fmt.Sprintf("%s.pdfs[%d]", prefix, i), "pdf", media)
+	}
+}
+
+func validateMediaInput(errs *ValidationErrors, prefix, kind string, item core.MediaInput) {
+	if strings.TrimSpace(item.URL) == "" && strings.TrimSpace(item.Path) == "" && strings.TrimSpace(item.Data) == "" {
+		errs.Add(prefix, "must set url, path, or data", "point the media input at a URL or local path, or provide inline data")
+	}
+	if strings.TrimSpace(item.Detail) != "" {
+		switch strings.ToLower(strings.TrimSpace(item.Detail)) {
+		case "low", "high", "auto":
+		default:
+			errs.Add(prefix+".detail", "must be one of low, high, or auto", "omit detail or use a supported image detail hint")
+		}
+	}
+	if kind == "pdf" && strings.TrimSpace(item.MediaType) == "" {
+		errs.Add(prefix+".media_type", "is recommended for pdf inputs", "set media_type to application/pdf for portability across providers")
+	}
+}
+
+func validateJudgeOutput(errs *ValidationErrors, prefix string, item core.JudgeOutput) {
+	requireNonEmpty(errs, prefix+".type", item.Type, "set the output type to image, audio, or pdf so the judge knows what artifact to inspect")
+	requireNonEmpty(errs, prefix+".path", item.Path, "set the response path that resolves to the generated artifact reference, for example response.body.output.0.url")
+	if value := strings.TrimSpace(item.Value); value != "" {
+		errs.Add(prefix+".value", "is runtime-only", "remove value from config; cleanr populates it after resolving the configured response path")
+	}
+	switch strings.ToLower(strings.TrimSpace(item.Type)) {
+	case "image", "audio", "pdf", "":
+	default:
+		errs.Add(prefix+".type", "must be one of image, audio, or pdf", "pick the artifact family the judge should inspect")
 	}
 }
 
@@ -455,25 +569,15 @@ func validateResultSink(errs *ValidationErrors, prefix string, sink core.ResultS
 func validateTrendSource(errs *ValidationErrors, prefix string, source core.TrendSourceConfig) {
 	switch strings.TrimSpace(source.Type) {
 	case "file":
-		requireNonEmpty(errs, prefix+".path", source.Path, "set the path to a retained cleanr trend history file")
+		validateFileTrendSource(errs, prefix, source)
 	case "http":
-		requireNonEmpty(errs, prefix+".url", source.URL, "set the remote URL that returns a cleanr trend history file")
-		if rawURL := strings.TrimSpace(source.URL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add(prefix+".url", "must be an absolute http(s) URL", "use a value such as https://example.internal/cleanr/history.json")
-			}
-		}
+		validateHTTPTrendSource(errs, prefix, source)
 	case "braintrust":
-		requireNonEmpty(errs, prefix+".project", source.Project, "set the Braintrust project name that stores cleanr release-gate experiments")
-		if rawURL := strings.TrimSpace(source.BaseURL); rawURL != "" {
-			parsed, err := url.Parse(rawURL)
-			if err != nil || parsed.Scheme == "" || parsed.Host == "" {
-				errs.Add(prefix+".base_url", "must be an absolute http(s) URL", "use a value such as https://api.braintrust.dev or your Braintrust data plane URL")
-			}
-		}
+		validateBraintrustTrendSource(errs, prefix, source)
+	case "langsmith", "openllmetry", "provider_logs":
+		validateImportedTrendSource(errs, prefix, source)
 	default:
-		errs.Add(prefix+".type", "must be one of file, http, or braintrust", "use file for a retained local artifact, http for a remote history endpoint, or braintrust for native Braintrust experiment history")
+		errs.Add(prefix+".type", "must be one of file, http, braintrust, langsmith, openllmetry, or provider_logs", "use file for a retained local artifact, http for a remote history endpoint, braintrust for native Braintrust experiment history, or a vendor log source for embedded cleanr traces")
 	}
 	if strings.TrimSpace(source.ViewURL) != "" {
 		parsed, err := url.Parse(strings.TrimSpace(source.ViewURL))
@@ -487,6 +591,27 @@ func validateTrendSource(errs *ValidationErrors, prefix string, source core.Tren
 	if source.TimeoutMS < 0 {
 		errs.Add(prefix+".timeout_ms", "must be >= 0", "use a non-negative timeout in milliseconds")
 	}
+}
+
+func validateFileTrendSource(errs *ValidationErrors, prefix string, source core.TrendSourceConfig) {
+	requireNonEmpty(errs, prefix+".path", source.Path, "set the path to a retained cleanr trend history file")
+}
+
+func validateHTTPTrendSource(errs *ValidationErrors, prefix string, source core.TrendSourceConfig) {
+	requireNonEmpty(errs, prefix+".url", source.URL, "set the remote URL that returns a cleanr trend history file")
+	validateAbsoluteURL(errs, prefix+".url", source.URL, "use a value such as https://example.internal/cleanr/history.json")
+}
+
+func validateBraintrustTrendSource(errs *ValidationErrors, prefix string, source core.TrendSourceConfig) {
+	requireNonEmpty(errs, prefix+".project", source.Project, "set the Braintrust project name that stores cleanr release-gate experiments")
+	validateAbsoluteURL(errs, prefix+".base_url", source.BaseURL, "use a value such as https://api.braintrust.dev or your Braintrust data plane URL")
+}
+
+func validateImportedTrendSource(errs *ValidationErrors, prefix string, source core.TrendSourceConfig) {
+	if strings.TrimSpace(source.Path) == "" && strings.TrimSpace(source.URL) == "" {
+		errs.Add(prefix, "must set path or url", "set a local export path or remote endpoint that returns normalized cleanr rows or vendor records with embedded cleanr metadata")
+	}
+	validateAbsoluteURL(errs, prefix+".url", source.URL, "use a value such as https://api.smith.langchain.com/runs/export, https://collector.internal/logs, or another reachable JSON endpoint")
 }
 
 func validateSummary(errs *ValidationErrors, prefix string, summary core.SummaryConfig) {

@@ -43,6 +43,55 @@ type Report struct {
 	Recommendations []string           `json:"recommendations,omitempty"`
 }
 
+type AgentOutputContract struct {
+	Kind    string `json:"kind"`
+	Format  string `json:"format"`
+	Version string `json:"version"`
+}
+
+type AgentReport struct {
+	Contract        AgentOutputContract  `json:"contract"`
+	Summary         AgentReportSummary   `json:"summary"`
+	Findings        []AgentFinding       `json:"findings,omitempty"`
+	FixSuggestions  []AgentFixSuggestion `json:"fix_suggestions,omitempty"`
+	Recommendations []string             `json:"recommendations,omitempty"`
+	Report          Report               `json:"report"`
+}
+
+type AgentReportSummary struct {
+	Target              string        `json:"target"`
+	Passed              bool          `json:"passed"`
+	GeneratedAt         time.Time     `json:"generated_at,omitempty"`
+	Duration            time.Duration `json:"duration"`
+	TotalSuites         int           `json:"total_suites"`
+	FailedSuites        int           `json:"failed_suites"`
+	TotalCases          int           `json:"total_cases"`
+	FailedCases         int           `json:"failed_cases"`
+	FindingCount        int           `json:"finding_count"`
+	RecommendationCount int           `json:"recommendation_count"`
+}
+
+type AgentFinding struct {
+	ID       string         `json:"id,omitempty"`
+	Scope    string         `json:"scope"`
+	Suite    string         `json:"suite,omitempty"`
+	Case     string         `json:"case,omitempty"`
+	Severity string         `json:"severity"`
+	Message  string         `json:"message"`
+	Details  map[string]any `json:"details,omitempty"`
+}
+
+type AgentFixSuggestion struct {
+	ID         string   `json:"id,omitempty"`
+	Scope      string   `json:"scope"`
+	Suite      string   `json:"suite,omitempty"`
+	Case       string   `json:"case,omitempty"`
+	Kind       string   `json:"kind"`
+	Title      string   `json:"title"`
+	Actions    []string `json:"actions,omitempty"`
+	Confidence string   `json:"confidence,omitempty"`
+}
+
 type IntegrationReport struct {
 	LocalBlocking bool                    `json:"local_blocking"`
 	RemoteMode    string                  `json:"remote_mode,omitempty"`

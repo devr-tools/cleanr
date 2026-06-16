@@ -26,6 +26,7 @@ func ValidateConfig(cfg core.Config) error {
 func validateCoreConfig(errs *ValidationErrors, cfg core.Config) {
 	validateTargetConfig(errs, "target", cfg.Target)
 	validateScenarioGenerationConfig(errs, cfg.ScenarioGeneration)
+	validateOpenAPIConfig(errs, cfg)
 	validateTargetTimeout(errs, cfg.Target)
 	validateScenarios(errs, cfg.Scenarios, cfg.ScenarioGeneration.Enabled)
 }
@@ -35,23 +36,57 @@ func validateScenarioGenerationConfig(errs *ValidationErrors, cfg core.ScenarioG
 		return
 	}
 	if strings.TrimSpace(cfg.Provider.Type) == "" {
-		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to cli, graphql, openai, openai_compatible, anthropic, mcp, or http")
+		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to cli, graphql, grpc, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, mcp, or http")
 	}
 	validateTargetConfig(errs, "scenario_generation.provider", cfg.Provider)
 	if cfg.Provider.TimeoutMS < 0 {
 		errs.Add("scenario_generation.provider.timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
 	}
 	requireNonEmpty(errs, "scenario_generation.spec.app_kind", cfg.Spec.AppKind, "set the app kind being tested, for example support-assistant or release-bot")
+	switch strings.ToLower(strings.TrimSpace(cfg.Spec.Mode)) {
+	case "", "standard", "adversarial":
+	default:
+		errs.Add("scenario_generation.spec.mode", "must be one of standard or adversarial", "use standard for routine coverage generation or adversarial for red-team scenario generation")
+	}
 	if len(cfg.Spec.Goals) == 0 {
 		errs.Add("scenario_generation.spec.goals", "at least one goal is required", "add one or more goals such as refund policy, account recovery, or release approval")
 	}
 	if len(cfg.Spec.RiskAreas) == 0 {
 		errs.Add("scenario_generation.spec.risk_areas", "at least one risk area is required", "add one or more risk areas such as prompt injection, pii leakage, or unsafe tool use")
 	}
+	if cfg.Spec.ModeValue() == "adversarial" {
+		if len(cfg.Spec.AttackFamilies) == 0 {
+			errs.Add("scenario_generation.spec.attack_families", "at least one attack family is required in adversarial mode", "add one or more adversarial families such as prompt injection, jailbreak, tool abuse, or data exfiltration")
+		}
+		validateStringList(errs, "scenario_generation.spec.attack_families", cfg.Spec.AttackFamilies, "remove empty attack-family values or set a concrete adversarial family")
+	}
 	if cfg.Count <= 0 {
 		errs.Add("scenario_generation.count", "must be >= 1", "set the number of generated scenarios to a positive integer")
 	}
 	requireNonEmpty(errs, "scenario_generation.output_file", cfg.OutputFile, "set a persisted dataset path such as generated/cleanr.dataset.yaml so generated scenarios can be reviewed")
+}
+
+func validateOpenAPIConfig(errs *ValidationErrors, cfg core.Config) {
+	if cfg.Target.OpenAPI.Enabled && cfg.Target.TargetType() != "http" {
+		errs.Add("target.openapi.enabled", "is only supported for http targets", "disable target.openapi.enabled or switch target.type to http")
+	}
+	openapiCfg := cfg.OpenAPI
+	if !openapiCfg.ScenarioGenerationEnabled() && !openapiCfg.ContractDiffEnabled() {
+		return
+	}
+	validateOpenAPISource(errs, "openapi.source", openapiCfg.Source, "set openapi.source.path, openapi.source.url, or openapi.source.inline to the candidate OpenAPI 3 document")
+	if openapiCfg.ScenarioGenerationEnabled() {
+		if cfg.Target.TargetType() != "http" {
+			errs.Add("openapi.scenario_generation", "requires target.type http", "use an http target so generated OpenAPI scenarios can map onto concrete REST operations")
+		}
+		validateStringList(errs, "openapi.scenario_generation.include_tags", openapiCfg.ScenarioGeneration.IncludeTags, "remove empty tag names or set concrete OpenAPI tags to include")
+		validateOpenAPIMethodList(errs, "openapi.scenario_generation.include_methods", openapiCfg.ScenarioGeneration.IncludeMethods)
+		requireNonEmpty(errs, "openapi.scenario_generation.output_file", openapiCfg.ScenarioGeneration.OutputFile, "set a dataset path such as generated/openapi.scenarios.yaml when persisting generated scenarios")
+	}
+	if openapiCfg.ContractDiffEnabled() {
+		validateOpenAPISource(errs, "openapi.contract_diff.baseline", openapiCfg.ContractDiff.Baseline, "set openapi.contract_diff.baseline.path, .url, or .inline to the baseline OpenAPI document")
+		requireNonEmpty(errs, "openapi.contract_diff.output_file", openapiCfg.ContractDiff.OutputFile, "set an artifact path such as reports/openapi.diff.yaml when persisting the contract diff")
+	}
 }
 
 func validateTargetTimeout(errs *ValidationErrors, cfg core.TargetConfig) {
@@ -73,10 +108,12 @@ func validateScenarios(errs *ValidationErrors, scenarios []core.Scenario, scenar
 func validateScenario(errs *ValidationErrors, index int, scenario core.Scenario, scenarioNames map[string]int) {
 	prefix := fmt.Sprintf("scenarios[%d]", index)
 	requireNonEmpty(errs, prefix+".name", scenario.Name, "set a short stable scenario name, for example \"happy-path\"")
-	if len(scenario.Turns) == 0 {
+	if len(scenario.Turns) == 0 && !scenarioHasMultimodalInputs(scenario) && !scenarioHasOpenAPIRequest(scenario) {
 		requireNonEmpty(errs, prefix+".input", scenario.Input, "set the end-user prompt or test input for this scenario")
 	}
 	validateScenarioName(errs, prefix, index, scenario.Name, scenarioNames)
+	validateScenarioMediaInputs(errs, prefix, scenario.Images, scenario.Audio, scenario.PDFs)
+	validateScenarioJudgeOutputs(errs, prefix, scenario.JudgeOutputs)
 	validateScenarioTurns(errs, prefix, scenario.Turns)
 	validateScenarioContextSources(errs, prefix, scenario.ContextSources)
 	validateScenarioMemoryReplay(errs, prefix, scenario.MemoryReplay)
@@ -110,6 +147,35 @@ func validateScenarioTurns(errs *ValidationErrors, prefix string, turns []core.C
 	for i, turn := range turns {
 		validateConversationTurn(errs, fmt.Sprintf("%s.turns[%d]", prefix, i), turn)
 	}
+}
+
+func validateScenarioMediaInputs(errs *ValidationErrors, prefix string, images, audio, pdfs []core.MediaInput) {
+	for i, item := range images {
+		validateMediaInput(errs, fmt.Sprintf("%s.images[%d]", prefix, i), "image", item)
+	}
+	for i, item := range audio {
+		validateMediaInput(errs, fmt.Sprintf("%s.audio[%d]", prefix, i), "audio", item)
+	}
+	for i, item := range pdfs {
+		validateMediaInput(errs, fmt.Sprintf("%s.pdfs[%d]", prefix, i), "pdf", item)
+	}
+}
+
+func validateScenarioJudgeOutputs(errs *ValidationErrors, prefix string, outputs []core.JudgeOutput) {
+	for i, item := range outputs {
+		validateJudgeOutput(errs, fmt.Sprintf("%s.judge_outputs[%d]", prefix, i), item)
+	}
+}
+
+func scenarioHasMultimodalInputs(scenario core.Scenario) bool {
+	return len(scenario.Images) > 0 || len(scenario.Audio) > 0 || len(scenario.PDFs) > 0
+}
+
+func scenarioHasOpenAPIRequest(scenario core.Scenario) bool {
+	if len(scenario.Metadata) == 0 {
+		return false
+	}
+	return strings.TrimSpace(scenario.Metadata["openapi.path"]) != "" || strings.TrimSpace(scenario.Metadata["openapi.method"]) != ""
 }
 
 func validateScenarioMemoryReplay(errs *ValidationErrors, prefix string, replay []core.MemoryReplaySession) {
@@ -183,30 +249,41 @@ func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scen
 	if !cfg.Enabled {
 		return
 	}
-	if strings.TrimSpace(cfg.Provider.Type) == "" {
-		errs.Add("suites.llm_judge.provider.type", "is required", "set suites.llm_judge.provider.type to cli, graphql, openai, openai_compatible, anthropic, mcp, or http so a judge model can grade responses")
+	validateLLMJudgeProvider(errs, cfg.Provider, "suites.llm_judge.provider", "set suites.llm_judge.provider.type to cli, graphql, grpc, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, mcp, or http so a judge model can grade responses")
+	validateLLMJudgeMode(errs, cfg)
+	validateLLMJudgeThresholds(errs, cfg)
+	validateLLMJudgeTargets(errs, cfg.Ensemble, "suites.llm_judge.ensemble")
+	validateLLMJudgeTargets(errs, cfg.ComparisonTargets, "suites.llm_judge.comparison_targets")
+	validateLLMJudgeCalibration(errs, cfg)
+	validateLLMJudgeReferences(errs, cfg, scenarios)
+}
+
+func validateLLMJudgeProvider(errs *ValidationErrors, provider core.TargetConfig, prefix, requiredHint string) {
+	if strings.TrimSpace(provider.Type) == "" {
+		errs.Add(prefix+".type", "is required", requiredHint)
 	}
-	validateTargetConfig(errs, "suites.llm_judge.provider", cfg.Provider)
-	if cfg.Provider.TimeoutMS < 0 {
-		errs.Add("suites.llm_judge.provider.timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
+	validateTargetConfig(errs, prefix, provider)
+	if provider.TimeoutMS < 0 {
+		errs.Add(prefix+".timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
 	}
+}
+
+func validateLLMJudgeMode(errs *ValidationErrors, cfg core.LLMJudgeConfig) {
 	switch m := strings.ToLower(strings.TrimSpace(cfg.Mode)); m {
 	case "", "score", "pairwise":
 	default:
 		errs.Add("suites.llm_judge.mode", "must be one of score or pairwise", "use score for rubric grading or pairwise to compare the target against a baseline")
 	}
-	if cfg.ModeValue() == "pairwise" {
-		if strings.TrimSpace(cfg.Baseline.Type) == "" {
-			errs.Add("suites.llm_judge.baseline.type", "is required for pairwise mode", "set suites.llm_judge.baseline.type to cli, graphql, openai, openai_compatible, anthropic, mcp, or http so the target can be compared against a baseline")
-		}
-		validateTargetConfig(errs, "suites.llm_judge.baseline", cfg.Baseline)
-		if cfg.Baseline.TimeoutMS < 0 {
-			errs.Add("suites.llm_judge.baseline.timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
-		}
-		if cfg.MinWinRate < 0 || cfg.MinWinRate > 1 {
-			errs.Add("suites.llm_judge.min_win_rate", "must be between 0 and 1", "use a fraction of decisive comparisons the target must win, such as 0.5")
-		}
+	if cfg.ModeValue() != "pairwise" {
+		return
 	}
+	validateLLMJudgeProvider(errs, cfg.Baseline, "suites.llm_judge.baseline", "set suites.llm_judge.baseline.type to cli, graphql, grpc, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, mcp, or http so the target can be compared against a baseline")
+	if cfg.MinWinRate < 0 || cfg.MinWinRate > 1 {
+		errs.Add("suites.llm_judge.min_win_rate", "must be between 0 and 1", "use a fraction of decisive comparisons the target must win, such as 0.5")
+	}
+}
+
+func validateLLMJudgeThresholds(errs *ValidationErrors, cfg core.LLMJudgeConfig) {
 	if cfg.Scale != 0 && cfg.Scale < 2 {
 		errs.Add("suites.llm_judge.scale", "must be >= 2", "use a Likert ceiling such as 5, or omit the field to use the default")
 	}
@@ -216,12 +293,38 @@ func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scen
 	if cfg.Samples < 0 {
 		errs.Add("suites.llm_judge.samples", "must be >= 0", "set the self-consistency sample count to a positive integer or omit the field to use a single judge call")
 	}
+	validateUnitInterval(errs, "suites.llm_judge.confidence_level", cfg.ConfidenceLevel, "use a confidence level such as 0.95 for Wilson pass-rate intervals")
+	validateUnitInterval(errs, "suites.llm_judge.min_pass_rate", cfg.MinPassRate, "use a fractional pass-rate gate such as 0.9 for a 9/10 reliability threshold")
+	validateUnitInterval(errs, "suites.llm_judge.max_flake_rate", cfg.MaxFlakeRate, "use a fractional instability budget such as 0.1")
 	validateUnitInterval(errs, "suites.llm_judge.max_disagreement", cfg.MaxDisagreement, "use a normalized spread such as 0.4")
-	if cfg.RequireReference {
-		for _, idx := range judgeScopedScenarios(scenarios, cfg.StableTags) {
-			if strings.TrimSpace(scenarios[idx].ReferenceAnswer) == "" {
-				errs.Add(fmt.Sprintf("scenarios[%d].reference_answer", idx), "is required when suites.llm_judge.require_reference is true", "add a reference_answer for this scenario or disable require_reference")
-			}
+	validateUnitInterval(errs, "suites.llm_judge.cascade_margin", cfg.CascadeMargin, "use a fractional margin such as 0.1 so extra judges only run near the pass threshold")
+	validateUnitInterval(errs, "suites.llm_judge.min_calibration_accuracy", cfg.MinCalibrationAccuracy, "use a fraction such as 0.8 to require agreement with human labels")
+	validateNonNegativeFloat(errs, "suites.llm_judge.max_calibration_mae", cfg.MaxCalibrationMAE, "use a non-negative mean absolute error threshold such as 0.15")
+}
+
+func validateLLMJudgeTargets(errs *ValidationErrors, targets []core.TargetConfig, prefix string) {
+	for i, target := range targets {
+		targetPrefix := fmt.Sprintf("%s[%d]", prefix, i)
+		validateTargetConfig(errs, targetPrefix, target)
+		if target.TimeoutMS < 0 {
+			errs.Add(targetPrefix+".timeout_ms", "must be >= 0", "remove the value to use the default timeout, or set a positive millisecond value")
+		}
+	}
+}
+
+func validateLLMJudgeCalibration(errs *ValidationErrors, cfg core.LLMJudgeConfig) {
+	if (cfg.MinCalibrationAccuracy > 0 || cfg.MaxCalibrationMAE > 0) && strings.TrimSpace(cfg.CalibrationFile) == "" {
+		errs.Add("suites.llm_judge.calibration_file", "is required when calibration gates are enabled", "set a JSON or YAML label file so judge outputs can be checked against human ratings")
+	}
+}
+
+func validateLLMJudgeReferences(errs *ValidationErrors, cfg core.LLMJudgeConfig, scenarios []core.Scenario) {
+	if !cfg.RequireReference {
+		return
+	}
+	for _, idx := range judgeScopedScenarios(scenarios, cfg.StableTags) {
+		if strings.TrimSpace(scenarios[idx].ReferenceAnswer) == "" {
+			errs.Add(fmt.Sprintf("scenarios[%d].reference_answer", idx), "is required when suites.llm_judge.require_reference is true", "add a reference_answer for this scenario or disable require_reference")
 		}
 	}
 }
@@ -262,6 +365,15 @@ func validateLoadSuite(errs *ValidationErrors, cfg core.LoadConfig) {
 	}
 	if cfg.P95LatencyMS < 0 {
 		errs.Add("suites.load.p95_latency_ms", "must be >= 0", "set a positive latency budget in milliseconds")
+	}
+	validateNonNegativeFloat(errs, "suites.load.max_cost_per_request", cfg.MaxCostPerRequest, "set a non-negative per-request budget such as 0.01, or omit the field to disable the gate")
+	validateNonNegativeFloat(errs, "suites.load.input_cost_per_1m_tokens", cfg.InputCostPer1MTokens, "set a non-negative input token price per 1M tokens when cost-per-request gating is enabled")
+	validateNonNegativeFloat(errs, "suites.load.output_cost_per_1m_tokens", cfg.OutputCostPer1MTokens, "set a non-negative output token price per 1M tokens when cost-per-request gating is enabled")
+	if cfg.MinTokensPerSecond < 0 {
+		errs.Add("suites.load.min_tokens_per_second", "must be >= 0", "set a non-negative aggregate token throughput floor, or omit the field to disable the gate")
+	}
+	if cfg.MaxCostPerRequest > 0 && cfg.InputCostPer1MTokens == 0 && cfg.OutputCostPer1MTokens == 0 {
+		errs.Add("suites.load", "cost-per-request gating requires pricing", "set suites.load.input_cost_per_1m_tokens and/or suites.load.output_cost_per_1m_tokens so cleanr can estimate request cost from provider usage")
 	}
 	validateStringList(errs, "suites.load.scenario_tags", cfg.ScenarioTags, "set one or more non-empty tags to scope the load profile, or omit the field to use every scenario")
 }
@@ -316,6 +428,9 @@ func validateDriftSuite(errs *ValidationErrors, cfg core.DriftConfig) {
 	validateUnitInterval(errs, "suites.drift.max_semantic_snapshot_drift", cfg.MaxSemanticSnapshotDrift, "use a decimal threshold such as 0.2")
 	validateUnitInterval(errs, "suites.drift.min_consistency_score", cfg.MinConsistencyScore, "use a decimal threshold such as 0.7")
 	validateUnitInterval(errs, "suites.drift.min_semantic_consistency_score", cfg.MinSemanticConsistencyScore, "use a decimal threshold such as 0.75")
+	validateUnitInterval(errs, "suites.drift.confidence_level", cfg.ConfidenceLevel, "use a confidence level such as 0.95 for Wilson pass-rate intervals")
+	validateUnitInterval(errs, "suites.drift.min_pass_rate", cfg.MinPassRate, "use a fractional pass-rate gate such as 0.9 for a 9/10 stability threshold")
+	validateUnitInterval(errs, "suites.drift.max_flake_rate", cfg.MaxFlakeRate, "use a fractional instability budget such as 0.1")
 }
 
 func validateShadowStateSuite(errs *ValidationErrors, cfg core.ShadowStateConfig) {
@@ -383,9 +498,9 @@ func validateTokenOptimizationSuite(errs *ValidationErrors, cfg core.TokenOptimi
 func validateReportingConfig(errs *ValidationErrors, cfg core.ReportingConfig) {
 	if format := strings.TrimSpace(cfg.Format); format != "" {
 		switch format {
-		case "text", "json", "junit", "sarif":
+		case "text", "json", "junit", "sarif", "agent":
 		default:
-			errs.Add("reporting.format", "must be one of text, json, junit, or sarif", "use one of the built-in report formats or omit the field for text output")
+			errs.Add("reporting.format", "must be one of text, json, junit, sarif, or agent", "use one of the built-in report formats or omit the field for text output")
 		}
 	}
 	validateNonNegativeInt(errs, "reporting.trend_limit", cfg.TrendLimit, "use 0 to disable history trimming or set a positive run-retention count such as 30")

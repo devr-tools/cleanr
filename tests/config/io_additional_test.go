@@ -244,10 +244,12 @@ func TestScenarioGenerationConfigRoundTrips(t *testing.T) {
 			},
 		},
 		Spec: cleanr.ScenarioGenerationSpec{
-			AppKind:      "support-assistant",
-			Goals:        []string{"refund policy"},
-			RiskAreas:    []string{"prompt injection"},
-			Instructions: "Focus on realistic customer prompts.",
+			AppKind:        "support-assistant",
+			Mode:           "adversarial",
+			Goals:          []string{"refund policy"},
+			RiskAreas:      []string{"prompt injection"},
+			AttackFamilies: []string{"jailbreak", "tool abuse"},
+			Instructions:   "Focus on realistic customer prompts.",
 		},
 		OutputFile:    "generated/cleanr.dataset.yaml",
 		Count:         4,
@@ -267,5 +269,8 @@ func TestScenarioGenerationConfigRoundTrips(t *testing.T) {
 	}
 	if loaded.ScenarioGeneration.Provider.OpenAI.Model != "gpt-4.1-mini" || loaded.ScenarioGeneration.OutputFile != "generated/cleanr.dataset.yaml" {
 		t.Fatalf("unexpected provider/output config: %+v", loaded.ScenarioGeneration)
+	}
+	if loaded.ScenarioGeneration.Spec.Mode != "adversarial" || len(loaded.ScenarioGeneration.Spec.AttackFamilies) != 2 {
+		t.Fatalf("unexpected adversarial generation config: %+v", loaded.ScenarioGeneration.Spec)
 	}
 }

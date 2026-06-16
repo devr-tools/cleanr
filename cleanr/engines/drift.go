@@ -61,6 +61,26 @@ func evaluateDriftScenario(ctx context.Context, runCtx *core.RunContext, cfg cor
 	semanticDrift, semanticConsistency := measureSemanticDrift(responses)
 	findings = append(findings, evaluateDriftThresholdFindings(cfg, semanticDrift, semanticConsistency)...)
 	details := buildDriftDetails(cfg, drift, semanticDrift, consistency, semanticConsistency, len(responses))
+	interval := passRateCI(len(responses), cfg.Iterations, cfg.ConfidenceLevelValue())
+	flake := majorityTextFlakeRate(responses)
+	details["pass_samples"] = len(responses)
+	details["fail_samples"] = cfg.Iterations - len(responses)
+	details["pass_rate"] = interval.rate
+	details["pass_rate_ci"] = []float64{interval.lowerBound, interval.upperBound}
+	details["flake_rate"] = flake
+	details["flake_detected"] = flake > 0
+	if cfg.MinPassRate > 0 && interval.lowerBound < cfg.MinPassRate {
+		findings = append(findings, core.Finding{
+			Severity: "medium",
+			Message:  fmt.Sprintf("drift pass-rate lower bound %.2f fell below min_pass_rate %.2f at confidence %.2f", interval.lowerBound, cfg.MinPassRate, cfg.ConfidenceLevelValue()),
+		})
+	}
+	if cfg.MaxFlakeRate > 0 && flake > cfg.MaxFlakeRate {
+		findings = append(findings, core.Finding{
+			Severity: "medium",
+			Message:  fmt.Sprintf("drift flake rate %.2f exceeded max_flake_rate %.2f", flake, cfg.MaxFlakeRate),
+		})
+	}
 	if representativeSet {
 		details = responseDetails(representative, details)
 	}

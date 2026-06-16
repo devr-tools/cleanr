@@ -356,6 +356,82 @@ printf '%s\n' '{"state_changes":[{"kind":"ticket","action":"update","target":"ca
 	}
 }
 
+func TestRunnerAppliesDBProbeObservations(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:  "db-probe",
+		Input: "verify the row exists",
+		ExpectedStateChanges: []cleanr.ExpectedStateChange{{
+			Kind:   "db",
+			Action: "select",
+			Target: "support.tickets",
+			Status: "observed",
+		}},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = true
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name: "org-plugin",
+		Probes: []cleanr.PluginProbe{{
+			Name:    "ticket-db-probe",
+			Kind:    "db",
+			Command: writeExecutableScript(t, "#!/bin/sh\nprintf '%s\\n' '{\"db_observations\":[{\"database\":\"support\",\"table\":\"tickets\",\"operation\":\"select\",\"status\":\"observed\",\"count\":1}]}'\n"),
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected db probe observations to satisfy release-policy suite: %+v", report)
+	}
+}
+
+func TestRunnerAppliesQueueProbeObservations(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:  "queue-probe",
+		Input: "verify the event was published",
+		ExpectedStateChanges: []cleanr.ExpectedStateChange{{
+			Kind:   "queue",
+			Action: "publish",
+			Target: "dispatch:ticket-events",
+			Status: "observed",
+		}},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = true
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name: "org-plugin",
+		Probes: []cleanr.PluginProbe{{
+			Name:    "event-queue-probe",
+			Kind:    "queue",
+			Command: writeExecutableScript(t, "#!/bin/sh\nprintf '%s\\n' '{\"queue_observations\":[{\"queue\":\"dispatch\",\"topic\":\"ticket-events\",\"operation\":\"publish\",\"status\":\"observed\",\"message_id\":\"evt-1\"}]}'\n"),
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected queue probe observations to satisfy release-policy suite: %+v", report)
+	}
+}
+
 func writeExecutableScript(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "plugin.sh")

@@ -3,6 +3,7 @@ package engines
 import (
 	"context"
 	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -15,6 +16,10 @@ type scoreRun struct {
 	samples         int
 	minScore        float64
 	maxDisagreement float64
+	confidenceLevel float64
+	minPassRate     float64
+	maxFlakeRate    float64
+	cascadeMargin   float64
 }
 
 type scoreCaseInput struct {
@@ -31,14 +36,16 @@ type scoreSampleInput struct {
 	response  string
 	criteria  []string
 	reference string
+	outputs   []core.JudgeOutput
 	run       scoreRun
 }
 
 type scoreSamples struct {
-	scores        []float64
-	rationales    []string
-	parseFailures int
-	judgeErr      error
+	scores           []float64
+	rationales       []string
+	parseFailures    int
+	judgeErr         error
+	cascadeTriggered int
 }
 
 func (e LLMJudgeEngine) runScore(ctx context.Context, runCtx *core.RunContext, cfg core.LLMJudgeConfig, judge core.Target, scenarios []core.Scenario) core.SuiteResult {
@@ -47,6 +54,10 @@ func (e LLMJudgeEngine) runScore(ctx context.Context, runCtx *core.RunContext, c
 		samples:         cfg.SamplesValue(),
 		minScore:        cfg.MinScore,
 		maxDisagreement: cfg.MaxDisagreement,
+		confidenceLevel: cfg.ConfidenceLevelValue(),
+		minPassRate:     cfg.MinPassRate,
+		maxFlakeRate:    cfg.MaxFlakeRate,
+		cascadeMargin:   cfg.CascadeMargin,
 	}
 	cases := make([]core.CaseResult, 0, len(scenarios))
 	for _, scenario := range scenarios {
@@ -58,7 +69,7 @@ func (e LLMJudgeEngine) runScore(ctx context.Context, runCtx *core.RunContext, c
 			run:      run,
 		}))
 	}
-	return core.SuiteResult{Name: "llm-judge", Passed: allPassed(cases), Cases: cases}
+	return applyJudgePostAnalysis(ctx, runCtx, cfg, judge, scenarios, core.SuiteResult{Name: "llm-judge", Passed: allPassed(cases), Cases: cases})
 }
 
 func (e LLMJudgeEngine) runScoreCase(ctx context.Context, in scoreCaseInput) core.CaseResult {
@@ -79,6 +90,7 @@ func (e LLMJudgeEngine) runScoreCase(ctx context.Context, in scoreCaseInput) cor
 
 	criteria := judgeCriteria(in.cfg.Criteria, in.scenario.Rubric)
 	reference := strings.TrimSpace(in.scenario.ReferenceAnswer)
+	outputs := resolvedJudgeOutputs(resp, in.scenario.JudgeOutputs)
 	details := map[string]any{
 		"judge_model":    judgeModelLabel(in.cfg.Provider, resp),
 		"scale":          in.run.scale,
@@ -88,12 +100,16 @@ func (e LLMJudgeEngine) runScoreCase(ctx context.Context, in scoreCaseInput) cor
 		"reference_used": reference != "",
 		"response":       trimForReport(resp.Text),
 	}
+	if len(outputs) > 0 {
+		details["judge_outputs"] = outputs
+	}
 	samples := collectScoreSamples(ctx, in.judge, scoreSampleInput{
 		cfg:       in.cfg,
 		scenario:  in.scenario,
 		response:  resp.Text,
 		criteria:  criteria,
 		reference: reference,
+		outputs:   outputs,
 		run:       in.run,
 	})
 	passed, findings := finalizeScoreCase(in.run, details, &findings, samples)
@@ -108,32 +124,73 @@ func (e LLMJudgeEngine) runScoreCase(ctx context.Context, in scoreCaseInput) cor
 }
 
 func collectScoreSamples(ctx context.Context, judge core.Target, in scoreSampleInput) scoreSamples {
-	system, prompt := buildJudgePrompt(in.scenario, in.response, in.criteria, in.reference, in.run.scale)
+	system, prompt := buildJudgePrompt(in.scenario, in.response, in.criteria, in.reference, in.run.scale, in.outputs)
 	out := scoreSamples{
 		scores:     make([]float64, 0, in.run.samples),
 		rationales: make([]string, 0, in.run.samples),
 	}
+	judges := buildJudgePool(in.cfg, judge)
 	for i := 0; i < in.run.samples; i++ {
-		jresp := judge.Invoke(ctx, core.Request{
-			System:  system,
-			Prompt:  prompt,
-			Timeout: in.cfg.Provider.Timeout(),
-		})
-		if jresp.Err != nil {
-			out.judgeErr = jresp.Err
+		score, rationale, cascadeTriggered, ok, err := collectScoreSample(ctx, judges, system, prompt, in)
+		if err != nil {
+			out.judgeErr = err
 			return out
 		}
-		verdict, ok := parseJudgeVerdict(jresp)
 		if !ok {
 			out.parseFailures++
 			continue
 		}
-		out.scores = append(out.scores, clampScore(verdict.Score, in.run.scale))
-		if rationale := strings.TrimSpace(verdict.Rationale); rationale != "" {
+		out.scores = append(out.scores, score)
+		if rationale != "" {
 			out.rationales = append(out.rationales, rationale)
+		}
+		if cascadeTriggered {
+			out.cascadeTriggered++
 		}
 	}
 	return out
+}
+
+func collectScoreSample(ctx context.Context, judges []namedTarget, system, prompt string, in scoreSampleInput) (float64, string, bool, bool, error) {
+	scores := make([]float64, 0, len(judges))
+	rationales := make([]string, 0, len(judges))
+	cascadeTriggered := false
+	for idx, item := range judges {
+		jresp := item.target.Invoke(ctx, core.Request{
+			Scenario:     in.scenario,
+			System:       system,
+			Prompt:       prompt,
+			Messages:     in.scenario.TurnsValue(),
+			Images:       in.scenario.Images,
+			Audio:        in.scenario.Audio,
+			PDFs:         in.scenario.PDFs,
+			JudgeOutputs: in.outputs,
+			Timeout:      item.cfg.Timeout(),
+		})
+		if jresp.Err != nil {
+			return 0, "", false, false, jresp.Err
+		}
+		verdict, ok := parseJudgeVerdict(jresp)
+		if !ok {
+			return 0, "", false, false, nil
+		}
+		score := clampScore(verdict.Score, in.run.scale)
+		scores = append(scores, score)
+		if rationale := strings.TrimSpace(verdict.Rationale); rationale != "" {
+			rationales = append(rationales, rationale)
+		}
+		if idx == 0 && len(judges) > 1 && in.run.cascadeMargin > 0 {
+			normalized := score / float64(in.run.scale)
+			if math.Abs(normalized-in.run.minScore) > in.run.cascadeMargin {
+				break
+			}
+			cascadeTriggered = true
+		}
+	}
+	if len(scores) == 0 {
+		return 0, "", false, false, nil
+	}
+	return medianScore(scores), firstString(rationales), cascadeTriggered, true, nil
 }
 
 func finalizeScoreCase(run scoreRun, details map[string]any, findings *[]core.Finding, samples scoreSamples) (bool, []core.Finding) {
@@ -156,6 +213,24 @@ func finalizeScoreCase(run scoreRun, details map[string]any, findings *[]core.Fi
 	if samples.parseFailures > 0 {
 		details["parse_failures"] = samples.parseFailures
 	}
+	if samples.cascadeTriggered > 0 {
+		details["cascade_triggered_samples"] = samples.cascadeTriggered
+	}
+
+	passes := 0
+	for _, sample := range samples.scores {
+		if round4(sample/float64(run.scale)) >= run.minScore {
+			passes++
+		}
+	}
+	interval := passRateCI(passes, len(samples.scores), run.confidenceLevel)
+	flake := flakeRate(passes, len(samples.scores))
+	details["pass_samples"] = passes
+	details["fail_samples"] = len(samples.scores) - passes
+	details["pass_rate"] = interval.rate
+	details["pass_rate_ci"] = []float64{interval.lowerBound, interval.upperBound}
+	details["flake_rate"] = flake
+	details["flake_detected"] = flake > 0
 
 	passed := normalized >= run.minScore
 	if !passed {
@@ -170,6 +245,20 @@ func finalizeScoreCase(run scoreRun, details map[string]any, findings *[]core.Fi
 		*findings = append(*findings, core.Finding{
 			Severity: "medium",
 			Message:  fmt.Sprintf("judge self-consistency spread %.2f exceeds max_disagreement %.2f across %d samples", disagreement, run.maxDisagreement, run.samples),
+		})
+	}
+	if run.minPassRate > 0 && len(samples.scores) > 0 && interval.lowerBound < run.minPassRate {
+		passed = false
+		*findings = append(*findings, core.Finding{
+			Severity: "medium",
+			Message:  fmt.Sprintf("judge pass-rate lower bound %.2f fell below min_pass_rate %.2f at confidence %.2f", interval.lowerBound, run.minPassRate, run.confidenceLevel),
+		})
+	}
+	if run.maxFlakeRate > 0 && len(samples.scores) > 1 && flake > run.maxFlakeRate {
+		passed = false
+		*findings = append(*findings, core.Finding{
+			Severity: "medium",
+			Message:  fmt.Sprintf("judge flake rate %.2f exceeded max_flake_rate %.2f", flake, run.maxFlakeRate),
 		})
 	}
 	return passed, *findings
@@ -223,4 +312,11 @@ func scoreSpread(scores []float64) float64 {
 		}
 	}
 	return hi - lo
+}
+
+func firstString(items []string) string {
+	if len(items) == 0 {
+		return ""
+	}
+	return items[0]
 }

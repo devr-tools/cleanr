@@ -11,12 +11,14 @@ import (
 func NewTargetFromConfig(cfg core.TargetConfig, client *http.Client) core.Target {
 	var target core.Target
 	switch cfg.TargetType() {
-	case "openai", "openai_compatible":
+	case "openai", "openai_compatible", "azure_openai", "gemini", "bedrock", "vertex", "mistral":
 		target = NewOpenAI(cfg, client)
 	case "cli":
 		target = NewCLI(cfg)
 	case "graphql":
 		target = NewGraphQL(cfg, client)
+	case "grpc":
+		target = NewGRPC(cfg)
 	case "anthropic":
 		target = NewAnthropic(cfg, client)
 	case "mcp":

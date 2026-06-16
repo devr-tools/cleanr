@@ -32,7 +32,7 @@ func RunDefinition() toolkit.Definition {
 				"report_format": map[string]any{
 					"type":        "string",
 					"description": "Rendered report format.",
-					"enum":        []string{"text", "json", "junit"},
+					"enum":        []string{"text", "json", "junit", "sarif", "agent"},
 				},
 				"timeout_ms": map[string]any{
 					"type":        "integer",
@@ -62,7 +62,7 @@ func RenderReportDefinition() toolkit.Definition {
 	return toolkit.Definition{
 		Name:        "cleanr_render_report",
 		Title:       "Render cleanr report",
-		Description: "Render a JSON cleanr report as text, json, or junit.",
+		Description: "Render a JSON cleanr report as text, json, junit, sarif, or agent.",
 		InputSchema: map[string]any{
 			"type": "object",
 			"properties": map[string]any{
@@ -73,7 +73,7 @@ func RenderReportDefinition() toolkit.Definition {
 				"format": map[string]any{
 					"type":        "string",
 					"description": "Render format.",
-					"enum":        []string{"text", "json", "junit"},
+					"enum":        []string{"text", "json", "junit", "sarif", "agent"},
 				},
 			},
 			"required": []string{"report_json"},
