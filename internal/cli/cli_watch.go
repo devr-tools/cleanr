@@ -76,7 +76,6 @@ func watchCmd(args []string, stdout, stderr io.Writer) int {
 			}
 			sort.Strings(changes)
 			_, _ = fmt.Fprintf(stdout, "detected changes in %s\n", strings.Join(changes, ", "))
-			snapshot = nextSnapshot
 			break
 		}
 	}
