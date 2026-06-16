@@ -375,9 +375,7 @@ jobs:
 
   semgrep:
     name: semgrep security scan
-    needs:
-      - vet
-      - gocyclo
+    needs: vet
     runs-on: ubuntu-latest
     container:
       image: semgrep/semgrep
@@ -392,9 +390,7 @@ jobs:
   doc-review:
     name: doc review
     if: github.base_ref == 'develop'
-    needs:
-      - vet
-      - gocyclo
+    needs: vet
     runs-on: ubuntu-latest
     env:
       PR_BASE_REF: ${{ github.base_ref }}
