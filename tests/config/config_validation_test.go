@@ -59,6 +59,26 @@ func TestValidateConfigRequiredFields(t *testing.T) {
 			},
 			wantErr: "invalid config: scenarios[0].input: is required. Fix: set the end-user prompt or test input for this scenario",
 		},
+		{
+			name: "adversarial generation requires attack families",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios = nil
+				cfg.ScenarioGeneration.Enabled = true
+				cfg.ScenarioGeneration.Provider = cleanr.TargetConfig{
+					Type: "openai",
+					OpenAI: cleanr.OpenAIConfig{
+						Model: "gpt-4.1-mini",
+					},
+				}
+				cfg.ScenarioGeneration.Spec.AppKind = "support-assistant"
+				cfg.ScenarioGeneration.Spec.Mode = "adversarial"
+				cfg.ScenarioGeneration.Spec.Goals = []string{"refund policy"}
+				cfg.ScenarioGeneration.Spec.RiskAreas = []string{"prompt injection"}
+				cfg.ScenarioGeneration.OutputFile = "generated/cleanr.dataset.yaml"
+				cfg.ScenarioGeneration.Count = 1
+			},
+			wantErr: "invalid config: scenario_generation.spec.attack_families: at least one attack family is required in adversarial mode. Fix: add one or more adversarial families such as prompt injection, jailbreak, tool abuse, or data exfiltration",
+		},
 	}
 
 	for _, tt := range tests {
@@ -170,7 +190,7 @@ func TestValidateConfigInvalidAssertions(t *testing.T) {
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Scenarios[0].Assertions = []cleanr.Assertion{{Type: "banana"}}
 			},
-			wantErr: "invalid config: scenarios[0].assertions[0].type: must be one of contains, not_contains, regex, json_schema, json_path, status_code, exit_code, latency_ms, stream_ttft_ms, stream_duration_ms, finish_reason, tool_call_count, or tool_call_name. Fix: pick one of the built-in assertion types",
+			wantErr: "invalid config: scenarios[0].assertions[0].type: must be one of contains, not_contains, regex, json_schema, json_path, status_code, exit_code, latency_ms, stream_ttft_ms, stream_duration_ms, stream_chunk_cadence_ms, finish_reason, tool_call_count, tool_call_name, stream_tool_call_name, tool_call_order, or tool_call_arguments_schema. Fix: pick one of the built-in assertion types",
 		},
 		{
 			name: "invalid regex assertion",

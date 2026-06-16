@@ -2,6 +2,7 @@ package tests
 
 import (
 	"bytes"
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -99,5 +100,25 @@ func TestReportPackageSupportsPlainAndColorText(t *testing.T) {
 	}
 	if !strings.Contains(color.String(), "\x1b[") {
 		t.Fatalf("expected ANSI color codes in report:\n%s", color.String())
+	}
+
+	var agent bytes.Buffer
+	if err := reportpkg.Write(&agent, report, "agent"); err != nil {
+		t.Fatalf("write agent report: %v", err)
+	}
+	var decoded cleanr.AgentReport
+	if err := json.Unmarshal(agent.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode agent report: %v", err)
+	}
+	if decoded.Contract.Kind != "cleanr.report.agent" || decoded.Summary.Target != "demo" {
+		t.Fatalf("unexpected agent report: %+v", decoded)
+	}
+
+	var html bytes.Buffer
+	if err := reportpkg.Write(&html, report, "html"); err != nil {
+		t.Fatalf("write html report: %v", err)
+	}
+	if out := html.String(); !strings.Contains(out, "<!DOCTYPE html>") || !strings.Contains(out, "Static cleanr report dashboard") || !strings.Contains(out, "devr-tools / cleanr") || !strings.Contains(out, `aria-label="cleanr ascii logo"`) || !strings.Contains(out, `▄▄`) {
+		t.Fatalf("unexpected html report:\n%s", out)
 	}
 }

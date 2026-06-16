@@ -5,10 +5,20 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
+	"strings"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
 	"gopkg.in/yaml.v3"
+)
+
+var (
+	sensitiveArtifactKeyPattern = regexp.MustCompile(`(?i)(api[-_]?key|auth(orization)?|token|secret|password|passwd|cookie|private[-_]?key|client[-_]?secret)`)
+	bearerTokenPattern          = regexp.MustCompile(`(?i)\bbearer\s+[A-Za-z0-9._~+/=-]{8,}`)
+	openAIKeyPattern            = regexp.MustCompile(`\bsk-[A-Za-z0-9_-]{10,}\b`)
+	awsAccessKeyPattern         = regexp.MustCompile(`\bAKIA[0-9A-Z]{16}\b`)
+	pemBlockPattern             = regexp.MustCompile(`-----BEGIN [A-Z ]+-----[\s\S]+?-----END [A-Z ]+-----`)
 )
 
 func BuildReplayArtifact(report core.Report) core.ReplayArtifact {
@@ -68,7 +78,7 @@ func BuildReplayArtifact(report core.Report) core.ReplayArtifact {
 		}
 		return artifact.Failures[i].Suite < artifact.Failures[j].Suite
 	})
-	return artifact
+	return scrubReplayArtifact(artifact)
 }
 
 func LoadReplayArtifactFile(path string) (core.ReplayArtifact, error) {
@@ -115,6 +125,7 @@ func WriteReplayArtifactFile(path string, artifact core.ReplayArtifact) error {
 }
 
 func encodeReplayArtifact(artifact core.ReplayArtifact, path string) ([]byte, error) {
+	artifact = scrubReplayArtifact(artifact)
 	if isYAMLPath(path) {
 		raw, err := json.Marshal(artifact)
 		if err != nil {
@@ -157,10 +168,138 @@ func filteredEvidence(details map[string]any) map[string]any {
 		if key == "provider_raw" {
 			continue
 		}
-		out[key] = value
+		out[key] = scrubArtifactValue(key, value)
 	}
 	if len(out) == 0 {
 		return nil
 	}
 	return out
+}
+
+func scrubReplayArtifact(artifact core.ReplayArtifact) core.ReplayArtifact {
+	artifact.Target = scrubArtifactString("", artifact.Target)
+	artifact.BuildID = scrubArtifactString("build_id", artifact.BuildID)
+	if artifact.Metadata != nil {
+		metadata := *artifact.Metadata
+		metadata.BuildID = scrubArtifactString("build_id", metadata.BuildID)
+		metadata.TargetType = scrubArtifactString("target_type", metadata.TargetType)
+		metadata.ProviderModel = scrubArtifactString("provider_model", metadata.ProviderModel)
+		metadata.ScenarioFingerprints = scrubScenarioFingerprints(metadata.ScenarioFingerprints)
+		artifact.Metadata = &metadata
+	}
+	if artifact.BuildDiff != nil {
+		buildDiff := *artifact.BuildDiff
+		buildDiff.TargetTypeBefore = scrubArtifactString("target_type_before", buildDiff.TargetTypeBefore)
+		buildDiff.TargetTypeAfter = scrubArtifactString("target_type_after", buildDiff.TargetTypeAfter)
+		buildDiff.ModelBefore = scrubArtifactString("model_before", buildDiff.ModelBefore)
+		buildDiff.ModelAfter = scrubArtifactString("model_after", buildDiff.ModelAfter)
+		artifact.BuildDiff = &buildDiff
+	}
+	artifact.Failures = scrubReplayArtifactCases(artifact.Failures)
+	return artifact
+}
+
+func scrubReplayArtifactCases(cases []core.ReplayArtifactCase) []core.ReplayArtifactCase {
+	if len(cases) == 0 {
+		return nil
+	}
+	out := make([]core.ReplayArtifactCase, 0, len(cases))
+	for _, item := range cases {
+		scrubbed := item
+		scrubbed.Suite = scrubArtifactString("suite", scrubbed.Suite)
+		scrubbed.Name = scrubArtifactString("name", scrubbed.Name)
+		if scrubbed.Scenario != nil {
+			scenario := *scrubbed.Scenario
+			scenario.Name = scrubArtifactString("scenario_name", scenario.Name)
+			scenario.Tags = scrubStringSlice("tags", scenario.Tags)
+			scrubbed.Scenario = &scenario
+		}
+		scrubbed.Findings = scrubFindings(scrubbed.Findings)
+		scrubbed.Evidence = scrubStringMapAny("", scrubbed.Evidence)
+		out = append(out, scrubbed)
+	}
+	return out
+}
+
+func scrubScenarioFingerprints(items []core.ScenarioFingerprint) []core.ScenarioFingerprint {
+	if len(items) == 0 {
+		return nil
+	}
+	out := make([]core.ScenarioFingerprint, 0, len(items))
+	for _, item := range items {
+		scrubbed := item
+		scrubbed.Name = scrubArtifactString("scenario_name", scrubbed.Name)
+		scrubbed.Tags = scrubStringSlice("tags", scrubbed.Tags)
+		out = append(out, scrubbed)
+	}
+	return out
+}
+
+func scrubFindings(findings []core.Finding) []core.Finding {
+	if len(findings) == 0 {
+		return nil
+	}
+	out := make([]core.Finding, 0, len(findings))
+	for _, finding := range findings {
+		scrubbed := finding
+		scrubbed.Message = scrubArtifactString("message", scrubbed.Message)
+		out = append(out, scrubbed)
+	}
+	return out
+}
+
+func scrubStringMapAny(key string, src map[string]any) map[string]any {
+	if len(src) == 0 {
+		return nil
+	}
+	out := make(map[string]any, len(src))
+	for childKey, value := range src {
+		out[childKey] = scrubArtifactValue(childKey, value)
+	}
+	return out
+}
+
+func scrubStringSlice(key string, values []string) []string {
+	if len(values) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(values))
+	for _, value := range values {
+		out = append(out, scrubArtifactString(key, value))
+	}
+	return out
+}
+
+func scrubArtifactValue(key string, value any) any {
+	switch typed := value.(type) {
+	case string:
+		return scrubArtifactString(key, typed)
+	case []string:
+		return scrubStringSlice(key, typed)
+	case []any:
+		out := make([]any, len(typed))
+		for i, item := range typed {
+			out[i] = scrubArtifactValue(key, item)
+		}
+		return out
+	case map[string]any:
+		return scrubStringMapAny(key, typed)
+	default:
+		return value
+	}
+}
+
+func scrubArtifactString(key, value string) string {
+	trimmed := strings.TrimSpace(value)
+	if trimmed == "" {
+		return value
+	}
+	if sensitiveArtifactKeyPattern.MatchString(strings.TrimSpace(key)) {
+		return "[REDACTED]"
+	}
+	scrubbed := bearerTokenPattern.ReplaceAllString(trimmed, "Bearer [REDACTED]")
+	scrubbed = openAIKeyPattern.ReplaceAllString(scrubbed, "[REDACTED]")
+	scrubbed = awsAccessKeyPattern.ReplaceAllString(scrubbed, "[REDACTED]")
+	scrubbed = pemBlockPattern.ReplaceAllString(scrubbed, "[REDACTED PEM]")
+	return scrubbed
 }

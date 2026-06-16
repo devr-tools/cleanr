@@ -164,6 +164,48 @@ If `-github-outputs` is enabled inside GitHub Actions, `cleanr` writes structure
 - `cleanr_review_merge_output`
 - `cleanr_review_top_candidate`
 
+## GitLab CI Outputs
+
+GitLab does not provide a built-in `$GITHUB_OUTPUT` equivalent, so `cleanr` writes native GitLab report files when you pass explicit paths:
+
+- `-gitlab-dotenv`: writes downstream-friendly variables for later jobs via `artifacts:reports:dotenv`
+- `-gitlab-annotations`: writes a GitLab annotations JSON report with external links to the job and generated artifacts when `CI_PROJECT_URL` and `CI_JOB_ID` are available
+
+Example GitLab job:
+
+```yaml
+cleanr:
+  image: golang:1.25
+  script:
+    - go build -trimpath -o ./dist/cleanr ./cmd/cleanr
+    - |
+      ./dist/cleanr run \
+        -config cleanr.yaml \
+        -format junit \
+        -output reports/cleanr-junit.xml \
+        -gitlab-dotenv reports/cleanr.env \
+        -gitlab-annotations reports/cleanr-annotations.json
+  artifacts:
+    paths:
+      - reports/cleanr-junit.xml
+      - reports/cleanr-annotations.json
+    reports:
+      junit: reports/cleanr-junit.xml
+      dotenv: reports/cleanr.env
+      annotations: reports/cleanr-annotations.json
+```
+
+The GitLab dotenv report includes uppercase keys such as:
+
+- `CLEANR_RUN_GATE_PASSED`
+- `CLEANR_RUN_FAILED_SUITES`
+- `CLEANR_RUN_FAILED_CASES`
+- `CLEANR_RUN_GATE_SUMMARY`
+- `CLEANR_REVIEW_GATE_PASSED`
+- `CLEANR_REVIEW_PENDING`
+- `CLEANR_REVIEW_DUPLICATES`
+- `CLEANR_REVIEW_TOP_CANDIDATE`
+
 For local GitHub setup, use:
 
 ```bash
@@ -219,6 +261,19 @@ Review step:
   if: always()
   run: echo "Top candidate: ${{ steps.cleanr_review.outputs.cleanr_review_top_candidate }}"
 ```
+
+## Local Watch Loop
+
+For local iteration, `cleanr watch` reruns the normal `run` flow whenever a watched path changes.
+
+```bash
+cleanr watch \
+  -config cleanr.yaml \
+  -watch . \
+  -interval 1s
+```
+
+If you omit `-watch`, `cleanr` watches the resolved config directory. `watch` returns the exit code from the most recent run and accepts the same CI output flags as `cleanr run`.
 
 ## Artifact Retention
 

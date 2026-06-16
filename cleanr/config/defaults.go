@@ -13,6 +13,7 @@ func applyDefaults(cfg *core.Config) {
 	}
 	applyTargetDefaults(&cfg.Target, false)
 	applyScenarioGenerationDefaults(cfg)
+	applyOpenAPIDefaults(cfg)
 	applySuiteDefaults(cfg)
 	applyIntegrationDefaults(cfg)
 	applyReportingDefaults(cfg)
@@ -32,6 +33,15 @@ func applyScenarioGenerationDefaults(cfg *core.Config) {
 	}
 	if !cfg.ScenarioGeneration.RequireReview {
 		cfg.ScenarioGeneration.RequireReview = true
+	}
+}
+
+func applyOpenAPIDefaults(cfg *core.Config) {
+	if cfg.OpenAPI.ScenarioGenerationEnabled() && cfg.OpenAPI.ScenarioGeneration.OutputFile == "" {
+		cfg.OpenAPI.ScenarioGeneration.OutputFile = filepath.Join("generated", "openapi.scenarios.yaml")
+	}
+	if cfg.OpenAPI.ContractDiffEnabled() && cfg.OpenAPI.ContractDiff.OutputFile == "" {
+		cfg.OpenAPI.ContractDiff.OutputFile = filepath.Join("reports", "openapi.diff.yaml")
 	}
 }
 
@@ -64,11 +74,20 @@ func applyLLMJudgeDefaults(cfg *core.LLMJudgeConfig) {
 	if cfg.Samples > 1 && cfg.MaxDisagreement == 0 {
 		cfg.MaxDisagreement = 0.4
 	}
+	if cfg.ConfidenceLevel == 0 {
+		cfg.ConfidenceLevel = 0.95
+	}
 	if cfg.ModeValue() == "pairwise" {
 		applyTargetDefaults(&cfg.Baseline, true)
 		if cfg.MinWinRate == 0 {
 			cfg.MinWinRate = 0.5
 		}
+	}
+	for i := range cfg.Ensemble {
+		applyTargetDefaults(&cfg.Ensemble[i], true)
+	}
+	for i := range cfg.ComparisonTargets {
+		applyTargetDefaults(&cfg.ComparisonTargets[i], true)
 	}
 }
 
@@ -132,6 +151,9 @@ func applyDriftDefaults(cfg *core.DriftConfig) {
 	}
 	if cfg.MinSemanticConsistencyScore == 0 {
 		cfg.MinSemanticConsistencyScore = 0.75
+	}
+	if cfg.ConfidenceLevel == 0 {
+		cfg.ConfidenceLevel = 0.95
 	}
 }
 
@@ -263,7 +285,9 @@ func applyTargetDefaults(target *core.TargetConfig, requireExplicitType bool) {
 		applyCLITargetDefaults(target)
 	case "graphql":
 		applyGraphQLTargetDefaults(target)
-	case "openai", "openai_compatible":
+	case "grpc":
+		applyGRPCTargetDefaults(target)
+	case "openai", "openai_compatible", "azure_openai", "gemini", "bedrock", "vertex", "mistral":
 		applyOpenAITargetDefaults(target)
 	case "anthropic":
 		applyAnthropicTargetDefaults(target)
@@ -291,19 +315,19 @@ func applyOpenAITargetDefaults(target *core.TargetConfig) {
 		target.Name = defaultOpenAITargetName(target.TargetType())
 	}
 	if target.OpenAI.APIMode == "" {
-		target.OpenAI.APIMode = "responses"
+		target.OpenAI.APIMode = defaultOpenAIAPIMode(target.TargetType())
 	}
 	if target.OpenAI.APIKeyEnv == "" {
-		target.OpenAI.APIKeyEnv = "OPENAI_API_KEY"
+		target.OpenAI.APIKeyEnv = target.OpenAI.APIKeyEnvValue(target.TargetType())
 	}
 	if target.OpenAI.BaseURL == "" {
-		target.OpenAI.BaseURL = "https://api.openai.com/v1"
+		target.OpenAI.BaseURL = target.OpenAI.BaseURLValue(target.TargetType())
 	}
 	if target.OpenAI.AuthHeader == "" {
-		target.OpenAI.AuthHeader = "Authorization"
+		target.OpenAI.AuthHeader = target.OpenAI.AuthHeaderForTarget(target.TargetType())
 	}
 	if target.OpenAI.AuthScheme == "" {
-		target.OpenAI.AuthScheme = "Bearer"
+		target.OpenAI.AuthScheme = target.OpenAI.AuthSchemeForTarget(target.TargetType())
 	}
 }
 
@@ -334,11 +358,40 @@ func applyGraphQLTargetDefaults(target *core.TargetConfig) {
 	}
 }
 
+func applyGRPCTargetDefaults(target *core.TargetConfig) {
+	if target.Name == "" {
+		target.Name = "grpc"
+	}
+	if target.Headers == nil {
+		target.Headers = map[string]string{}
+	}
+}
+
 func defaultOpenAITargetName(targetType string) string {
-	if targetType == "openai_compatible" {
+	switch targetType {
+	case "openai_compatible":
 		return "openai-compatible"
+	case "azure_openai":
+		return "azure-openai"
+	case "gemini":
+		return "gemini"
+	case "bedrock":
+		return "bedrock"
+	case "vertex":
+		return "vertex"
+	case "mistral":
+		return "mistral"
 	}
 	return "openai"
+}
+
+func defaultOpenAIAPIMode(targetType string) string {
+	switch targetType {
+	case "azure_openai", "gemini", "bedrock", "vertex", "mistral":
+		return "chat_completions"
+	default:
+		return "responses"
+	}
 }
 
 func applyAnthropicTargetDefaults(target *core.TargetConfig) {

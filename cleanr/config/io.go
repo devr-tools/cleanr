@@ -320,6 +320,8 @@ func loadPluginManifestFile(path string, seen map[string]struct{}) (core.PluginM
 	if err != nil {
 		return core.PluginManifest{}, nil, err
 	}
+	manifest.Source = resolved
+	manifest.BaseDir = filepath.Dir(resolved)
 	defaults, err := loadPluginPolicyPackDefaults(manifest.PolicyPacks, filepath.Dir(resolved), seen)
 	if err != nil {
 		return core.PluginManifest{}, nil, err
@@ -383,34 +385,49 @@ func overlayPluginPolicyPack(defaults map[string]any, pack, baseDir string, seen
 }
 
 func validatePluginManifest(manifest core.PluginManifest, path string) error {
-	err := validateNamedPluginCommands(path, "suite", manifest.Suites, func(item core.PluginSuite) (string, string) {
-		return item.Name, item.Command
+	if err := validatePluginRuntime(path, "plugin runtime", manifest.Runtime); err != nil {
+		return err
+	}
+	err := validateNamedPluginCommands(path, "suite", manifest.Suites, func(item core.PluginSuite) (string, string, core.PluginRuntimeConfig) {
+		return item.Name, item.Command, item.Runtime
 	})
 	if err != nil {
 		return err
 	}
-	err = validateNamedPluginCommands(path, "state_adapter", manifest.StateAdapters, func(item core.PluginStateAdapter) (string, string) {
-		return item.Name, item.Command
+	err = validateNamedPluginCommands(path, "state_adapter", manifest.StateAdapters, func(item core.PluginStateAdapter) (string, string, core.PluginRuntimeConfig) {
+		return item.Name, item.Command, item.Runtime
 	})
 	if err != nil {
 		return err
 	}
-	return validateNamedPluginCommands(path, "probe", manifest.Probes, func(item core.PluginProbe) (string, string) {
-		return item.Name, item.Command
+	return validateNamedPluginCommands(path, "probe", manifest.Probes, func(item core.PluginProbe) (string, string, core.PluginRuntimeConfig) {
+		return item.Name, item.Command, item.Runtime
 	})
 }
 
-func validateNamedPluginCommands[T any](path, kind string, items []T, fields func(T) (string, string)) error {
+func validateNamedPluginCommands[T any](path, kind string, items []T, fields func(T) (string, string, core.PluginRuntimeConfig)) error {
 	for i, item := range items {
-		name, command := fields(item)
+		name, command, runtime := fields(item)
 		if strings.TrimSpace(name) == "" {
 			return fmt.Errorf("decode config: plugin %s %s[%d] is missing name", path, kind, i)
 		}
 		if strings.TrimSpace(command) == "" {
 			return fmt.Errorf("decode config: plugin %s %s[%d] is missing command", path, kind, i)
 		}
+		if err := validatePluginRuntime(path, fmt.Sprintf("%s[%d].runtime", kind, i), runtime); err != nil {
+			return err
+		}
 	}
 	return nil
+}
+
+func validatePluginRuntime(path, kind string, runtime core.PluginRuntimeConfig) error {
+	switch strings.ToLower(strings.TrimSpace(runtime.Backend)) {
+	case "", "command", "wasm":
+		return nil
+	default:
+		return fmt.Errorf("decode config: plugin %s %s has unsupported backend %q", path, kind, runtime.Backend)
+	}
 }
 
 func normalizeYAMLValue(v any) any {

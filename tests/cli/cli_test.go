@@ -126,7 +126,7 @@ func TestValidateCommandPrintsActionableFieldErrors(t *testing.T) {
 		"invalid: invalid config:",
 		"target.url: is required. Fix: set target.url to the full API endpoint URL",
 		"scenarios[0].input: is required. Fix: set the end-user prompt or test input for this scenario",
-		"reporting.format: must be one of text, json, junit, or sarif",
+		"reporting.format: must be one of text, json, junit, sarif, or agent",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("expected %q in output:\n%s", want, output)
@@ -212,7 +212,7 @@ reporting:
 		"invalid: invalid config:",
 		"target.url: is required. Fix: set target.url to the full API endpoint URL",
 		"scenarios[0].input: is required. Fix: set the end-user prompt or test input for this scenario",
-		"reporting.format: must be one of text, json, junit, or sarif",
+		"reporting.format: must be one of text, json, junit, sarif, or agent",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("expected %q in output:\n%s", want, output)
@@ -2785,6 +2785,40 @@ func TestTrendsCommandWritesCompactJSONSummary(t *testing.T) {
 	}
 	if analysis.Delta == nil || analysis.Delta.FailedSuitesDelta != 1 {
 		t.Fatalf("expected trend delta in analysis: %+v", analysis)
+	}
+}
+
+func TestTrendsCommandWritesHTMLSummary(t *testing.T) {
+	historyPath := filepath.Join(t.TempDir(), "cleanr.trends.json")
+	err := cleanr.WriteTrendHistoryFile(historyPath, cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  "assistant-api",
+		Runs: []cleanr.TrendHistoryRun{
+			{BuildID: "build-1", GeneratedAt: testTrendTime(1), Passed: true, Duration: time.Second, Suites: []cleanr.HistorySuite{{Name: "drift", Passed: true, Drift: &cleanr.HistoryDriftMetrics{NormalizedDrift: 0.05, SemanticDrift: 0.02}}}},
+			{BuildID: "build-2", GeneratedAt: testTrendTime(2), Passed: false, FailedSuites: 1, FailedCases: 1, Duration: 2 * time.Second, Suites: []cleanr.HistorySuite{{Name: "drift", Passed: false, FailedCases: 1, Drift: &cleanr.HistoryDriftMetrics{NormalizedDrift: 0.2, SemanticDrift: 0.14}}}},
+		},
+	})
+	if err != nil {
+		t.Fatalf("write history: %v", err)
+	}
+
+	outputPath := filepath.Join(t.TempDir(), "trend-summary.html")
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	exitCode := cli.Run([]string{"trends", "-trend-file", historyPath, "-format", "html", "-output", outputPath}, &stdout, &stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d, stderr=%s", exitCode, stderr.String())
+	}
+
+	data, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output: %v", err)
+	}
+	text := string(data)
+	for _, want := range []string{"<!DOCTYPE html>", "Trend Dashboard: assistant-api", "Static cleanr trend dashboard", "devr-tools / cleanr"} {
+		if !strings.Contains(text, want) {
+			t.Fatalf("expected %q in html output:\n%s", want, text)
+		}
 	}
 }
 

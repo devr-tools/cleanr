@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"sort"
 	"strings"
@@ -62,10 +63,10 @@ func (t *OpenAI) Invoke(ctx context.Context, req core.Request) core.Response {
 	for k, v := range req.Headers {
 		httpReq.Header.Set(k, v)
 	}
-	authHeader := t.cfg.OpenAI.AuthHeaderValue()
+	authHeader := t.cfg.OpenAI.AuthHeaderForTarget(t.cfg.TargetType())
 	if httpReq.Header.Get(authHeader) == "" {
 		authValue := strings.TrimSpace(apiKey)
-		if scheme := strings.TrimSpace(t.cfg.OpenAI.AuthSchemeValue()); scheme != "" {
+		if scheme := strings.TrimSpace(t.cfg.OpenAI.AuthSchemeForTarget(t.cfg.TargetType())); scheme != "" {
 			authValue = scheme + " " + authValue
 		}
 		httpReq.Header.Set(authHeader, authValue)
@@ -155,30 +156,24 @@ func (t *OpenAI) buildRequestBody(req core.Request) (map[string]any, error) {
 }
 
 func (t *OpenAI) systemRole() string {
-	if t.cfg.TargetType() == "openai_compatible" {
-		return "system"
+	if t.cfg.TargetType() == "openai" {
+		return "developer"
 	}
-	return "developer"
+	return "system"
 }
 
 func (t *OpenAI) endpointURL() string {
-	base := strings.TrimRight(t.cfg.OpenAI.BaseURL, "/")
-	if base == "" {
-		base = "https://api.openai.com/v1"
-	}
+	base := t.cfg.OpenAI.BaseURLValue(t.cfg.TargetType())
 	switch t.cfg.OpenAI.APIModeValue() {
 	case "chat_completions":
-		return base + "/chat/completions"
+		return appendOpenAIEndpoint(base, "/chat/completions", t.cfg.OpenAI.APIVersionValue())
 	default:
-		return base + "/responses"
+		return appendOpenAIEndpoint(base, "/responses", t.cfg.OpenAI.APIVersionValue())
 	}
 }
 
 func (t *OpenAI) apiKeyEnv() string {
-	if strings.TrimSpace(t.cfg.OpenAI.APIKeyEnv) == "" {
-		return "OPENAI_API_KEY"
-	}
-	return strings.TrimSpace(t.cfg.OpenAI.APIKeyEnv)
+	return t.cfg.OpenAI.APIKeyEnvValue(t.cfg.TargetType())
 }
 
 func (t *OpenAI) apiKey(apiKeyEnv string) (string, error) {
@@ -190,6 +185,26 @@ func (t *OpenAI) apiKey(apiKeyEnv string) (string, error) {
 		return "", fmt.Errorf("load stored openai api key: %w", err)
 	}
 	return apiKey, nil
+}
+
+func appendOpenAIEndpoint(base, suffix, apiVersion string) string {
+	base = strings.TrimRight(strings.TrimSpace(base), "/")
+	if base == "" {
+		return suffix
+	}
+	parsed, err := url.Parse(base)
+	if err != nil {
+		return base + suffix
+	}
+	parsed.Path = strings.TrimRight(parsed.Path, "/") + suffix
+	if apiVersion != "" {
+		query := parsed.Query()
+		if query.Get("api-version") == "" {
+			query.Set("api-version", apiVersion)
+		}
+		parsed.RawQuery = query.Encode()
+	}
+	return parsed.String()
 }
 
 func (t *OpenAI) parseResponse(body []byte) (string, core.ProviderResponse, core.TokenUsage, error) {
@@ -794,10 +809,7 @@ func openAIChatMessages(req core.Request, systemRole string) []map[string]any {
 				"content": req.System,
 			})
 		}
-		messages = append(messages, map[string]any{
-			"role":    "user",
-			"content": req.Prompt,
-		})
+		messages = append(messages, openAIChatMessage("user", req.Prompt, req.Images, req.Audio, req.PDFs, req.JudgeOutputs))
 		return messages
 	}
 
@@ -805,13 +817,10 @@ func openAIChatMessages(req core.Request, systemRole string) []map[string]any {
 	for _, turn := range req.Messages {
 		role := strings.ToLower(strings.TrimSpace(turn.Role))
 		content := strings.TrimSpace(turn.Content)
-		if role == "" || content == "" {
+		if role == "" || (content == "" && len(turn.Images) == 0 && len(turn.Audio) == 0 && len(turn.PDFs) == 0) {
 			continue
 		}
-		msg := map[string]any{
-			"role":    role,
-			"content": content,
-		}
+		msg := openAIChatMessage(role, content, turn.Images, turn.Audio, turn.PDFs, nil)
 		switch role {
 		case "system":
 			msg["role"] = systemRole
@@ -830,10 +839,265 @@ func openAIChatMessages(req core.Request, systemRole string) []map[string]any {
 }
 
 func openAIResponsesInput(req core.Request, systemRole string) any {
-	if len(req.Messages) == 0 {
+	if len(req.Messages) == 0 && len(req.Images) == 0 && len(req.Audio) == 0 && len(req.PDFs) == 0 && len(req.JudgeOutputs) == 0 {
 		return req.Prompt
 	}
-	return openAIChatMessages(req, systemRole)
+	return openAIResponsesMessages(req, systemRole)
+}
+
+func openAIResponsesMessages(req core.Request, systemRole string) []map[string]any {
+	if len(req.Messages) == 0 {
+		messages := make([]map[string]any, 0, 2)
+		if strings.TrimSpace(req.System) != "" {
+			messages = append(messages, map[string]any{
+				"role":    systemRole,
+				"content": []map[string]any{{"type": "input_text", "text": req.System}},
+			})
+		}
+		messages = append(messages, map[string]any{
+			"role":    "user",
+			"content": openAIResponsesContent(req.Prompt, req.Images, req.Audio, req.PDFs, req.JudgeOutputs),
+		})
+		return messages
+	}
+
+	messages := make([]map[string]any, 0, len(req.Messages))
+	for _, turn := range req.Messages {
+		role := strings.ToLower(strings.TrimSpace(turn.Role))
+		if role == "" {
+			continue
+		}
+		msg := map[string]any{
+			"role":    role,
+			"content": openAIResponsesContent(turn.Content, turn.Images, turn.Audio, turn.PDFs, nil),
+		}
+		switch role {
+		case "system":
+			msg["role"] = systemRole
+		case "tool":
+			if turn.Name != "" {
+				msg["name"] = turn.Name
+			}
+			if turn.ToolCallID != "" {
+				msg["tool_call_id"] = turn.ToolCallID
+			}
+		}
+		messages = append(messages, msg)
+	}
+	return messages
+}
+
+func openAIChatMessage(role, content string, images, audio, pdfs []core.MediaInput, outputs []core.JudgeOutput) map[string]any {
+	msg := map[string]any{"role": role}
+	if payload, ok := openAIChatContent(content, images, audio, pdfs, outputs); ok {
+		msg["content"] = payload
+	} else {
+		msg["content"] = content
+	}
+	return msg
+}
+
+func openAIChatContent(content string, images, audio, pdfs []core.MediaInput, outputs []core.JudgeOutput) (any, bool) {
+	if len(images) == 0 && len(audio) == 0 && len(pdfs) == 0 && len(outputs) == 0 {
+		return strings.TrimSpace(content), false
+	}
+	items := make([]map[string]any, 0, 1+len(images)+len(audio)+len(pdfs)+len(outputs))
+	if text := strings.TrimSpace(content); text != "" {
+		items = append(items, map[string]any{"type": "text", "text": text})
+	}
+	for _, item := range images {
+		if url := mediaInputURL(item); url != "" {
+			payload := map[string]any{"url": url}
+			if detail := strings.TrimSpace(item.Detail); detail != "" {
+				payload["detail"] = detail
+			}
+			items = append(items, map[string]any{"type": "image_url", "image_url": payload})
+			continue
+		}
+		items = append(items, fallbackMediaTextItem("image", item))
+	}
+	for _, item := range audio {
+		items = append(items, fallbackMediaTextItem("audio", item))
+	}
+	for _, item := range pdfs {
+		items = append(items, fallbackMediaTextItem("pdf", item))
+	}
+	items = append(items, judgeOutputTextItems(outputs)...)
+	return items, true
+}
+
+func openAIResponsesContent(content string, images, audio, pdfs []core.MediaInput, outputs []core.JudgeOutput) []map[string]any {
+	items := make([]map[string]any, 0, 1+len(images)+len(audio)+len(pdfs)+len(outputs))
+	if text := strings.TrimSpace(content); text != "" {
+		items = append(items, map[string]any{"type": "input_text", "text": text})
+	}
+	items = appendResponsesImages(items, images)
+	items = appendResponsesAudio(items, audio)
+	items = appendResponsesPDFs(items, pdfs)
+	items = append(items, judgeOutputTextItemsAsResponses(outputs)...)
+	return items
+}
+
+func appendResponsesImages(items []map[string]any, images []core.MediaInput) []map[string]any {
+	for _, item := range images {
+		if payload, ok := openAIResponsesImageItem(item); ok {
+			items = append(items, payload)
+			continue
+		}
+		items = append(items, fallbackResponsesMediaTextItem("image", item))
+	}
+	return items
+}
+
+func appendResponsesAudio(items []map[string]any, audio []core.MediaInput) []map[string]any {
+	for _, item := range audio {
+		if payload, ok := openAIResponsesAudioItem(item); ok {
+			items = append(items, payload)
+			continue
+		}
+		items = append(items, fallbackResponsesMediaTextItem("audio", item))
+	}
+	return items
+}
+
+func appendResponsesPDFs(items []map[string]any, pdfs []core.MediaInput) []map[string]any {
+	for _, item := range pdfs {
+		if payload, ok := openAIResponsesPDFItem(item); ok {
+			items = append(items, payload)
+			continue
+		}
+		items = append(items, fallbackResponsesMediaTextItem("pdf", item))
+	}
+	return items
+}
+
+func openAIResponsesImageItem(item core.MediaInput) (map[string]any, bool) {
+	url := mediaInputURL(item)
+	if url == "" {
+		return nil, false
+	}
+	payload := map[string]any{"type": "input_image", "image_url": url}
+	if detail := strings.TrimSpace(item.Detail); detail != "" {
+		payload["detail"] = detail
+	}
+	return payload, true
+}
+
+func openAIResponsesAudioItem(item core.MediaInput) (map[string]any, bool) {
+	data := strings.TrimSpace(item.Data)
+	if data == "" {
+		return nil, false
+	}
+	payload := map[string]any{"type": "input_audio", "data": data}
+	if format := mediaFormat(item); format != "" {
+		payload["format"] = format
+	}
+	return payload, true
+}
+
+func openAIResponsesPDFItem(item core.MediaInput) (map[string]any, bool) {
+	if url := mediaInputURL(item); url != "" {
+		payload := map[string]any{"type": "input_file", "file_url": url}
+		addResponsesFileMetadata(payload, item)
+		return payload, true
+	}
+	data := strings.TrimSpace(item.Data)
+	if data == "" {
+		return nil, false
+	}
+	payload := map[string]any{"type": "input_file", "file_data": data}
+	if filename := mediaFilename(item); filename != "" {
+		payload["filename"] = filename
+	}
+	addResponsesFileMetadata(payload, item)
+	return payload, true
+}
+
+func addResponsesFileMetadata(payload map[string]any, item core.MediaInput) {
+	if mediaType := strings.TrimSpace(item.MediaType); mediaType != "" {
+		payload["media_type"] = mediaType
+	}
+}
+
+func fallbackMediaTextItem(kind string, item core.MediaInput) map[string]any {
+	return map[string]any{"type": "text", "text": fmt.Sprintf("[%s] %s", kind, mediaLabel(item))}
+}
+
+func fallbackResponsesMediaTextItem(kind string, item core.MediaInput) map[string]any {
+	return map[string]any{"type": "input_text", "text": fmt.Sprintf("[%s] %s", kind, mediaLabel(item))}
+}
+
+func judgeOutputTextItems(outputs []core.JudgeOutput) []map[string]any {
+	if len(outputs) == 0 {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(outputs))
+	for _, output := range outputs {
+		items = append(items, map[string]any{"type": "text", "text": fmt.Sprintf("[judge_%s] %s", strings.TrimSpace(output.Type), strings.TrimSpace(output.Value))})
+	}
+	return items
+}
+
+func judgeOutputTextItemsAsResponses(outputs []core.JudgeOutput) []map[string]any {
+	if len(outputs) == 0 {
+		return nil
+	}
+	items := make([]map[string]any, 0, len(outputs))
+	for _, output := range outputs {
+		items = append(items, map[string]any{"type": "input_text", "text": fmt.Sprintf("[judge_%s] %s", strings.TrimSpace(output.Type), strings.TrimSpace(output.Value))})
+	}
+	return items
+}
+
+func mediaInputURL(item core.MediaInput) string {
+	switch {
+	case strings.TrimSpace(item.URL) != "":
+		return strings.TrimSpace(item.URL)
+	case strings.HasPrefix(strings.TrimSpace(item.Data), "data:"):
+		return strings.TrimSpace(item.Data)
+	default:
+		return ""
+	}
+}
+
+func mediaLabel(item core.MediaInput) string {
+	switch {
+	case strings.TrimSpace(item.Filename) != "":
+		return strings.TrimSpace(item.Filename)
+	case strings.TrimSpace(item.Path) != "":
+		return strings.TrimSpace(item.Path)
+	case strings.TrimSpace(item.URL) != "":
+		return strings.TrimSpace(item.URL)
+	case strings.TrimSpace(item.MediaType) != "":
+		return strings.TrimSpace(item.MediaType)
+	default:
+		return "embedded"
+	}
+}
+
+func mediaFilename(item core.MediaInput) string {
+	if filename := strings.TrimSpace(item.Filename); filename != "" {
+		return filename
+	}
+	if path := strings.TrimSpace(item.Path); path != "" {
+		parts := strings.Split(path, "/")
+		return parts[len(parts)-1]
+	}
+	return ""
+}
+
+func mediaFormat(item core.MediaInput) string {
+	mediaType := strings.ToLower(strings.TrimSpace(item.MediaType))
+	switch {
+	case strings.HasSuffix(mediaType, "/wav"):
+		return "wav"
+	case strings.HasSuffix(mediaType, "/mp3"), strings.HasSuffix(mediaType, "/mpeg"):
+		return "mp3"
+	case strings.HasSuffix(mediaType, "/ogg"):
+		return "ogg"
+	default:
+		return ""
+	}
 }
 
 func decodeJSONString(raw string) any {

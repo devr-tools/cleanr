@@ -2,8 +2,10 @@ package tests
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"strings"
 	"testing"
 	_ "unsafe"
@@ -17,6 +19,9 @@ var judgeTargetFactory func(core.TargetConfig) core.Target
 
 //go:linkname baselineTargetFactory github.com/devr-tools/cleanr/cleanr/engines.baselineTargetFactory
 var baselineTargetFactory func(core.TargetConfig) core.Target
+
+//go:linkname comparisonTargetFactory github.com/devr-tools/cleanr/cleanr/engines.comparisonTargetFactory
+var comparisonTargetFactory func(core.TargetConfig) core.Target
 
 //go:linkname medianScore github.com/devr-tools/cleanr/cleanr/engines.medianScore
 func medianScore(scores []float64) float64
@@ -140,6 +145,71 @@ func TestLLMJudgeSelfConsistencyFailsOnDisagreement(t *testing.T) {
 	}
 }
 
+func TestLLMJudgeAppliesPassRateAndFlakeGates(t *testing.T) {
+	scores := []float64{5, 5, 5, 1, 1}
+	i := 0
+	withJudge(t, stubTarget{fn: func(core.Request) core.Response {
+		score := scores[i%len(scores)]
+		i++
+		return verdictResponse(score, "sampled")
+	}})
+	cfg := judgeConfig(core.LLMJudgeConfig{
+		Samples:         5,
+		MinPassRate:     0.9,
+		MaxFlakeRate:    0.1,
+		ConfidenceLevel: 0.95,
+	}, core.Scenario{Name: "reliability", Input: "Explain refunds"})
+
+	result := runJudge(cfg, okTarget("answer"))
+
+	if result.Cases[0].Passed {
+		t.Fatalf("expected reliability gates to fail, got %+v", result.Cases[0])
+	}
+	if result.Cases[0].Details["flake_detected"] != true {
+		t.Fatalf("expected flaky case details, got %+v", result.Cases[0].Details)
+	}
+	if !hasFindingContaining(result.Cases[0].Findings, "min_pass_rate") || !hasFindingContaining(result.Cases[0].Findings, "max_flake_rate") {
+		t.Fatalf("expected pass-rate and flake findings, got %+v", result.Cases[0].Findings)
+	}
+}
+
+func TestLLMJudgeCascadeConsultsEnsembleNearThreshold(t *testing.T) {
+	prev := judgeTargetFactory
+	judgeTargetFactory = func(cfg core.TargetConfig) core.Target {
+		if cfg.Name == "backup" {
+			return stubTarget{fn: func(core.Request) core.Response {
+				return verdictResponse(5, "backup judge")
+			}}
+		}
+		return stubTarget{fn: func(core.Request) core.Response {
+			return verdictResponse(3, "primary judge")
+		}}
+	}
+	t.Cleanup(func() { judgeTargetFactory = prev })
+
+	cfg := judgeConfig(core.LLMJudgeConfig{
+		Samples:       1,
+		CascadeMargin: 0.05,
+		Ensemble: []core.TargetConfig{{
+			Name: "backup",
+			Type: "openai",
+			OpenAI: core.OpenAIConfig{
+				Model:   "gpt-4.1-mini",
+				APIMode: "responses",
+			},
+		}},
+	}, core.Scenario{Name: "cascade", Input: "Explain refunds"})
+
+	result := runJudge(cfg, okTarget("answer"))
+
+	if !result.Cases[0].Passed {
+		t.Fatalf("expected ensemble cascade to rescue borderline score, got %+v", result.Cases[0])
+	}
+	if result.Cases[0].Details["cascade_triggered_samples"] != 1 {
+		t.Fatalf("expected cascade details, got %+v", result.Cases[0].Details)
+	}
+}
+
 func TestLLMJudgeIncludesReferenceInPrompt(t *testing.T) {
 	var captured string
 	withJudge(t, stubTarget{fn: func(req core.Request) core.Response {
@@ -156,6 +226,59 @@ func TestLLMJudgeIncludesReferenceInPrompt(t *testing.T) {
 	}
 	if result.Cases[0].Details["reference_used"] != true {
 		t.Fatalf("expected reference_used=true, got %v", result.Cases[0].Details["reference_used"])
+	}
+}
+
+func TestLLMJudgePassesMultimodalInputsAndResolvedOutputsToJudge(t *testing.T) {
+	var captured core.Request
+	withJudge(t, stubTarget{fn: func(req core.Request) core.Response {
+		captured = req
+		return verdictResponse(5, "ok")
+	}})
+	cfg := judgeConfig(core.LLMJudgeConfig{}, core.Scenario{
+		Name:  "poster",
+		Input: "Describe the poster",
+		Images: []core.MediaInput{{
+			Path:      "fixtures/poster-brief.png",
+			MediaType: "image/png",
+			Caption:   "brief",
+		}},
+		JudgeOutputs: []core.JudgeOutput{
+			{Name: "poster", Type: "image", Path: "response.body.output.0.url", MediaType: "image/png"},
+			{Name: "handout", Type: "pdf", Path: "response.normalized.raw.files.0.url", MediaType: "application/pdf"},
+		},
+	})
+	app := stubTarget{fn: func(core.Request) core.Response {
+		return core.Response{
+			StatusCode: 200,
+			Text:       "generated assets",
+			Body:       []byte(`{"output":[{"url":"https://cdn.test/poster.png"}]}`),
+			Normalized: core.ProviderResponse{
+				Raw: map[string]any{
+					"files": []any{
+						map[string]any{"url": "https://cdn.test/handout.pdf"},
+					},
+				},
+			},
+		}
+	}}
+
+	result := runJudge(cfg, app)
+
+	if !result.Cases[0].Passed {
+		t.Fatalf("expected multimodal judge case to pass, got %+v", result.Cases[0])
+	}
+	if len(captured.Images) != 1 || len(captured.JudgeOutputs) != 2 {
+		t.Fatalf("expected judge request multimodal plumbing, got %+v", captured)
+	}
+	if captured.JudgeOutputs[0].Value != "https://cdn.test/poster.png" || captured.JudgeOutputs[1].Value != "https://cdn.test/handout.pdf" {
+		t.Fatalf("unexpected resolved judge outputs: %+v", captured.JudgeOutputs)
+	}
+	if !strings.Contains(captured.Prompt, "Scenario media inputs:") || !strings.Contains(captured.Prompt, "Resolved multimodal outputs to inspect:") {
+		t.Fatalf("expected multimodal prompt sections, got %q", captured.Prompt)
+	}
+	if outputs, ok := result.Cases[0].Details["judge_outputs"].([]core.JudgeOutput); !ok || len(outputs) != 2 {
+		t.Fatalf("expected judge_outputs details, got %+v", result.Cases[0].Details["judge_outputs"])
 	}
 }
 
@@ -282,6 +405,48 @@ func TestLLMJudgePairwiseCandidateWins(t *testing.T) {
 	}
 }
 
+func TestLLMJudgePairwisePromptIncludesMultimodalOutputs(t *testing.T) {
+	var prompts []string
+	withBaseline(t, stubTarget{fn: func(core.Request) core.Response {
+		return core.Response{StatusCode: 200, Text: "BASELINE answer", Body: []byte(`{"artifact":{"url":"https://cdn.test/baseline.png"}}`)}
+	}})
+	withJudge(t, stubTarget{fn: func(req core.Request) core.Response {
+		prompts = append(prompts, req.Prompt)
+		idx1 := strings.Index(req.Prompt, "Response 1:")
+		idx2 := strings.Index(req.Prompt, "Response 2:")
+		if idx1 < 0 || idx2 < 0 || idx2 < idx1 {
+			t.Fatalf("malformed pairwise prompt: %q", req.Prompt)
+		}
+		slot1 := req.Prompt[idx1:idx2]
+		if strings.Contains(slot1, "CANDIDATE answer") {
+			return winnerResponse("1")
+		}
+		return winnerResponse("2")
+	}})
+	cfg := pairwiseConfig(core.LLMJudgeConfig{Samples: 1}, core.Scenario{
+		Name:  "compare-assets",
+		Input: "Render a poster",
+		JudgeOutputs: []core.JudgeOutput{
+			{Name: "poster", Type: "image", Path: "response.body.artifact.url"},
+		},
+	})
+	app := stubTarget{fn: func(core.Request) core.Response {
+		return core.Response{StatusCode: 200, Text: "CANDIDATE answer", Body: []byte(`{"artifact":{"url":"https://cdn.test/candidate.png"}}`)}
+	}}
+
+	result := runJudge(cfg, app)
+
+	if !result.Cases[0].Passed {
+		t.Fatalf("expected pairwise multimodal comparison to pass, got %+v", result.Cases[0])
+	}
+	if len(prompts) == 0 {
+		t.Fatal("expected pairwise judge prompt to be captured")
+	}
+	if !strings.Contains(prompts[0], "Response 1 multimodal outputs:") || !strings.Contains(prompts[0], "Response 2 multimodal outputs:") {
+		t.Fatalf("expected multimodal pairwise prompt sections, got %q", prompts[0])
+	}
+}
+
 func TestLLMJudgePairwiseCandidateLosesFails(t *testing.T) {
 	withBaseline(t, okTarget("BASELINE answer"))
 	withJudge(t, judgeSlotPicker(t, "BASELINE"))
@@ -335,6 +500,89 @@ func TestLLMJudgePairwiseRequiresBaseline(t *testing.T) {
 
 	if !result.Cases[0].Passed {
 		t.Fatalf("expected pass at win_rate 1.0 >= 0.6, got %+v", result.Cases[0])
+	}
+}
+
+func TestLLMJudgeCalibrationCanFailSuite(t *testing.T) {
+	withJudge(t, stubTarget{fn: func(core.Request) core.Response {
+		return verdictResponse(5, "overly generous")
+	}})
+	path := t.TempDir() + "/labels.json"
+	labels := []map[string]any{{
+		"scenario": "calibrated",
+		"score":    0.2,
+		"pass":     false,
+	}}
+	data, err := json.Marshal(labels)
+	if err != nil {
+		t.Fatalf("marshal labels: %v", err)
+	}
+	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatalf("write labels: %v", err)
+	}
+	cfg := judgeConfig(core.LLMJudgeConfig{
+		CalibrationFile:        path,
+		MinCalibrationAccuracy: 1.0,
+		MaxCalibrationMAE:      0.1,
+	}, core.Scenario{Name: "calibrated", Input: "Explain refunds"})
+
+	result := runJudge(cfg, okTarget("answer"))
+
+	if result.Passed {
+		t.Fatalf("expected suite to fail calibration, got %+v", result)
+	}
+	if result.Meta == nil || result.Meta["calibration"] == nil {
+		t.Fatalf("expected calibration report in suite meta, got %+v", result.Meta)
+	}
+}
+
+func TestLLMJudgeBuildsComparisonMatrix(t *testing.T) {
+	prevJudge := judgeTargetFactory
+	prevComparison := comparisonTargetFactory
+	judgeTargetFactory = func(core.TargetConfig) core.Target {
+		return stubTarget{fn: func(req core.Request) core.Response {
+			score := 1.0
+			switch {
+			case strings.Contains(req.Prompt, "gold answer"):
+				score = 5
+			case strings.Contains(req.Prompt, "silver answer"):
+				score = 4
+			}
+			return verdictResponse(score, "ranked")
+		}}
+	}
+	comparisonTargetFactory = func(cfg core.TargetConfig) core.Target {
+		return stubTarget{fn: func(core.Request) core.Response {
+			return core.Response{StatusCode: 200, Text: cfg.Name + " answer"}
+		}}
+	}
+	t.Cleanup(func() {
+		judgeTargetFactory = prevJudge
+		comparisonTargetFactory = prevComparison
+	})
+
+	cfg := judgeConfig(core.LLMJudgeConfig{
+		ComparisonTargets: []core.TargetConfig{{
+			Name: "gold",
+			Type: "openai",
+			OpenAI: core.OpenAIConfig{
+				Model:   "gpt-4.1-mini",
+				APIMode: "responses",
+			},
+		}},
+	}, core.Scenario{Name: "matrix", Input: "Explain refunds"})
+
+	result := runJudge(cfg, stubTarget{fn: func(core.Request) core.Response {
+		return core.Response{StatusCode: 200, Text: "silver answer"}
+	}})
+
+	matrix, ok := result.Meta["comparison_matrix"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected comparison matrix in suite meta, got %+v", result.Meta)
+	}
+	ranking, ok := matrix["ranking"].([]string)
+	if !ok || len(ranking) == 0 || ranking[0] != "gold" {
+		t.Fatalf("expected challenger to lead ranking, got %+v", matrix["ranking"])
 	}
 }
 

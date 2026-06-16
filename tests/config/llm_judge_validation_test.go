@@ -141,6 +141,19 @@ func TestValidateLLMJudgePairwiseValidConfigPasses(t *testing.T) {
 	}
 }
 
+func TestValidateLLMJudgeCalibrationRequiresFile(t *testing.T) {
+	judge := core.LLMJudgeConfig{
+		Enabled:                true,
+		Provider:               core.TargetConfig{Type: "openai", OpenAI: core.OpenAIConfig{Model: "gpt-4.1-mini", APIMode: "responses"}},
+		MinCalibrationAccuracy: 0.9,
+	}
+	cfg := judgeBaseConfig(judge, core.Scenario{Name: "s", Input: "hi"})
+	msg := validationMessage(t, cleanr.ValidateConfig(cfg), "calibration_file")
+	if !strings.Contains(msg, "suites.llm_judge.calibration_file") {
+		t.Fatalf("expected calibration_file error, got: %s", msg)
+	}
+}
+
 func TestApplyLLMJudgePairwiseDefaults(t *testing.T) {
 	cfg := judgeBaseConfigWithDefaults(t, core.LLMJudgeConfig{
 		Enabled:  true,
@@ -174,6 +187,9 @@ func TestApplyLLMJudgeDefaults(t *testing.T) {
 	}
 	if j.MaxDisagreement != 0.4 {
 		t.Fatalf("expected default max_disagreement 0.4 when sampling, got %v", j.MaxDisagreement)
+	}
+	if j.ConfidenceLevel != 0.95 {
+		t.Fatalf("expected default confidence_level 0.95, got %v", j.ConfidenceLevel)
 	}
 	if j.Provider.OpenAI.APIKeyEnv != "OPENAI_API_KEY" {
 		t.Fatalf("expected provider defaults applied, got %q", j.Provider.OpenAI.APIKeyEnv)

@@ -163,6 +163,69 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		t.Fatalf("unexpected decoded report: %+v", decoded)
 	}
 
+	var html bytes.Buffer
+	if err := cleanr.WriteReport(&html, report, "html"); err != nil {
+		t.Fatalf("write html report: %v", err)
+	}
+	htmlOut := html.String()
+	for _, want := range []string{
+		"<!DOCTYPE html>",
+		"Static cleanr report dashboard",
+		"devr-tools / cleanr",
+		`aria-label="cleanr ascii logo"`,
+		`▄▄`,
+		"Primary evaluation results",
+		`status status-compact status-fail`,
+		`class="detail-grid"`,
+		`class="detail-key">claimed_tools</div>`,
+		`class="detail-chip">lookup_policy</span>`,
+		"semantic drift delta 0.180 exceeded gate 0.050",
+		"https://braintrust.dev/app/release-gate/build-2",
+		"claimed tool execution with no matching invocation",
+	} {
+		if !strings.Contains(htmlOut, want) {
+			t.Fatalf("expected %q in html report:\n%s", want, htmlOut)
+		}
+	}
+	var agent bytes.Buffer
+	if err := cleanr.WriteReport(&agent, report, "agent"); err != nil {
+		t.Fatalf("write agent report: %v", err)
+	}
+	var agentDecoded cleanr.AgentReport
+	if err := json.Unmarshal(agent.Bytes(), &agentDecoded); err != nil {
+		t.Fatalf("decode agent report: %v", err)
+	}
+	if agentDecoded.Contract.Kind != "cleanr.report.agent" || agentDecoded.Contract.Format != "agent" || agentDecoded.Contract.Version != "v1" {
+		t.Fatalf("unexpected agent contract: %+v", agentDecoded.Contract)
+	}
+	if agentDecoded.Summary.Target != "demo" || agentDecoded.Summary.FindingCount != 3 || agentDecoded.Summary.RecommendationCount != 1 {
+		t.Fatalf("unexpected agent summary: %+v", agentDecoded.Summary)
+	}
+	if len(agentDecoded.Findings) != 3 {
+		t.Fatalf("expected 3 flattened findings, got %d", len(agentDecoded.Findings))
+	}
+	if agentDecoded.Findings[0].Scope != "suite" || agentDecoded.Findings[0].Suite != "security" || agentDecoded.Findings[0].Message != "suite issue" {
+		t.Fatalf("unexpected suite finding: %+v", agentDecoded.Findings[0])
+	}
+	if agentDecoded.Findings[1].Scope != "case" || agentDecoded.Findings[1].Case != "case-1" || agentDecoded.Findings[1].Details["first_unsupported_claim"] != "claimed tool execution with no matching invocation: lookup_policy" {
+		t.Fatalf("unexpected case finding: %+v", agentDecoded.Findings[1])
+	}
+	if agentDecoded.Findings[2].Scope != "trend_gate" || agentDecoded.Findings[2].Message != "semantic drift delta 0.180 exceeded gate 0.050" {
+		t.Fatalf("unexpected trend gate finding: %+v", agentDecoded.Findings[2])
+	}
+	if len(agentDecoded.FixSuggestions) != 2 {
+		t.Fatalf("expected 2 fix suggestions, got %+v", agentDecoded.FixSuggestions)
+	}
+	if agentDecoded.FixSuggestions[0].Kind != "trace_alignment" || agentDecoded.FixSuggestions[0].Case != "case-1" {
+		t.Fatalf("unexpected trace alignment suggestion: %+v", agentDecoded.FixSuggestions[0])
+	}
+	if agentDecoded.FixSuggestions[1].Kind != "stability" || agentDecoded.FixSuggestions[1].Scope != "trend_gate" {
+		t.Fatalf("unexpected trend stability suggestion: %+v", agentDecoded.FixSuggestions[1])
+	}
+	if agentDecoded.Report.Name != "demo" || agentDecoded.Report.TotalCases != 1 {
+		t.Fatalf("unexpected embedded report: %+v", agentDecoded.Report)
+	}
+
 	var junit bytes.Buffer
 	if err := cleanr.WriteReport(&junit, report, "junit"); err != nil {
 		t.Fatalf("write junit report: %v", err)

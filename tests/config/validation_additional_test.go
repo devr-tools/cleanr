@@ -70,6 +70,44 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "target.openai.base_url",
 		},
 		{
+			name: "azure openai requires base url",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "azure_openai"
+				cfg.Target.OpenAI.Model = "gpt-4o-mini"
+				cfg.Target.OpenAI.BaseURL = ""
+				cfg.Target.OpenAI.APIVersion = "2025-03-01-preview"
+			},
+			wantSub: "target.openai.base_url",
+		},
+		{
+			name: "azure openai requires api version",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "azure_openai"
+				cfg.Target.OpenAI.Model = "gpt-4o-mini"
+				cfg.Target.OpenAI.BaseURL = "https://example-resource.openai.azure.com/openai/deployments/test-deployment"
+				cfg.Target.OpenAI.APIVersion = ""
+			},
+			wantSub: "target.openai.api_version",
+		},
+		{
+			name: "vertex requires base url",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "vertex"
+				cfg.Target.OpenAI.Model = "gemini-2.5-pro"
+				cfg.Target.OpenAI.BaseURL = ""
+			},
+			wantSub: "target.openai.base_url",
+		},
+		{
+			name: "bedrock requires base url",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Target.Type = "bedrock"
+				cfg.Target.OpenAI.Model = "anthropic.claude-3-5-sonnet-20240620-v1:0"
+				cfg.Target.OpenAI.BaseURL = ""
+			},
+			wantSub: "target.openai.base_url",
+		},
+		{
 			name: "anthropic invalid base url",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Target.Type = "anthropic"
@@ -113,6 +151,32 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "target.timeout_ms",
 		},
 		{
+			name: "load min tokens per second must be non-negative",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Suites.Load.Enabled = true
+				cfg.Suites.Load.MinTokensPerSecond = -1
+			},
+			wantSub: "suites.load.min_tokens_per_second",
+		},
+		{
+			name: "load max cost per request requires pricing",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Suites.Load.Enabled = true
+				cfg.Suites.Load.MaxCostPerRequest = 0.01
+				cfg.Suites.Load.InputCostPer1MTokens = 0
+				cfg.Suites.Load.OutputCostPer1MTokens = 0
+			},
+			wantSub: "cost-per-request gating requires pricing",
+		},
+		{
+			name: "load input price must be non-negative",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Suites.Load.Enabled = true
+				cfg.Suites.Load.InputCostPer1MTokens = -1
+			},
+			wantSub: "suites.load.input_cost_per_1m_tokens",
+		},
+		{
 			name: "duplicate scenario names",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Scenarios = []cleanr.Scenario{{Name: "dup", Input: "a"}, {Name: "dup", Input: "b"}}
@@ -139,6 +203,16 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "",
 		},
 		{
+			name: "scenario images allow empty legacy input",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Images = []cleanr.MediaInput{{
+					URL: "https://example.test/refund.png",
+				}}
+			},
+			wantSub: "",
+		},
+		{
 			name: "invalid turn role",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Scenarios[0].Input = ""
@@ -157,6 +231,55 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 				}
 			},
 			wantSub: "scenarios[0].turns[0].name",
+		},
+		{
+			name: "media input requires locator",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Turns = []cleanr.ConversationTurn{
+					{Role: "user", Images: []cleanr.MediaInput{{Detail: "high"}}},
+				}
+			},
+			wantSub: "scenarios[0].turns[0].images[0]",
+		},
+		{
+			name: "mock tool result requires name",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Turns = []cleanr.ConversationTurn{{
+					Role:    "user",
+					Content: "hello",
+					MockToolResults: []cleanr.MockToolResult{{
+						Content: `{"ok":true}`,
+					}},
+				}}
+			},
+			wantSub: "scenarios[0].turns[0].mock_tool_results[0].name",
+		},
+		{
+			name: "mock tool result requires payload",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Turns = []cleanr.ConversationTurn{{
+					Role:    "user",
+					Content: "hello",
+					MockToolResults: []cleanr.MockToolResult{{
+						Name: "lookup_policy",
+					}},
+				}}
+			},
+			wantSub: "scenarios[0].turns[0].mock_tool_results[0].content",
+		},
+		{
+			name: "invalid image detail",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Scenarios[0].Input = ""
+				cfg.Scenarios[0].Images = []cleanr.MediaInput{{
+					URL:    "https://example.test/refund.png",
+					Detail: "ultra",
+				}}
+			},
+			wantSub: "scenarios[0].images[0].detail",
 		},
 		{
 			name: "turns cannot combine with memory replay",
@@ -394,14 +517,22 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "integrations.trend_sources[0].path",
 		},
 		{
-			name: "summary validates format",
+			name: "langsmith source requires path or url",
+			mutate: func(cfg *cleanr.Config) {
+				cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{{
+					Type: "langsmith",
+				}}
+			},
+			wantSub: "integrations.trend_sources[0]",
+		},
+		{
+			name: "summary accepts html format",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Integrations.Summaries = []cleanr.SummaryConfig{{
 					Format: "html",
 					Output: "reports/summary.md",
 				}}
 			},
-			wantSub: "integrations.summaries[0].format",
 		},
 	}
 
@@ -469,6 +600,96 @@ reporting:
 	}
 }
 
+func TestLoadConfigDataAppliesNativeProviderDefaults(t *testing.T) {
+	t.Parallel()
+
+	tests := []struct {
+		name           string
+		data           string
+		wantName       string
+		wantAPIMode    string
+		wantAPIKeyEnv  string
+		wantBaseURL    string
+		wantAuthHeader string
+		wantAuthScheme string
+		wantProvider   string
+	}{
+		{
+			name: "gemini",
+			data: `
+version: v1alpha1
+target:
+  type: gemini
+  openai:
+    model: gemini-2.5-flash
+scenarios:
+  - name: x
+    input: hello
+`,
+			wantName:       "gemini",
+			wantAPIMode:    "chat_completions",
+			wantAPIKeyEnv:  "GEMINI_API_KEY",
+			wantBaseURL:    "https://generativelanguage.googleapis.com/v1beta/openai",
+			wantAuthHeader: "Authorization",
+			wantAuthScheme: "Bearer",
+			wantProvider:   "gemini",
+		},
+		{
+			name: "mistral",
+			data: `
+version: v1alpha1
+target:
+  type: mistral
+  openai:
+    model: mistral-small-latest
+scenarios:
+  - name: x
+    input: hello
+`,
+			wantName:       "mistral",
+			wantAPIMode:    "chat_completions",
+			wantAPIKeyEnv:  "MISTRAL_API_KEY",
+			wantBaseURL:    "https://api.mistral.ai/v1",
+			wantAuthHeader: "Authorization",
+			wantAuthScheme: "Bearer",
+			wantProvider:   "mistral",
+		},
+	}
+
+	for _, tt := range tests {
+		tt := tt
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+
+			cfg, err := cleanr.LoadConfigData([]byte(tt.data), "yaml")
+			if err != nil {
+				t.Fatalf("load config data: %v", err)
+			}
+			if cfg.Target.Name != tt.wantName {
+				t.Fatalf("unexpected target name: %q", cfg.Target.Name)
+			}
+			if cfg.Target.OpenAI.APIMode != tt.wantAPIMode {
+				t.Fatalf("unexpected api mode: %q", cfg.Target.OpenAI.APIMode)
+			}
+			if cfg.Target.OpenAI.APIKeyEnv != tt.wantAPIKeyEnv {
+				t.Fatalf("unexpected api key env: %q", cfg.Target.OpenAI.APIKeyEnv)
+			}
+			if cfg.Target.OpenAI.BaseURL != tt.wantBaseURL {
+				t.Fatalf("unexpected base url: %q", cfg.Target.OpenAI.BaseURL)
+			}
+			if cfg.Target.OpenAI.AuthHeader != tt.wantAuthHeader {
+				t.Fatalf("unexpected auth header: %q", cfg.Target.OpenAI.AuthHeader)
+			}
+			if cfg.Target.OpenAI.AuthScheme != tt.wantAuthScheme {
+				t.Fatalf("unexpected auth scheme: %q", cfg.Target.OpenAI.AuthScheme)
+			}
+			if got := cfg.Target.OpenAI.ProviderValue(cfg.Target.Type); got != tt.wantProvider {
+				t.Fatalf("unexpected provider label: %q", got)
+			}
+		})
+	}
+}
+
 func TestValidateConfigAcceptsNativeBraintrustIntegrationConfig(t *testing.T) {
 	t.Parallel()
 
@@ -523,6 +744,21 @@ func TestValidateConfigAcceptsNativePostHogIntegrationConfig(t *testing.T) {
 	}
 }
 
+func TestValidateConfigAcceptsVendorTrendImports(t *testing.T) {
+	t.Parallel()
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Integrations.TrendSources = []cleanr.TrendSourceConfig{
+		{Type: "langsmith", Path: "exports/langsmith.json"},
+		{Type: "openllmetry", URL: "https://collector.example.test/traces"},
+		{Type: "provider_logs", Path: "exports/provider-logs.yaml"},
+	}
+
+	if err := cleanr.ValidateConfig(cfg); err != nil {
+		t.Fatalf("expected vendor trend imports to validate, got %v", err)
+	}
+}
+
 func TestFieldAndValidationErrorFormattingBranches(t *testing.T) {
 	t.Parallel()
 
@@ -538,5 +774,45 @@ func TestFieldAndValidationErrorFormattingBranches(t *testing.T) {
 	errs.Add("x", "bad", "fix it")
 	if !strings.Contains(errs.Error(), "invalid config: x: bad. Fix: fix it") {
 		t.Fatalf("unexpected single validation error: %q", errs.Error())
+	}
+}
+
+func TestValidateConfigAllowsMultimodalOnlyScenario(t *testing.T) {
+	t.Parallel()
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name: "receipt-image",
+		Images: []cleanr.MediaInput{{
+			Path:      "fixtures/receipt.png",
+			MediaType: "image/png",
+		}},
+	}}
+
+	if err := cleanr.ValidateConfig(cfg); err != nil {
+		t.Fatalf("expected multimodal-only scenario to validate, got %v", err)
+	}
+}
+
+func TestValidateConfigRejectsInvalidJudgeOutputHooks(t *testing.T) {
+	t.Parallel()
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:  "poster",
+		Input: "Render a poster",
+		JudgeOutputs: []cleanr.JudgeOutput{
+			{Type: "video", Path: "response.body.output.0.url"},
+			{Type: "image"},
+		},
+	}}
+
+	err := cleanr.ValidateConfig(cfg)
+	if err == nil {
+		t.Fatal("expected judge output validation error")
+	}
+	msg := err.Error()
+	if !strings.Contains(msg, "scenarios[0].judge_outputs[0].type") || !strings.Contains(msg, "scenarios[0].judge_outputs[1].path") {
+		t.Fatalf("unexpected judge output validation error: %s", msg)
 	}
 }

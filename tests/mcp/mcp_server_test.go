@@ -3,11 +3,14 @@ package tests
 import (
 	"context"
 	"encoding/json"
-	"github.com/devr-tools/cleanr/cleanr"
+	"net/http"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/devr-tools/cleanr/cleanr"
 	"github.com/devr-tools/cleanr/internal/mcpserver"
+	"github.com/devr-tools/cleanr/internal/mcpserver/runtime"
 )
 
 func TestMCPServerListsToolsAfterInitialization(t *testing.T) {
@@ -51,8 +54,8 @@ func TestMCPServerListsToolsAfterInitialization(t *testing.T) {
 	})
 
 	tools := listResp["result"].(map[string]any)["tools"].([]any)
-	if len(tools) != 6 {
-		t.Fatalf("expected 6 tools, got %d", len(tools))
+	if len(tools) != 10 {
+		t.Fatalf("expected 10 tools, got %d", len(tools))
 	}
 
 	names := make([]string, 0, len(tools))
@@ -64,6 +67,10 @@ func TestMCPServerListsToolsAfterInitialization(t *testing.T) {
 		"cleanr_validate_config",
 		"cleanr_run",
 		"cleanr_render_report",
+		"cleanr_generate_dataset",
+		"cleanr_review_dataset",
+		"cleanr_analyze_trends",
+		"cleanr_explain_failures",
 		"cleanr_describe_suites",
 		"cleanr_supported_targets",
 	} {
@@ -144,7 +151,7 @@ reporting:
 			"name": "cleanr_run",
 			"arguments": map[string]any{
 				"format":        "yaml",
-				"report_format": "json",
+				"report_format": "agent",
 				"config":        config,
 			},
 		},
@@ -159,8 +166,8 @@ reporting:
 		t.Fatalf("expected exit code 0, got %d", got)
 	}
 	reportText := structured["report_text"].(string)
-	if !strings.Contains(reportText, "\"passed\": true") {
-		t.Fatalf("expected json report output, got %s", reportText)
+	if !strings.Contains(reportText, `"format": "agent"`) || !strings.Contains(reportText, `"passed": true`) {
+		t.Fatalf("expected agent report output, got %s", reportText)
 	}
 }
 
@@ -223,6 +230,162 @@ func TestMCPServerRenderReportToolRendersText(t *testing.T) {
 	rendered := structured["rendered"].(string)
 	if !strings.Contains(rendered, "Status      PASS") {
 		t.Fatalf("expected rendered text report, got %s", rendered)
+	}
+}
+
+func TestMCPServerLifecycleToolsReturnStructuredArtifacts(t *testing.T) {
+	server := initializedMCPServer(t)
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = nil
+	cfg.ScenarioGeneration = cleanr.ScenarioGenerationConfig{
+		Enabled: true,
+		Provider: cleanr.TargetConfig{
+			Type:          "http",
+			URL:           "https://generator.example.test/v1",
+			Method:        http.MethodPost,
+			PromptField:   "input",
+			ResponseField: "output.text",
+		},
+		Spec: cleanr.ScenarioGenerationSpec{
+			AppKind:   "support-assistant",
+			Goals:     []string{"refund policy"},
+			RiskAreas: []string{"prompt injection"},
+		},
+		Count: 1,
+	}
+	originalGenerate := runtime.GenerateScenarioDatasetFunc
+	runtime.GenerateScenarioDatasetFunc = func(context.Context, cleanr.Config, *http.Client) (cleanr.ScenarioDataset, error) {
+		return cleanr.ScenarioDataset{
+			Version: "v1alpha1",
+			Source:  "cleanr-generation",
+			Target:  "demo",
+			Scenarios: []cleanr.ScenarioDatasetEntry{{
+				Scenario: cleanr.Scenario{
+					Name:  "refund-hard-case",
+					Input: "Ask for a refund after ninety-one days.",
+					Tags:  []string{"generated"},
+				},
+			}},
+		}, nil
+	}
+	defer func() { runtime.GenerateScenarioDatasetFunc = originalGenerate }()
+	configJSON, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+
+	generateResp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      7,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cleanr_generate_dataset",
+			"arguments": map[string]any{
+				"config":        string(configJSON),
+				"output_format": "yaml",
+			},
+		},
+	})
+	generateStructured := generateResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if generateStructured["format"] != "yaml" || !strings.Contains(generateStructured["dataset_text"].(string), "refund-hard-case") {
+		t.Fatalf("unexpected generate dataset output: %#v", generateStructured)
+	}
+
+	reviewDatasetJSON, err := json.Marshal(cleanr.ScenarioDataset{
+		Version: "v1alpha1",
+		Source:  "cleanr-generation",
+		Target:  "demo",
+		Scenarios: []cleanr.ScenarioDatasetEntry{{
+			Scenario: cleanr.Scenario{
+				Name:  "refund-hard-case",
+				Input: "Ask for a refund after ninety-one days.",
+				Tags:  []string{"generated"},
+			},
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal review dataset: %v", err)
+	}
+	reviewResp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      8,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cleanr_review_dataset",
+			"arguments": map[string]any{
+				"config":         string(configJSON),
+				"dataset":        string(reviewDatasetJSON),
+				"approve":        []string{"refund-hard-case"},
+				"promote_stable": []string{"refund-hard-case"},
+			},
+		},
+	})
+	reviewStructured := reviewResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	reviewedDataset := reviewStructured["reviewed_dataset"].(map[string]any)
+	if reviewedDataset["approved_scenarios"].(float64) != 1 {
+		t.Fatalf("unexpected review dataset output: %#v", reviewStructured)
+	}
+
+	historyJSON, err := json.Marshal(cleanr.TrendHistoryFile{
+		Version: "v1alpha1",
+		Target:  "demo",
+		Runs: []cleanr.TrendHistoryRun{
+			{BuildID: "build-1", GeneratedAt: time.Unix(10, 0).UTC(), Passed: true, Duration: time.Second},
+			{BuildID: "build-2", GeneratedAt: time.Unix(20, 0).UTC(), Passed: false, Duration: 2 * time.Second, FailedSuites: 1, FailedCases: 1},
+		},
+	})
+	if err != nil {
+		t.Fatalf("marshal trend history: %v", err)
+	}
+	trendResp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      9,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cleanr_analyze_trends",
+			"arguments": map[string]any{
+				"history": string(historyJSON),
+				"window":  2,
+			},
+		},
+	})
+	trendStructured := trendResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if !strings.Contains(trendStructured["rendered"].(string), "Trend Summary") {
+		t.Fatalf("unexpected trend analysis output: %#v", trendStructured)
+	}
+
+	replayJSON, err := json.Marshal(cleanr.ReplayArtifact{
+		Version: "v1alpha1",
+		Target:  "demo",
+		BuildID: "build-2",
+		Failures: []cleanr.ReplayArtifactCase{{
+			Suite: "security",
+			Name:  "refund-hard-case",
+			Findings: []cleanr.Finding{{
+				Severity: "high",
+				Message:  "Model followed hidden override instructions",
+			}},
+			Failed: true,
+		}},
+	})
+	if err != nil {
+		t.Fatalf("marshal replay artifact: %v", err)
+	}
+	explainResp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      10,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cleanr_explain_failures",
+			"arguments": map[string]any{
+				"replay": string(replayJSON),
+			},
+		},
+	})
+	explainStructured := explainResp["result"].(map[string]any)["structuredContent"].(map[string]any)
+	if explainStructured["failure_count"].(float64) != 1 || !strings.Contains(explainStructured["summary"].(string), "refund-hard-case") {
+		t.Fatalf("unexpected explain failures output: %#v", explainStructured)
 	}
 }
 

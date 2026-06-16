@@ -15,14 +15,7 @@ func WrapTarget(base core.Target, manifests []core.PluginManifest) core.Target {
 	if len(manifests) == 0 {
 		return base
 	}
-	hasAdapters := false
-	for _, manifest := range manifests {
-		if len(manifest.StateAdapters) > 0 || len(manifest.Probes) > 0 {
-			hasAdapters = true
-			break
-		}
-	}
-	if !hasAdapters {
+	if !NewRegistry(manifests).HasStateAdapters() {
 		return base
 	}
 	return Target{base: base, manifests: manifests}

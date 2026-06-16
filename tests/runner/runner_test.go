@@ -3,6 +3,7 @@ package tests
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -271,6 +272,94 @@ printf '%s\n' '{"name":"org-policy","passed":false,"cases":[{"name":"case-1","pa
 	}
 }
 
+func TestRunnerExecutesManifestRelativePluginSuiteCommand(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = false
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+
+	dir := t.TempDir()
+	scriptPath := filepath.Join(dir, "suite.sh")
+	if err := os.WriteFile(scriptPath, []byte(`#!/bin/sh
+printf '%s\n' '{"name":"relative-suite","passed":false,"cases":[{"name":"case-1","passed":false,"findings":[{"severity":"high","message":"relative plugin executed"}]}]}'
+`), 0o755); err != nil {
+		t.Fatalf("write script: %v", err)
+	}
+
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name:    "org-plugin",
+		Source:  filepath.Join(dir, "plugin.yaml"),
+		BaseDir: dir,
+		Suites: []cleanr.PluginSuite{{
+			Name:    "relative-suite",
+			Command: "./suite.sh",
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if report.Passed {
+		t.Fatalf("expected relative plugin suite to fail the report")
+	}
+	if len(report.Suites) != 1 || report.Suites[0].Name != "relative-suite" {
+		t.Fatalf("unexpected suite result: %+v", report.Suites)
+	}
+	if got := report.Suites[0].Cases[0].Findings[0].Message; got != "relative plugin executed" {
+		t.Fatalf("unexpected relative plugin finding: %+v", report.Suites[0].Cases[0].Findings)
+	}
+}
+
+func TestRunnerExecutesWASMPluginSuite(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = false
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+
+	dir := t.TempDir()
+	modulePath := buildWASMPlugin(t, dir)
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name:    "org-plugin",
+		Source:  filepath.Join(dir, "plugin.yaml"),
+		BaseDir: dir,
+		Suites: []cleanr.PluginSuite{{
+			Name:    "wasm-suite",
+			Command: filepath.Base(modulePath),
+			Runtime: cleanr.PluginRuntimeConfig{Backend: "wasm"},
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected wasm plugin suite to pass: %+v", report)
+	}
+	if len(report.Suites) != 1 || report.Suites[0].Name != "wasm-suite" {
+		t.Fatalf("unexpected wasm suite result: %+v", report.Suites)
+	}
+	var details map[string]any
+	if len(report.Suites[0].Cases) != 1 {
+		t.Fatalf("expected one wasm case, got %+v", report.Suites[0].Cases)
+	}
+	details = report.Suites[0].Cases[0].Details
+	if details["runtime"] != "wasm" {
+		t.Fatalf("expected wasm runtime marker, got %+v", details)
+	}
+}
+
 func TestRunnerAppliesPluginStateAdapter(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Scenarios = []cleanr.Scenario{{
@@ -356,6 +445,82 @@ printf '%s\n' '{"state_changes":[{"kind":"ticket","action":"update","target":"ca
 	}
 }
 
+func TestRunnerAppliesDBProbeObservations(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:  "db-probe",
+		Input: "verify the row exists",
+		ExpectedStateChanges: []cleanr.ExpectedStateChange{{
+			Kind:   "db",
+			Action: "select",
+			Target: "support.tickets",
+			Status: "observed",
+		}},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = true
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name: "org-plugin",
+		Probes: []cleanr.PluginProbe{{
+			Name:    "ticket-db-probe",
+			Kind:    "db",
+			Command: writeExecutableScript(t, "#!/bin/sh\nprintf '%s\\n' '{\"db_observations\":[{\"database\":\"support\",\"table\":\"tickets\",\"operation\":\"select\",\"status\":\"observed\",\"count\":1}]}'\n"),
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected db probe observations to satisfy release-policy suite: %+v", report)
+	}
+}
+
+func TestRunnerAppliesQueueProbeObservations(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = []cleanr.Scenario{{
+		Name:  "queue-probe",
+		Input: "verify the event was published",
+		ExpectedStateChanges: []cleanr.ExpectedStateChange{{
+			Kind:   "queue",
+			Action: "publish",
+			Target: "dispatch:ticket-events",
+			Status: "observed",
+		}},
+	}}
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = true
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name: "org-plugin",
+		Probes: []cleanr.PluginProbe{{
+			Name:    "event-queue-probe",
+			Kind:    "queue",
+			Command: writeExecutableScript(t, "#!/bin/sh\nprintf '%s\\n' '{\"queue_observations\":[{\"queue\":\"dispatch\",\"topic\":\"ticket-events\",\"operation\":\"publish\",\"status\":\"observed\",\"message_id\":\"evt-1\"}]}'\n"),
+		}},
+	}}
+
+	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	if !report.Passed {
+		t.Fatalf("expected queue probe observations to satisfy release-policy suite: %+v", report)
+	}
+}
+
 func writeExecutableScript(t *testing.T, body string) string {
 	t.Helper()
 	path := filepath.Join(t.TempDir(), "plugin.sh")
@@ -363,6 +528,63 @@ func writeExecutableScript(t *testing.T, body string) string {
 		t.Fatalf("write script: %v", err)
 	}
 	return path
+}
+
+func buildWASMPlugin(t *testing.T, dir string) string {
+	t.Helper()
+
+	sourcePath := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(sourcePath, []byte(`package main
+
+import (
+	"encoding/json"
+	"os"
+)
+
+func main() {
+	var input map[string]any
+	_ = json.NewDecoder(os.Stdin).Decode(&input)
+	out := map[string]any{
+		"name":   "wasm-suite",
+		"passed": true,
+		"cases": []map[string]any{{
+			"name":   "case-1",
+			"passed": true,
+			"details": map[string]any{
+				"runtime": "wasm",
+			},
+		}},
+	}
+	_ = json.NewEncoder(os.Stdout).Encode(out)
+}
+`), 0o644); err != nil {
+		t.Fatalf("write wasm source: %v", err)
+	}
+
+	modulePath := filepath.Join(dir, "plugin.wasm")
+	cmd := exec.Command("go", "build", "-o", modulePath, sourcePath)
+	cmd.Dir = dir
+	cmd.Env = append(filteredEnvWithout(os.Environ(), "GOROOT"), "GOOS=wasip1", "GOARCH=wasm", "GOWORK=off", "CGO_ENABLED=0")
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Skipf("build wasm plugin: %v\n%s", err, string(output))
+	}
+	if _, err := os.Stat(modulePath); err != nil {
+		t.Fatalf("stat wasm plugin: %v", err)
+	}
+	return modulePath
+}
+
+func filteredEnvWithout(env []string, key string) []string {
+	prefix := key + "="
+	out := make([]string, 0, len(env))
+	for _, item := range env {
+		if strings.HasPrefix(item, prefix) {
+			continue
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 func TestSecurityEnginePassesScenarioAssertions(t *testing.T) {

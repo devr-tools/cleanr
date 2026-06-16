@@ -54,6 +54,60 @@ func TestCoreHelperAccessorsAndFacadeMarshaling(t *testing.T) {
 		t.Fatalf("unexpected scenario request: %+v", req)
 	}
 
+	mockedLoop := cleanr.Scenario{
+		Name: "mocked-loop",
+		Turns: []cleanr.ConversationTurn{{
+			Role:    "user",
+			Content: "Check the refund policy",
+			MockToolResults: []cleanr.MockToolResult{{
+				Name:      "lookup_policy",
+				Arguments: `{"policy_id":"refunds"}`,
+				Content:   `{"policy":"Refunds take 30 days."}`,
+			}},
+		}},
+	}
+	if got := mockedLoop.TranscriptText(); got != "user: Check the refund policy\nassistant: [mock tool call] lookup_policy {\"policy_id\":\"refunds\"}\ntool:lookup_policy: {\"policy\":\"Refunds take 30 days.\"}" {
+		t.Fatalf("unexpected mocked-loop transcript summary: %q", got)
+	}
+	req = cleanr.BuildScenarioRequest(mockedLoop, targetCfg.Timeout())
+	if len(req.Messages) != 3 || req.Messages[1].Role != "assistant" || req.Messages[2].Role != "tool" || req.Messages[2].ToolCallID != "mock_tool_call_1" {
+		t.Fatalf("expected expanded mocked tool result turns, got %+v", req.Messages)
+	}
+
+	multimodal := cleanr.Scenario{
+		Name: "vision",
+		Images: []cleanr.MediaInput{{
+			URL:     "https://example.test/cat.png",
+			Detail:  "high",
+			Caption: "invoice screenshot",
+		}},
+		PDFs: []cleanr.MediaInput{{
+			Path:      "fixtures/policy.pdf",
+			MediaType: "application/pdf",
+		}},
+	}
+	if got := multimodal.TranscriptText(); got != "user: [image] https://example.test/cat.png (invoice screenshot)\n[pdf] fixtures/policy.pdf" {
+		t.Fatalf("unexpected multimodal transcript summary: %q", got)
+	}
+	req = cleanr.BuildScenarioRequest(multimodal, targetCfg.Timeout())
+	if len(req.Messages) != 1 || len(req.Messages[0].Images) != 1 || len(req.Messages[0].PDFs) != 1 {
+		t.Fatalf("expected multimodal request attachments, got %+v", req.Messages)
+	}
+
+	withJudgeOutputs := cleanr.Scenario{
+		Name:  "judge-hooks",
+		Input: "Render a poster",
+		JudgeOutputs: []cleanr.JudgeOutput{{
+			Name: "poster",
+			Type: "image",
+			Path: "response.body.output.0.url",
+		}},
+	}
+	req = cleanr.BuildScenarioRequest(withJudgeOutputs, targetCfg.Timeout())
+	if len(req.JudgeOutputs) != 1 || req.JudgeOutputs[0].Type != "image" || req.JudgeOutputs[0].Path != "response.body.output.0.url" {
+		t.Fatalf("expected judge outputs on request, got %+v", req.JudgeOutputs)
+	}
+
 	cfg := cleanr.ExampleConfig()
 	jsonData, err := cleanr.MarshalConfig(cfg, "json")
 	if err != nil {

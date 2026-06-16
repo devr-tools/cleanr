@@ -92,6 +92,13 @@ func WriteAnalysis(w io.Writer, analysis Analysis, format string) error {
 	case "json":
 		enc := json.NewEncoder(w)
 		return enc.Encode(analysis)
+	case "html":
+		data, err := renderHTML(analysis)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(data)
+		return err
 	default:
 		return fmt.Errorf("unsupported trends format: %s", format)
 	}

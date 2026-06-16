@@ -214,6 +214,55 @@ func TestHTTPTargetInjectsTranscriptMessages(t *testing.T) {
 	}
 }
 
+func TestHTTPTargetInvokeSupportsOpenAPIOverrides(t *testing.T) {
+	t.Parallel()
+
+	client := &http.Client{Transport: roundTripperFunc(func(r *http.Request) (*http.Response, error) {
+		if r.Method != http.MethodPatch {
+			t.Fatalf("unexpected method: %s", r.Method)
+		}
+		if got := r.URL.String(); got != "https://example.test/api/tickets/t_123?verbose=true" {
+			t.Fatalf("unexpected request URL: %s", got)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("unexpected content type: %q", got)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read request body: %v", err)
+		}
+		if string(body) != `{"status":"closed"}` {
+			t.Fatalf("unexpected request body: %s", string(body))
+		}
+		return jsonResponse(t, http.StatusOK, map[string]any{
+			"output": map[string]any{"text": "patched"},
+		}), nil
+	})}
+
+	target := cleanr.NewHTTPTarget(cleanr.TargetConfig{
+		Type:          "http",
+		URL:           "https://example.test/api",
+		Method:        http.MethodPost,
+		ResponseField: "output.text",
+		OpenAPI:       cleanr.OpenAPITargetConfig{Enabled: true},
+	}, client)
+
+	resp := target.Invoke(context.Background(), cleanr.Request{
+		Scenario: cleanr.Scenario{
+			Metadata: map[string]string{
+				"openapi.method":       "PATCH",
+				"openapi.path":         "/tickets/t_123",
+				"openapi.query":        "verbose=true",
+				"openapi.content_type": "application/json",
+			},
+		},
+		Prompt: `{"status":"closed"}`,
+	})
+	if resp.Err != nil || resp.Text != "patched" {
+		t.Fatalf("unexpected openapi override response: %+v", resp)
+	}
+}
+
 func TestHTTPTargetInvokeHandlesTemplateCloneAndMarshalFailures(t *testing.T) {
 	t.Parallel()
 
@@ -333,6 +382,21 @@ func TestTargetFactoryReturnsConcreteTargetsAndInvalidErrors(t *testing.T) {
 	}
 	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "openai_compatible"}, client).(*adapterspkg.OpenAI); !ok {
 		t.Fatal("expected openai-compatible target")
+	}
+	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "azure_openai"}, client).(*adapterspkg.OpenAI); !ok {
+		t.Fatal("expected azure openai target")
+	}
+	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "gemini"}, client).(*adapterspkg.OpenAI); !ok {
+		t.Fatal("expected gemini target")
+	}
+	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "bedrock"}, client).(*adapterspkg.OpenAI); !ok {
+		t.Fatal("expected bedrock target")
+	}
+	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "vertex"}, client).(*adapterspkg.OpenAI); !ok {
+		t.Fatal("expected vertex target")
+	}
+	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "mistral"}, client).(*adapterspkg.OpenAI); !ok {
+		t.Fatal("expected mistral target")
 	}
 	if _, ok := adapterspkg.NewTargetFromConfig(cleanr.TargetConfig{Type: "anthropic"}, client).(*adapterspkg.Anthropic); !ok {
 		t.Fatal("expected anthropic target")

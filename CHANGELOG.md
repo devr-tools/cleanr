@@ -4,9 +4,26 @@
 
 ### Features
 
-* add `openai_compatible` as a first-class target with configurable provider labels, auth headers, auth schemes, and compatibility metadata
-* add transcript-aware request construction plus normalized tool-call assertions for count, name, and structured arguments
-* expand trend analysis to capture load metrics and scenario transcript diffs across retained runs
+* add native `grpc` target coverage alongside the existing HTTP, GraphQL, CLI, MCP, OpenAI, Anthropic, and `openai_compatible` adapters
+* expand `openai_compatible` support with configurable provider labels, auth headers, auth schemes, and compatibility metadata
+* add native OpenAPI-driven scenario generation, contract diffing, and HTTP request overrides for REST contract testing
+* add transcript-aware request construction, stronger tool-call assertions, mocked tool transcript coverage, and richer streaming/load assertions
+* add advanced LLM judge features including calibration against labeled data, ensemble and cascade evaluation, confidence-oriented reporting, and multi-model comparison support
+* add adversarial scenario generation mode for red-team dataset authoring
+* add LangSmith and OpenLLMetry import paths for replay/trend ingestion
+* add `cleanr explain` for replay-backed failure summaries and machine-readable fix suggestions
+* add natural-language scenario authoring via `cleanr generate "test that ..."` and expand MCP server lifecycle tools for config validation, dataset review, trend analysis, report rendering, and failure explanation
+* add `agent` and `html` report formats plus static HTML trend/dashboard export
+* add `cleanr watch` for rerunning suites on file changes during local iteration
+* add GitLab-native dotenv and annotations outputs for run and dataset review flows
+* add a plugin registry plus WASM plugin execution through the runtime
+
+### Improvements
+
+* expand trend analysis to capture load metrics, replay artifacts, and scenario transcript diffs across retained runs
+* improve HTML dashboard readability with a cleaner layout, structured detail rendering, rectangular status pills, and ASCII cleanr branding
+* improve MCP runtime reporting so agents can work through run, validate, review, trend, and explain workflows from one server surface
+* improve local CI parity by keeping Semgrep runnable through either a direct `semgrep` binary or `python -m semgrep` fallback when available
 
 ## [0.7.0](https://github.com/devr-tools/cleanr/compare/v0.6.0...v0.7.0) (2026-06-15)
 

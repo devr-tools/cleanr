@@ -143,6 +143,8 @@ suites:
 	if err := os.WriteFile(pluginPath, []byte(`
 name: workflow-plugin
 version: v1
+runtime:
+  backend: command
 policy_packs:
   - ./plugin-pack.yaml
 suites:
@@ -179,6 +181,12 @@ scenarios:
 	}
 	if len(cfg.ResolvedPlugins) != 1 || cfg.ResolvedPlugins[0].Name != "workflow-plugin" {
 		t.Fatalf("expected resolved plugin manifest, got %+v", cfg.ResolvedPlugins)
+	}
+	if cfg.ResolvedPlugins[0].Source != pluginPath || cfg.ResolvedPlugins[0].BaseDir != dir {
+		t.Fatalf("expected plugin source metadata, got %+v", cfg.ResolvedPlugins[0])
+	}
+	if cfg.ResolvedPlugins[0].Runtime.Backend != "command" {
+		t.Fatalf("expected plugin runtime metadata, got %+v", cfg.ResolvedPlugins[0].Runtime)
 	}
 	if len(cfg.ResolvedPlugins[0].Probes) != 1 || cfg.ResolvedPlugins[0].Probes[0].Name != "db-ticket-probe" {
 		t.Fatalf("expected resolved plugin probes, got %+v", cfg.ResolvedPlugins[0].Probes)
@@ -228,6 +236,43 @@ scenarios:
 	}
 }
 
+func TestLoadConfigFileRejectsUnsupportedPluginRuntimeBackend(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	pluginPath := filepath.Join(dir, "workflow-plugin.yaml")
+	if err := os.WriteFile(pluginPath, []byte(`
+name: workflow-plugin
+suites:
+  - name: db-ticket-probe
+    command: ./plugin.wasm
+    runtime:
+      backend: mystery
+`), 0o644); err != nil {
+		t.Fatalf("write plugin: %v", err)
+	}
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+version: v1alpha1
+plugins:
+  - ./workflow-plugin.yaml
+target:
+  url: https://example.com/v1/chat
+  prompt_field: input
+  response_field: output.text
+scenarios:
+  - name: x
+    input: y
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := cleanr.LoadConfigFile(configPath)
+	if err == nil || !strings.Contains(err.Error(), `unsupported backend "mystery"`) {
+		t.Fatalf("expected unsupported runtime backend error, got %v", err)
+	}
+}
+
 func TestScenarioGenerationConfigRoundTrips(t *testing.T) {
 	t.Parallel()
 
@@ -244,10 +289,12 @@ func TestScenarioGenerationConfigRoundTrips(t *testing.T) {
 			},
 		},
 		Spec: cleanr.ScenarioGenerationSpec{
-			AppKind:      "support-assistant",
-			Goals:        []string{"refund policy"},
-			RiskAreas:    []string{"prompt injection"},
-			Instructions: "Focus on realistic customer prompts.",
+			AppKind:        "support-assistant",
+			Mode:           "adversarial",
+			Goals:          []string{"refund policy"},
+			RiskAreas:      []string{"prompt injection"},
+			AttackFamilies: []string{"jailbreak", "tool abuse"},
+			Instructions:   "Focus on realistic customer prompts.",
 		},
 		OutputFile:    "generated/cleanr.dataset.yaml",
 		Count:         4,
@@ -267,5 +314,8 @@ func TestScenarioGenerationConfigRoundTrips(t *testing.T) {
 	}
 	if loaded.ScenarioGeneration.Provider.OpenAI.Model != "gpt-4.1-mini" || loaded.ScenarioGeneration.OutputFile != "generated/cleanr.dataset.yaml" {
 		t.Fatalf("unexpected provider/output config: %+v", loaded.ScenarioGeneration)
+	}
+	if loaded.ScenarioGeneration.Spec.Mode != "adversarial" || len(loaded.ScenarioGeneration.Spec.AttackFamilies) != 2 {
+		t.Fatalf("unexpected adversarial generation config: %+v", loaded.ScenarioGeneration.Spec)
 	}
 }

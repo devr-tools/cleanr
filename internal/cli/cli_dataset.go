@@ -38,6 +38,11 @@ type buildkiteOptions struct {
 	UploadArtifacts bool
 }
 
+type gitlabOptions struct {
+	DotenvPath      string
+	AnnotationsPath string
+}
+
 type datasetReviewGateResult struct {
 	Passed   bool
 	Messages []string
@@ -55,6 +60,7 @@ type datasetReviewCommandOptions struct {
 	MergeInPlace  bool
 	GitHubOutputs bool
 	Buildkite     buildkiteOptions
+	GitLab        gitlabOptions
 	Gate          datasetReviewGateOptions
 	Approve       []string
 	Reject        []string

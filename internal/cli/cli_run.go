@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -27,6 +28,7 @@ type runOptions struct {
 	githubPRComment    bool
 	githubPRNumber     int
 	buildkite          buildkiteOptions
+	gitlab             gitlabOptions
 }
 
 func runCmd(args []string, stdout, stderr io.Writer) int {
@@ -34,7 +36,10 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	if err != nil {
 		return 2
 	}
+	return executeRunCommand(opts, stdout, stderr)
+}
 
+func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 	resolvedConfigPath, err := resolveConfigPath(opts.configPath, opts.profile)
 	if err != nil {
 		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
@@ -91,6 +96,9 @@ func runCmd(args []string, stdout, stderr io.Writer) int {
 	if err := maybeWriteBuildkiteRunOutputs(opts.buildkite, cfg.Reporting, report, resolvedConfigPath); err != nil {
 		_, _ = fmt.Fprintf(stderr, "buildkite warning: %v\n", err)
 	}
+	if err := maybeWriteGitLabRunOutputs(opts.gitlab, cfg, report, resolvedConfigPath); err != nil {
+		_, _ = fmt.Fprintf(stderr, "gitlab warning: %v\n", err)
+	}
 	if report.Passed {
 		return 0
 	}
@@ -103,7 +111,7 @@ func parseRunOptions(args []string, stderr io.Writer) (runOptions, error) {
 	opts := runOptions{}
 	fs.StringVar(&opts.configPath, "config", "", "Path to cleanr config")
 	fs.StringVar(&opts.profile, "profile", "", "Optional staged config profile: pr, main, or release")
-	fs.StringVar(&opts.format, "format", "", "Report format: text, json, junit")
+	fs.StringVar(&opts.format, "format", "", "Report format: text, json, junit, sarif, agent, or html")
 	fs.StringVar(&opts.output, "output", "", "Optional output file")
 	fs.StringVar(&opts.trendFile, "trend-file", "", "Optional trend history file")
 	fs.StringVar(&opts.replayArtifactPath, "replay-artifact", "", "Optional replay artifact file")
@@ -115,6 +123,8 @@ func parseRunOptions(args []string, stderr io.Writer) (runOptions, error) {
 	fs.IntVar(&opts.githubPRNumber, "github-pr-number", 0, "GitHub pull request number to comment on; defaults to GitHub Actions pull_request context when available")
 	fs.BoolVar(&opts.buildkite.Meta, "buildkite-meta", false, "Write run metrics to Buildkite metadata when buildkite-agent is available")
 	fs.BoolVar(&opts.buildkite.Annotation, "buildkite-annotation", false, "Write a Buildkite annotation when the run fails and buildkite-agent is available")
+	fs.StringVar(&opts.gitlab.DotenvPath, "gitlab-dotenv", "", "Write run metrics to a GitLab dotenv report file")
+	fs.StringVar(&opts.gitlab.AnnotationsPath, "gitlab-annotations", "", "Write a GitLab annotations report JSON file")
 	return opts, fs.Parse(args)
 }
 
@@ -208,6 +218,9 @@ func publishIntegrations(ctx context.Context, cfg cleanr.Config, report *cleanr.
 func writeRunReport(stdout, stderr io.Writer, reporting cleanr.ReportingConfig, report cleanr.Report) error {
 	dest := stdout
 	if reporting.Output != "" {
+		if err := os.MkdirAll(filepath.Dir(reporting.Output), 0o755); err != nil {
+			return fmt.Errorf("open report output: %w", err)
+		}
 		f, err := os.Create(reporting.Output)
 		if err != nil {
 			return fmt.Errorf("open report output: %w", err)
@@ -302,6 +315,10 @@ func snapshotCmd(args []string, stdout, stderr io.Writer) int {
 }
 
 func generateCmd(args []string, stdout, stderr io.Writer) int {
+	if len(args) > 0 && !strings.HasPrefix(strings.TrimSpace(args[0]), "-") {
+		return generateAuthoringCmd(args, stdout, stderr)
+	}
+
 	fs := flag.NewFlagSet("generate", flag.ContinueOnError)
 	fs.SetOutput(stderr)
 	configPath := fs.String("config", "", "Path to cleanr config")

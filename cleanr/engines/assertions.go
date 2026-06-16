@@ -15,19 +15,23 @@ import (
 type assertionEvaluator func(core.Assertion, map[string]any, core.Response) (core.Finding, bool)
 
 var assertionEvaluators = map[string]assertionEvaluator{
-	"contains":           evaluateContainsAssertionWithResponse,
-	"not_contains":       evaluateNotContainsAssertionWithResponse,
-	"regex":              evaluateRegexAssertionWithResponse,
-	"json_schema":        evaluateJSONSchemaAssertionWithResponse,
-	"json_path":          evaluateJSONPathAssertionWithResponse,
-	"status_code":        evaluateStatusCodeAssertionWithResponse,
-	"exit_code":          evaluateExitCodeAssertionWithResponse,
-	"latency_ms":         evaluateLatencyAssertionWithResponse,
-	"stream_ttft_ms":     evaluateStreamTTFTAssertionWithResponse,
-	"stream_duration_ms": evaluateStreamDurationAssertionWithResponse,
-	"finish_reason":      evaluateFinishReasonAssertionWithResponse,
-	"tool_call_count":    evaluateToolCallCountAssertionWithResponse,
-	"tool_call_name":     evaluateToolCallNameAssertionWithResponse,
+	"contains":                   evaluateContainsAssertionWithResponse,
+	"not_contains":               evaluateNotContainsAssertionWithResponse,
+	"regex":                      evaluateRegexAssertionWithResponse,
+	"json_schema":                evaluateJSONSchemaAssertionWithResponse,
+	"json_path":                  evaluateJSONPathAssertionWithResponse,
+	"status_code":                evaluateStatusCodeAssertionWithResponse,
+	"exit_code":                  evaluateExitCodeAssertionWithResponse,
+	"latency_ms":                 evaluateLatencyAssertionWithResponse,
+	"stream_ttft_ms":             evaluateStreamTTFTAssertionWithResponse,
+	"stream_duration_ms":         evaluateStreamDurationAssertionWithResponse,
+	"stream_chunk_cadence_ms":    evaluateStreamChunkCadenceAssertionWithResponse,
+	"finish_reason":              evaluateFinishReasonAssertionWithResponse,
+	"tool_call_count":            evaluateToolCallCountAssertionWithResponse,
+	"tool_call_name":             evaluateToolCallNameAssertionWithResponse,
+	"stream_tool_call_name":      evaluateStreamToolCallNameAssertionWithResponse,
+	"tool_call_order":            evaluateToolCallOrderAssertionWithResponse,
+	"tool_call_arguments_schema": evaluateToolCallArgumentsSchemaAssertionWithResponse,
 }
 
 func evaluateScenarioAssertions(scenario core.Scenario, resp core.Response) []core.Finding {
@@ -116,6 +120,10 @@ func evaluateStreamDurationAssertionWithResponse(assertion core.Assertion, _ map
 	return evaluateStreamDurationAssertion(assertion, resp)
 }
 
+func evaluateStreamChunkCadenceAssertionWithResponse(assertion core.Assertion, _ map[string]any, resp core.Response) (core.Finding, bool) {
+	return evaluateStreamChunkCadenceAssertion(assertion, resp)
+}
+
 func evaluateFinishReasonAssertionWithResponse(assertion core.Assertion, _ map[string]any, resp core.Response) (core.Finding, bool) {
 	return evaluateFinishReasonAssertion(assertion, resp)
 }
@@ -126,6 +134,18 @@ func evaluateToolCallCountAssertionWithResponse(assertion core.Assertion, _ map[
 
 func evaluateToolCallNameAssertionWithResponse(assertion core.Assertion, _ map[string]any, resp core.Response) (core.Finding, bool) {
 	return evaluateToolCallNameAssertion(assertion, resp)
+}
+
+func evaluateStreamToolCallNameAssertionWithResponse(assertion core.Assertion, _ map[string]any, resp core.Response) (core.Finding, bool) {
+	return evaluateStreamToolCallNameAssertion(assertion, resp)
+}
+
+func evaluateToolCallOrderAssertionWithResponse(assertion core.Assertion, _ map[string]any, resp core.Response) (core.Finding, bool) {
+	return evaluateToolCallOrderAssertion(assertion, resp)
+}
+
+func evaluateToolCallArgumentsSchemaAssertionWithResponse(assertion core.Assertion, view map[string]any, _ core.Response) (core.Finding, bool) {
+	return evaluateToolCallArgumentsSchemaAssertion(assertion, view)
 }
 
 func evaluateContainsAssertion(assertion core.Assertion, view map[string]any) (core.Finding, bool) {
@@ -444,6 +464,20 @@ func evaluateStreamDurationAssertion(assertion core.Assertion, resp core.Respons
 	return core.Finding{}, false
 }
 
+func evaluateStreamChunkCadenceAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if assertion.IntValue == nil {
+		return core.Finding{}, false
+	}
+	if resp.Stream.ChunkCount < 2 || resp.Stream.DurationMS == 0 || resp.Stream.TTFTMS == 0 {
+		return newAssertionFinding(assertion, "assertion failed: expected stream chunk cadence metrics, got incomplete stream timing"), true
+	}
+	cadenceMS := streamChunkCadenceMS(resp.Stream)
+	if cadenceMS > int64(*assertion.IntValue) {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected stream chunk cadence <= %dms, got %dms", *assertion.IntValue, cadenceMS)), true
+	}
+	return core.Finding{}, false
+}
+
 func evaluateFinishReasonAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
 	if resp.Normalized.FinishReason != assertion.Value {
 		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected finish reason %q, got %q", assertion.Value, resp.Normalized.FinishReason)), true
@@ -465,6 +499,51 @@ func evaluateToolCallNameAssertion(assertion core.Assertion, resp core.Response)
 		}
 	}
 	return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected tool call %q", assertion.Value)), true
+}
+
+func evaluateStreamToolCallNameAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	if resp.Stream.ChunkCount == 0 {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected streamed tool call %q, but response was not streamed", assertion.Value)), true
+	}
+	for _, toolCall := range resp.Normalized.ToolCalls {
+		if toolCall.Name == assertion.Value {
+			return core.Finding{}, false
+		}
+	}
+	return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected streamed tool call %q", assertion.Value)), true
+}
+
+func evaluateToolCallOrderAssertion(assertion core.Assertion, resp core.Response) (core.Finding, bool) {
+	expectedNames := parseAssertionCSV(assertion.Value)
+	actualNames := make([]string, 0, len(resp.Normalized.ToolCalls))
+	for _, toolCall := range resp.Normalized.ToolCalls {
+		actualNames = append(actualNames, toolCall.Name)
+	}
+	if len(actualNames) != len(expectedNames) {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected tool call order [%s], got [%s]", strings.Join(expectedNames, ", "), strings.Join(actualNames, ", "))), true
+	}
+	for i := range expectedNames {
+		if actualNames[i] != expectedNames[i] {
+			return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected tool call order [%s], got [%s]", strings.Join(expectedNames, ", "), strings.Join(actualNames, ", "))), true
+		}
+	}
+	return core.Finding{}, false
+}
+
+func evaluateToolCallArgumentsSchemaAssertion(assertion core.Assertion, view map[string]any) (core.Finding, bool) {
+	actual, ok := resolveAssertionPath(view, assertion.Path)
+	if !ok {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: %s was not present", assertion.Path)), true
+	}
+	if toolCall, ok := actual.(map[string]any); ok {
+		if parsedArgs, exists := toolCall["parsed_arguments"]; exists {
+			actual = parsedArgs
+		}
+	}
+	if err := validateJSONSchema(assertion.Path, actual, assertion.Schema); err != nil {
+		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: %v", err)), true
+	}
+	return core.Finding{}, false
 }
 
 func defaultAssertionPath(assertion core.Assertion) string {
@@ -603,4 +682,27 @@ func renderAssertionValue(v any) string {
 		}
 	}
 	return rendered
+}
+
+func streamChunkCadenceMS(stream core.StreamMetrics) int64 {
+	if stream.ChunkCount < 2 {
+		return 0
+	}
+	gapMS := stream.DurationMS - stream.TTFTMS
+	if gapMS < 0 {
+		gapMS = 0
+	}
+	return gapMS / int64(stream.ChunkCount-1)
+}
+
+func parseAssertionCSV(value string) []string {
+	parts := strings.Split(value, ",")
+	out := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			out = append(out, trimmed)
+		}
+	}
+	return out
 }

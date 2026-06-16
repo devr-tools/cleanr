@@ -10,8 +10,10 @@ import (
 	attestpkg "github.com/devr-tools/cleanr/cleanr/attest"
 	configpkg "github.com/devr-tools/cleanr/cleanr/config"
 	"github.com/devr-tools/cleanr/cleanr/core"
+	typespkg "github.com/devr-tools/cleanr/cleanr/core/types"
 	generationpkg "github.com/devr-tools/cleanr/cleanr/generation"
 	integrationspkg "github.com/devr-tools/cleanr/cleanr/integrations"
+	openapipkg "github.com/devr-tools/cleanr/cleanr/openapi"
 	reportpkg "github.com/devr-tools/cleanr/cleanr/report"
 	snapshotspkg "github.com/devr-tools/cleanr/cleanr/snapshots"
 	trendspkg "github.com/devr-tools/cleanr/cleanr/trends"
@@ -21,13 +23,25 @@ type Config = core.Config
 type TargetConfig = core.TargetConfig
 type CLIConfig = core.CLIConfig
 type GraphQLConfig = core.GraphQLConfig
+type GRPCConfig = core.GRPCConfig
 type OpenAIConfig = core.OpenAIConfig
 type AnthropicConfig = core.AnthropicConfig
 type MCPConfig = core.MCPConfig
 type ScenarioGenerationConfig = core.ScenarioGenerationConfig
 type ScenarioGenerationSpec = core.ScenarioGenerationSpec
+type OpenAPIConfig = core.OpenAPIConfig
+type OpenAPISource = core.OpenAPISource
+type OpenAPIScenarioGenerationConfig = core.OpenAPIScenarioGenerationConfig
+type OpenAPIContractDiffConfig = core.OpenAPIContractDiffConfig
+type OpenAPITargetConfig = core.OpenAPITargetConfig
+type OpenAPIContractDiff = core.OpenAPIContractDiff
+type OpenAPIContractDiffSummary = core.OpenAPIContractDiffSummary
+type OpenAPIContractChange = core.OpenAPIContractChange
 type Scenario = core.Scenario
+type MediaInput = core.MediaInput
+type JudgeOutput = core.JudgeOutput
 type ConversationTurn = core.ConversationTurn
+type MockToolResult = core.MockToolResult
 type ContextSource = core.ContextSource
 type MemoryReplaySession = core.MemoryReplaySession
 type ExpectedMutation = core.ExpectedMutation
@@ -55,9 +69,12 @@ type ResultSinkConfig = core.ResultSinkConfig
 type TrendSourceConfig = core.TrendSourceConfig
 type SummaryConfig = core.SummaryConfig
 type PluginManifest = core.PluginManifest
+type PluginRuntimeConfig = core.PluginRuntimeConfig
 type PluginSuite = core.PluginSuite
 type PluginStateAdapter = core.PluginStateAdapter
 type PluginProbe = core.PluginProbe
+type DBProbeObservation = core.DBProbeObservation
+type QueueProbeObservation = core.QueueProbeObservation
 type RunMetadata = core.RunMetadata
 type ScenarioFingerprint = core.ScenarioFingerprint
 type BuildDiff = core.BuildDiff
@@ -89,6 +106,11 @@ type Finding = core.Finding
 type CaseResult = core.CaseResult
 type SuiteResult = core.SuiteResult
 type Report = core.Report
+type AgentOutputContract = typespkg.AgentOutputContract
+type AgentReport = typespkg.AgentReport
+type AgentReportSummary = typespkg.AgentReportSummary
+type AgentFinding = typespkg.AgentFinding
+type AgentFixSuggestion = typespkg.AgentFixSuggestion
 type IntegrationReport = core.IntegrationReport
 type ExternalTrendReport = core.ExternalTrendReport
 type ResultSinkReport = core.ResultSinkReport
@@ -150,6 +172,14 @@ func ValidateConfig(cfg Config) error {
 
 func ExampleConfig() Config {
 	return configpkg.ExampleConfig()
+}
+
+func GenerateOpenAPIScenarios(ctx context.Context, cfg Config, client *http.Client) ([]Scenario, error) {
+	return openapipkg.GenerateScenarios(ctx, cfg, client)
+}
+
+func DiffOpenAPIContracts(ctx context.Context, cfg Config, client *http.Client) (OpenAPIContractDiff, error) {
+	return openapipkg.DiffContracts(ctx, cfg, client)
 }
 
 func BuildScenarioRequest(scenario Scenario, timeout time.Duration) Request {
@@ -342,6 +372,10 @@ func NewCLITarget(cfg TargetConfig) Target {
 
 func NewGraphQLTarget(cfg TargetConfig, client *http.Client) Target {
 	return adapterspkg.NewGraphQL(cfg, client)
+}
+
+func NewGRPCTarget(cfg TargetConfig) Target {
+	return adapterspkg.NewGRPC(cfg)
 }
 
 func NewOpenAITarget(cfg TargetConfig, client *http.Client) Target {

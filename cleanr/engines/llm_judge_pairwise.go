@@ -11,8 +11,12 @@ import (
 )
 
 type pairwiseRun struct {
-	samples    int
-	minWinRate float64
+	samples         int
+	minWinRate      float64
+	confidenceLevel float64
+	minPassRate     float64
+	maxFlakeRate    float64
+	cascadeMargin   float64
 }
 
 type pairwiseCaseInput struct {
@@ -29,21 +33,31 @@ type pairwiseInput struct {
 	criteria  []string
 	reference string
 	response1 string
+	outputs1  []core.JudgeOutput
 	response2 string
+	outputs2  []core.JudgeOutput
 }
 
 type pairwiseSamples struct {
-	candidateWins int
-	baselineWins  int
-	ties          int
-	positionBias  int
-	parseFailures int
-	rationales    []string
-	judgeErr      error
+	candidateWins    int
+	baselineWins     int
+	ties             int
+	positionBias     int
+	parseFailures    int
+	rationales       []string
+	judgeErr         error
+	cascadeTriggered int
 }
 
 func (e LLMJudgeEngine) runPairwise(ctx context.Context, runCtx *core.RunContext, cfg core.LLMJudgeConfig, judge core.Target, scenarios []core.Scenario) core.SuiteResult {
-	run := pairwiseRun{samples: cfg.SamplesValue(), minWinRate: cfg.MinWinRate}
+	run := pairwiseRun{
+		samples:         cfg.SamplesValue(),
+		minWinRate:      cfg.MinWinRate,
+		confidenceLevel: cfg.ConfidenceLevelValue(),
+		minPassRate:     cfg.MinPassRate,
+		maxFlakeRate:    cfg.MaxFlakeRate,
+		cascadeMargin:   cfg.CascadeMargin,
+	}
 	baseline := baselineTargetFactory(cfg.Baseline)
 	cases := make([]core.CaseResult, 0, len(scenarios))
 	for _, scenario := range scenarios {
@@ -56,7 +70,7 @@ func (e LLMJudgeEngine) runPairwise(ctx context.Context, runCtx *core.RunContext
 			run:      run,
 		}))
 	}
-	return core.SuiteResult{Name: "llm-judge", Passed: allPassed(cases), Cases: cases}
+	return applyJudgePostAnalysis(ctx, runCtx, cfg, judge, scenarios, core.SuiteResult{Name: "llm-judge", Passed: allPassed(cases), Cases: cases})
 }
 
 func (e LLMJudgeEngine) runPairwiseCase(ctx context.Context, in pairwiseCaseInput) core.CaseResult {
@@ -89,9 +103,17 @@ func (e LLMJudgeEngine) runPairwiseCase(ctx context.Context, in pairwiseCaseInpu
 		criteria:  judgeCriteria(in.cfg.Criteria, in.scenario.Rubric),
 		reference: strings.TrimSpace(in.scenario.ReferenceAnswer),
 		response1: candidateResp.Text,
+		outputs1:  resolvedJudgeOutputs(candidateResp, in.scenario.JudgeOutputs),
 		response2: baselineResp.Text,
+		outputs2:  resolvedJudgeOutputs(baselineResp, in.scenario.JudgeOutputs),
 	}
-	samples := collectPairwiseSamples(ctx, in.judge, in.cfg.Provider.Timeout(), input, in.run.samples)
+	if len(input.outputs1) > 0 {
+		details["candidate_judge_outputs"] = input.outputs1
+	}
+	if len(input.outputs2) > 0 {
+		details["baseline_judge_outputs"] = input.outputs2
+	}
+	samples := collectPairwiseSamples(ctx, in.cfg, in.judge, in.cfg.Provider.Timeout(), input, in.run.samples)
 	passed := finalizePairwiseCase(in.run, details, &findings, samples)
 	return core.CaseResult{
 		Name:     in.scenario.Name,
@@ -102,19 +124,16 @@ func (e LLMJudgeEngine) runPairwiseCase(ctx context.Context, in pairwiseCaseInpu
 	}
 }
 
-func collectPairwiseSamples(ctx context.Context, judge core.Target, timeout time.Duration, input pairwiseInput, sampleCount int) pairwiseSamples {
+func collectPairwiseSamples(ctx context.Context, cfg core.LLMJudgeConfig, judge core.Target, timeout time.Duration, input pairwiseInput, sampleCount int) pairwiseSamples {
 	out := pairwiseSamples{rationales: make([]string, 0, sampleCount)}
+	judges := buildJudgePool(cfg, judge)
 	for i := 0; i < sampleCount; i++ {
-		order1 := input
-		order2 := input
-		order2.response1, order2.response2 = input.response2, input.response1
-
-		w1, r1, ok1, err1 := pairwiseDecision(ctx, judge, timeout, order1)
+		w1, r1, cascadeTriggered, ok1, err1 := pairwiseDecisionSet(ctx, judges, timeout, input, false)
 		if err1 != nil {
 			out.judgeErr = err1
 			return out
 		}
-		w2, r2, ok2, err2 := pairwiseDecision(ctx, judge, timeout, order2)
+		w2, r2, _, ok2, err2 := pairwiseDecisionSet(ctx, judges, timeout, input, true)
 		if err2 != nil {
 			out.judgeErr = err2
 			return out
@@ -122,6 +141,9 @@ func collectPairwiseSamples(ctx context.Context, judge core.Target, timeout time
 		if !ok1 || !ok2 {
 			out.parseFailures++
 			continue
+		}
+		if cascadeTriggered {
+			out.cascadeTriggered++
 		}
 		appendPairwiseRationales(&out, r1, r2)
 		recordPairwiseOutcome(&out, w1, w2)
@@ -164,6 +186,9 @@ func finalizePairwiseCase(run pairwiseRun, details map[string]any, findings *[]c
 	details["ties"] = samples.ties
 	details["position_bias"] = samples.positionBias
 	details["win_rate"] = winRate
+	if samples.cascadeTriggered > 0 {
+		details["cascade_triggered_samples"] = samples.cascadeTriggered
+	}
 	if len(samples.rationales) > 0 {
 		details["rationale"] = samples.rationales[0]
 		details["rationales"] = samples.rationales
@@ -172,6 +197,15 @@ func finalizePairwiseCase(run pairwiseRun, details map[string]any, findings *[]c
 		details["parse_failures"] = samples.parseFailures
 	}
 	appendPairwiseFindings(findings, run.samples, samples)
+	totalDecisions := samples.candidateWins + samples.baselineWins + samples.ties
+	interval := passRateCI(samples.candidateWins, totalDecisions, run.confidenceLevel)
+	flake := flakeRate(samples.candidateWins, totalDecisions)
+	details["pass_samples"] = samples.candidateWins
+	details["fail_samples"] = totalDecisions - samples.candidateWins
+	details["pass_rate"] = interval.rate
+	details["pass_rate_ci"] = []float64{interval.lowerBound, interval.upperBound}
+	details["flake_rate"] = flake
+	details["flake_detected"] = flake > 0
 
 	switch {
 	case samples.judgeErr != nil:
@@ -201,6 +235,20 @@ func finalizePairwiseCase(run pairwiseRun, details map[string]any, findings *[]c
 		}
 		*findings = append(*findings, core.Finding{Severity: "high", Message: msg})
 	}
+	if run.minPassRate > 0 && totalDecisions > 0 && interval.lowerBound < run.minPassRate {
+		passed = false
+		*findings = append(*findings, core.Finding{
+			Severity: "medium",
+			Message:  fmt.Sprintf("pairwise pass-rate lower bound %.2f fell below min_pass_rate %.2f at confidence %.2f", interval.lowerBound, run.minPassRate, run.confidenceLevel),
+		})
+	}
+	if run.maxFlakeRate > 0 && totalDecisions > 1 && flake > run.maxFlakeRate {
+		passed = false
+		*findings = append(*findings, core.Finding{
+			Severity: "medium",
+			Message:  fmt.Sprintf("pairwise flake rate %.2f exceeded max_flake_rate %.2f", flake, run.maxFlakeRate),
+		})
+	}
 	return passed
 }
 
@@ -228,8 +276,17 @@ func appendPairwiseFindings(findings *[]core.Finding, sampleCount int, samples p
 // pairwiseDecision asks the judge which of two responses is better and returns
 // the chosen slot ("1", "2", or "tie") with its rationale.
 func pairwiseDecision(ctx context.Context, judge core.Target, timeout time.Duration, input pairwiseInput) (string, string, bool, error) {
-	system, prompt := buildPairwisePrompt(input.scenario, input.criteria, input.reference, input.response1, input.response2)
-	jresp := judge.Invoke(ctx, core.Request{System: system, Prompt: prompt, Timeout: timeout})
+	system, prompt := buildPairwisePrompt(input.scenario, input.criteria, input.reference, input.response1, input.outputs1, input.response2, input.outputs2)
+	jresp := judge.Invoke(ctx, core.Request{
+		Scenario: input.scenario,
+		System:   system,
+		Prompt:   prompt,
+		Messages: input.scenario.TurnsValue(),
+		Images:   input.scenario.Images,
+		Audio:    input.scenario.Audio,
+		PDFs:     input.scenario.PDFs,
+		Timeout:  timeout,
+	})
 	if jresp.Err != nil {
 		return "", "", false, jresp.Err
 	}
@@ -237,7 +294,53 @@ func pairwiseDecision(ctx context.Context, judge core.Target, timeout time.Durat
 	return winner, rationale, ok, nil
 }
 
-func buildPairwisePrompt(scenario core.Scenario, criteria []string, reference, response1, response2 string) (string, string) {
+func pairwiseDecisionSet(ctx context.Context, judges []namedTarget, timeout time.Duration, input pairwiseInput, swapped bool) (string, string, bool, bool, error) {
+	ordered := input
+	if swapped {
+		ordered.response1, ordered.response2 = input.response2, input.response1
+		ordered.outputs1, ordered.outputs2 = input.outputs2, input.outputs1
+	}
+	decisions := make([]string, 0, len(judges))
+	rationales := make([]string, 0, len(judges))
+	cascadeTriggered := false
+	for idx, item := range judges {
+		winner, rationale, ok, err := pairwiseDecision(ctx, item.target, item.cfg.Timeout(), ordered)
+		if err != nil {
+			return "", "", false, false, err
+		}
+		if !ok {
+			return "", "", false, false, nil
+		}
+		decisions = append(decisions, winner)
+		if strings.TrimSpace(rationale) != "" {
+			rationales = append(rationales, rationale)
+		}
+		if idx == 0 && len(judges) > 1 && winner != "tie" {
+			break
+		}
+		if idx == 0 && len(judges) > 1 && winner == "tie" {
+			cascadeTriggered = true
+		}
+	}
+	return majorityWinner(decisions), firstString(rationales), cascadeTriggered, true, nil
+}
+
+func majorityWinner(decisions []string) string {
+	if len(decisions) == 0 {
+		return "tie"
+	}
+	counts := map[string]int{}
+	best := decisions[0]
+	for _, decision := range decisions {
+		counts[decision]++
+		if counts[decision] > counts[best] {
+			best = decision
+		}
+	}
+	return best
+}
+
+func buildPairwisePrompt(scenario core.Scenario, criteria []string, reference, response1 string, outputs1 []core.JudgeOutput, response2 string, outputs2 []core.JudgeOutput) (string, string) {
 	system := strings.TrimSpace(`
 You are a strict, impartial evaluator comparing two AI assistant responses to the same request.
 Decide which response better satisfies the criteria. Ignore the order they are presented in, their length, and their style; judge only substance against the criteria and the reference answer when provided.
@@ -247,10 +350,7 @@ Return only valid JSON with this exact shape and no markdown fences or commentar
 `)
 
 	var b strings.Builder
-	if sys := strings.TrimSpace(scenario.SystemValue()); sys != "" {
-		fmt.Fprintf(&b, "Assistant system instructions:\n%s\n\n", sys)
-	}
-	fmt.Fprintf(&b, "User request:\n%s\n\n", strings.TrimSpace(scenario.InputValue()))
+	appendJudgeScenarioContext(&b, scenario)
 	b.WriteString("Evaluation criteria:\n")
 	for i, c := range criteria {
 		fmt.Fprintf(&b, "%d. %s\n", i+1, c)
@@ -259,7 +359,9 @@ Return only valid JSON with this exact shape and no markdown fences or commentar
 		fmt.Fprintf(&b, "\nReference answer (treat as the correct ground truth):\n%s\n", reference)
 	}
 	fmt.Fprintf(&b, "\nResponse 1:\n%s\n", strings.TrimSpace(response1))
+	appendJudgeOutputSection(&b, "Response 1 multimodal outputs", outputs1)
 	fmt.Fprintf(&b, "\nResponse 2:\n%s\n", strings.TrimSpace(response2))
+	appendJudgeOutputSection(&b, "Response 2 multimodal outputs", outputs2)
 	b.WriteString("\nReturn only the JSON object.\n")
 	return system, b.String()
 }

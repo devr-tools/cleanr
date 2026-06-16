@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
-	"fmt"
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -79,7 +79,7 @@ func (c *jsonAPIClient) doJSON(ctx context.Context, method, resource string, que
 		return err
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fmt.Errorf(compactHTTPError(resp.StatusCode, data))
+		return errors.New(compactHTTPError(resp.StatusCode, data))
 	}
 	if out == nil || len(data) == 0 {
 		return nil

@@ -19,7 +19,7 @@ func trendsCmd(args []string, stdout, stderr io.Writer) int {
 	configPath := fs.String("config", "", "Path to cleanr config")
 	profile := fs.String("profile", "", "Optional staged config profile: pr, main, or release")
 	trendFile := fs.String("trend-file", "", "Path to trend history file")
-	format := fs.String("format", "text", "Output format: text or json")
+	format := fs.String("format", "text", "Output format: text, json, or html")
 	output := fs.String("output", "", "Optional output file")
 	window := fs.Int("window", 0, "Number of recent retained runs to summarize")
 	if err := fs.Parse(args); err != nil {

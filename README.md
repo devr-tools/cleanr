@@ -68,6 +68,12 @@ cleanr setup --ci -provider openai -model gpt-4.1-mini -profile release -output 
 
 For scenario generation and dataset import flows, start with [docs/getting-started.md](docs/getting-started.md).
 
+You can also author a starting scenario directly from natural language:
+
+```bash
+cleanr generate "test that refunds require manager approval before issuance" -output cleanr.generated.yaml
+```
+
 Review generated or replay-backed scenarios before merging them into your checked-in config:
 
 ```bash
@@ -79,6 +85,13 @@ If you want to review candidates one by one locally, use interactive mode:
 
 ```bash
 cleanr dataset review -interactive -input generated/cleanr.dataset.yaml -base-config cleanr.yaml -output reviewed/cleanr.reviewed.yaml
+```
+
+For AI-native CI or agent loops, emit the formal `agent` report contract and inspect replay failures directly:
+
+```bash
+cleanr run -config cleanr.yaml -format agent -output reports/cleanr.agent.json
+cleanr explain security/case-1 -replay-artifact reports/cleanr.replay.json
 ```
 
 ## CI Example

@@ -41,20 +41,24 @@ func TestMCPServerAdditionalRequestBranches(t *testing.T) {
 
 func TestMCPToolsDefinitionsExposeCatalogAndRuntimeTools(t *testing.T) {
 	defs := toolspkg.Definitions()
-	if len(defs) < 6 {
+	if len(defs) < 10 {
 		t.Fatalf("expected MCP tool definitions, got %d", len(defs))
 	}
 	var sawRenderReport bool
+	var sawGenerateDataset bool
 	var sawSupportedTargets bool
 	for _, def := range defs {
 		if def.Name == "cleanr_render_report" {
 			sawRenderReport = true
 		}
+		if def.Name == "cleanr_generate_dataset" {
+			sawGenerateDataset = true
+		}
 		if def.Name == "cleanr_supported_targets" {
 			sawSupportedTargets = true
 		}
 	}
-	if !sawRenderReport || !sawSupportedTargets {
-		t.Fatalf("expected render_report and supported_targets in definitions: %+v", defs)
+	if !sawRenderReport || !sawGenerateDataset || !sawSupportedTargets {
+		t.Fatalf("expected render_report, generate_dataset, and supported_targets in definitions: %+v", defs)
 	}
 }

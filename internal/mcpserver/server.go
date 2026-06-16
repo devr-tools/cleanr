@@ -116,7 +116,7 @@ func (s *Server) handleInitialize(req requestEnvelope) *responseEnvelope {
 			"title":   "cleanr MCP Server",
 			"version": version.Number,
 		},
-		"instructions": "Use cleanr_example_config to scaffold configs, cleanr_describe_suites and cleanr_supported_targets to plan coverage, cleanr_validate_config before execution, and cleanr_run or cleanr_render_report for results.",
+		"instructions": "Use cleanr_example_config to scaffold configs, cleanr_describe_suites and cleanr_supported_targets to plan coverage, cleanr_validate_config before execution, cleanr_generate_dataset and cleanr_review_dataset for scenario lifecycle work, cleanr_run or cleanr_render_report for execution results, cleanr_analyze_trends for retained history, and cleanr_explain_failures for replay artifacts.",
 	})
 }
 

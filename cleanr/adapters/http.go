@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"net/http"
+	neturl "net/url"
 	"strings"
 	"time"
 
@@ -22,10 +23,15 @@ func NewHTTP(cfg core.TargetConfig, client *http.Client) *HTTP {
 }
 
 func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
-	body := buildRequestBody(req, t.cfg)
-	data, err := json.Marshal(body)
+	method := t.cfg.Method
+	requestURL := t.cfg.URL
+	data, headers, err := buildHTTPRequestPayload(req, t.cfg)
 	if err != nil {
 		return core.Response{Err: err}
+	}
+	if cfgMethod, cfgURL, ok := openAPIRequestOverride(req, t.cfg); ok {
+		method = cfgMethod
+		requestURL = cfgURL
 	}
 
 	timeout := req.Timeout
@@ -35,11 +41,14 @@ func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(reqCtx, t.cfg.Method, t.cfg.URL, bytes.NewReader(data))
+	httpReq, err := http.NewRequestWithContext(reqCtx, method, requestURL, bytes.NewReader(data))
 	if err != nil {
 		return core.Response{Err: err}
 	}
 	for k, v := range t.cfg.Headers {
+		httpReq.Header.Set(k, v)
+	}
+	for k, v := range headers {
 		httpReq.Header.Set(k, v)
 	}
 	for k, v := range req.Headers {
@@ -106,6 +115,91 @@ func (t *HTTP) invokeStream(httpResp *http.Response, latency time.Duration) core
 		Stream:     stream,
 		Normalized: normalized,
 	}
+}
+
+func buildHTTPRequestPayload(req core.Request, cfg core.TargetConfig) ([]byte, map[string]string, error) {
+	if cfg.TargetType() == "http" && cfg.OpenAPI.Enabled {
+		if body, headers, ok, err := buildOpenAPIHTTPRequestPayload(req); ok || err != nil {
+			return body, headers, err
+		}
+	}
+	body := buildRequestBody(req, cfg)
+	data, err := json.Marshal(body)
+	if err != nil {
+		return nil, nil, err
+	}
+	return data, nil, nil
+}
+
+func buildOpenAPIHTTPRequestPayload(req core.Request) ([]byte, map[string]string, bool, error) {
+	if req.Scenario.Metadata == nil {
+		return nil, nil, false, nil
+	}
+	if strings.TrimSpace(req.Scenario.Metadata["openapi.path"]) == "" && strings.TrimSpace(req.Scenario.Metadata["openapi.method"]) == "" {
+		return nil, nil, false, nil
+	}
+	headers := map[string]string{}
+	if contentType := strings.TrimSpace(req.Scenario.Metadata["openapi.content_type"]); contentType != "" {
+		headers["Content-Type"] = contentType
+	}
+	if strings.TrimSpace(req.Prompt) == "" {
+		return nil, headers, true, nil
+	}
+	if contentType := strings.ToLower(strings.TrimSpace(headers["Content-Type"])); contentType == "" || strings.Contains(contentType, "json") {
+		var payload any
+		if err := json.Unmarshal([]byte(req.Prompt), &payload); err != nil {
+			return nil, nil, true, err
+		}
+		data, err := json.Marshal(payload)
+		if err != nil {
+			return nil, nil, true, err
+		}
+		return data, headers, true, nil
+	}
+	return []byte(req.Prompt), headers, true, nil
+}
+
+func openAPIRequestOverride(req core.Request, cfg core.TargetConfig) (string, string, bool) {
+	if !cfg.OpenAPI.Enabled || req.Scenario.Metadata == nil {
+		return "", "", false
+	}
+	method := strings.ToUpper(strings.TrimSpace(req.Scenario.Metadata["openapi.method"]))
+	pathValue := strings.TrimSpace(req.Scenario.Metadata["openapi.path"])
+	if method == "" && pathValue == "" {
+		return "", "", false
+	}
+	if method == "" {
+		method = cfg.Method
+	}
+	requestURL := joinOpenAPIURL(cfg.URL, pathValue, strings.TrimSpace(req.Scenario.Metadata["openapi.query"]))
+	return method, requestURL, true
+}
+
+func joinOpenAPIURL(baseURL, pathValue, rawQuery string) string {
+	base, err := neturl.Parse(baseURL)
+	if err != nil {
+		return baseURL
+	}
+	if absolute, err := neturl.Parse(pathValue); err == nil && absolute.Scheme != "" && absolute.Host != "" {
+		if rawQuery != "" {
+			absolute.RawQuery = rawQuery
+		}
+		return absolute.String()
+	}
+	joined := *base
+	if pathValue != "" {
+		if strings.HasSuffix(joined.Path, "/") {
+			joined.Path = strings.TrimSuffix(joined.Path, "/")
+		}
+		if !strings.HasPrefix(pathValue, "/") {
+			pathValue = "/" + pathValue
+		}
+		joined.Path += pathValue
+	}
+	if rawQuery != "" {
+		joined.RawQuery = rawQuery
+	}
+	return joined.String()
 }
 
 func buildRequestBody(req core.Request, cfg core.TargetConfig) any {
