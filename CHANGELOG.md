@@ -25,6 +25,14 @@
 * improve MCP runtime reporting so agents can work through run, validate, review, trend, and explain workflows from one server surface
 * improve local CI parity by keeping Semgrep runnable through either a direct `semgrep` binary or `python -m semgrep` fallback when available
 
+## [0.8.0](https://github.com/devr-tools/cleanr/compare/v0.7.0...v0.8.0) (2026-06-16)
+
+
+### Features
+
+* new features ([3f98d83](https://github.com/devr-tools/cleanr/commit/3f98d83e836e9314104e6d7597cbf682f94b9c2d))
+* new features ([6f16756](https://github.com/devr-tools/cleanr/commit/6f16756c4b6dd6389975a192ac9bc9cae27512cb))
+
 ## [0.7.0](https://github.com/devr-tools/cleanr/compare/v0.6.0...v0.7.0) (2026-06-15)
 
 
