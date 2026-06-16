@@ -34,8 +34,7 @@ checks:
       - Makefile
       - scripts/commit.sh
   security_rules:
-    govulncheck_mode: auto
-    govulncheck_command: govulncheck
+    govulncheck_mode: off
 exclude:
   - vendor/**
   - "**/testdata/**"

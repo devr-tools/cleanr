@@ -5074,6 +5074,21 @@
         }
       ]
     },
+    "security|.codeguard|cache.json": {
+      "file_hash": "b70c7e1ea866f7bc54cbeb118046de0bfc190015",
+      "config_hash": "369ca078641e148c4a0d109cd445d49bb2f622be",
+      "findings": []
+    },
+    "security|.codeguard|cache.slop-history.json": {
+      "file_hash": "6345332d6613b2ea32a115723e1c25a43a9d440d",
+      "config_hash": "369ca078641e148c4a0d109cd445d49bb2f622be",
+      "findings": []
+    },
+    "security|.codeguard|codeguard.yaml": {
+      "file_hash": "9d6fe6313006ed40d25e3fd828ad797fad68b3d0",
+      "config_hash": "369ca078641e148c4a0d109cd445d49bb2f622be",
+      "findings": []
+    },
     "security|.|.buildkite/pipeline.yml": {
       "file_hash": "d24ff3bfd59a16a9cf864444f7edcc9f848deb85",
       "config_hash": "c5aaa35ac3f491569a4845e613216fbc3873f312",
