@@ -47,6 +47,31 @@ func TestDevtoolsCIPassWithLocalBaseRef(t *testing.T) {
 	}
 }
 
+func TestDevtoolsCISemgrepFallsBackToPythonModule(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/python-semgrep")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n\nconst pythonSemgrep = true\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchainWithoutSemgrepBinary(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main"}); err != nil {
+		t.Fatalf("ci: %v\n%s", err, stdout.String())
+	}
+
+	semgrepArgs, err := os.ReadFile(filepath.Join(repo, ".semgrep.log"))
+	if err != nil {
+		t.Fatalf("read semgrep log: %v", err)
+	}
+	if !strings.Contains(string(semgrepArgs), "-m semgrep scan --config auto --baseline-commit") {
+		t.Fatalf("expected python semgrep fallback args, got: %s", string(semgrepArgs))
+	}
+}
+
 func TestDevtoolsCIFailsWithoutTestUpdate(t *testing.T) {
 	repo := initGitRepo(t, "main")
 	writeCIBaseFiles(t, repo)
@@ -583,6 +608,55 @@ exit 0
 		"semgrep": `#!/bin/sh
 printf '%s\n' "$*" >> "$SEMGREP_LOG"
 exit "${SEMGREP_EXIT:-0}"
+`,
+		"python3": `#!/bin/sh
+if [ "$1" = "-c" ] && [ "$2" = "import semgrep" ]; then
+  exit 0
+fi
+if [ "$1" = "-m" ] && [ "$2" = "semgrep" ]; then
+  shift 2
+  printf '%s\n' "-m semgrep $*" >> "$SEMGREP_LOG"
+  exit "${SEMGREP_EXIT:-0}"
+fi
+exit 1
+`,
+	})
+
+	t.Setenv("PATH", fakeBin+":"+os.Getenv("PATH"))
+	t.Setenv("FAKE_GOPATH", filepath.Join(repo, ".fake-gopath"))
+	t.Setenv("FAKE_GO_LOG", filepath.Join(repo, ".fake-go.log"))
+	t.Setenv("FAKE_COVERAGE_TOTAL", "70.0")
+	t.Setenv("SEMGREP_LOG", filepath.Join(repo, ".semgrep.log"))
+	t.Setenv("GOLANGCI_LINT_LOG", filepath.Join(repo, ".golangci-lint.log"))
+	t.Setenv("GOCACHE", filepath.Join(repo, ".gocache"))
+	worktreeDir, err := filepath.EvalSymlinks(repo)
+	if err != nil {
+		worktreeDir = repo
+	}
+	t.Setenv("WORKTREE_DIR", worktreeDir)
+}
+
+func configureFakeCIToolchainWithoutSemgrepBinary(t *testing.T, repo string) {
+	t.Helper()
+
+	fakeBin := scriptDir(t, map[string]string{
+		"go": fakeGoScript(),
+		"gofmt": `#!/bin/sh
+if [ "$1" = "-l" ] && [ -n "$GOFMT_OUTPUT" ]; then
+  printf '%s\n' "$GOFMT_OUTPUT"
+fi
+exit 0
+`,
+		"python3": `#!/bin/sh
+if [ "$1" = "-c" ] && [ "$2" = "import semgrep" ]; then
+  exit 0
+fi
+if [ "$1" = "-m" ] && [ "$2" = "semgrep" ]; then
+  shift 2
+  printf '%s\n' "-m semgrep $*" >> "$SEMGREP_LOG"
+  exit "${SEMGREP_EXIT:-0}"
+fi
+exit 1
 `,
 	})
 

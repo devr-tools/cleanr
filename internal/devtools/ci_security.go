@@ -33,8 +33,9 @@ func (r Runner) runCISecurity(ctx context.Context, opts CIOptions) error {
 }
 
 func (r Runner) runCISemgrep(ctx context.Context, opts CIOptions) error {
-	if _, err := exec.LookPath(opts.SemgrepCommand); err != nil {
-		if _, printErr := fmt.Fprintf(r.Stdout, "warning: semgrep is unavailable, skipping local semgrep scan (%v)\n", err); printErr != nil {
+	command, prefixArgs, err := resolveSemgrepCommand(ctx, r, opts.SemgrepCommand)
+	if err != nil {
+		if _, printErr := fmt.Fprintf(r.Stdout, "warning: semgrep is unavailable, skipping local semgrep scan (%v). Install semgrep or set -semgrep-command to a runnable scanner.\n", err); printErr != nil {
 			return printErr
 		}
 		return nil
@@ -51,7 +52,28 @@ func (r Runner) runCISemgrep(ctx context.Context, opts CIOptions) error {
 	if _, err := fmt.Fprintf(r.Stdout, "running semgrep against %s %s\n", label, baseline); err != nil {
 		return err
 	}
-	return r.runCommand(ctx, nil, opts.SemgrepCommand, "scan", "--config", "auto", "--baseline-commit", baseline, "--error")
+	args := append(prefixArgs, "scan", "--config", "auto", "--baseline-commit", baseline, "--error")
+	return r.runCommand(ctx, nil, command, args...)
+}
+
+func resolveSemgrepCommand(ctx context.Context, r Runner, command string) (string, []string, error) {
+	if _, err := exec.LookPath(command); err == nil {
+		return command, nil, nil
+	}
+
+	if _, err := exec.LookPath("python3"); err == nil {
+		if _, err := r.runOutputCommand(ctx, nil, "python3", "-c", "import semgrep"); err == nil {
+			return "python3", []string{"-m", "semgrep"}, nil
+		}
+	}
+
+	if _, err := exec.LookPath("python"); err == nil {
+		if _, err := r.runOutputCommand(ctx, nil, "python", "-c", "import semgrep"); err == nil {
+			return "python", []string{"-m", "semgrep"}, nil
+		}
+	}
+
+	return "", nil, fmt.Errorf("exec: %q not found in $PATH and no python semgrep module detected", command)
 }
 
 func (r Runner) runCIDocReview(ctx context.Context, baseRef string) error {
