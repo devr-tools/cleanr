@@ -47,6 +47,56 @@ func TestDevtoolsCIPassWithLocalBaseRef(t *testing.T) {
 	}
 }
 
+func TestDevtoolsPackageCodeGuardRunsExternalCLI(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/package-codeguard")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.PackageCodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main", CodeGuardVersion: "v0.2.0"}); err != nil {
+		t.Fatalf("package codeguard: %v\n%s", err, stdout.String())
+	}
+
+	logData, err := os.ReadFile(filepath.Join(repo, ".codeguard.log"))
+	if err != nil {
+		t.Fatalf("read codeguard log: %v", err)
+	}
+	logText := string(logData)
+	for _, want := range []string{
+		"scan -config .codeguard -mode diff -base-ref main -format text",
+	} {
+		if !strings.Contains(logText, want) {
+			t.Fatalf("expected %q in codeguard log:\n%s", want, logText)
+		}
+	}
+}
+
+func TestDevtoolsCISkipCodeGuardSkipsBuiltInStep(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/skip-codeguard")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+	mustWriteFile(t, filepath.Join(repo, "tests", "app_test.go"), "package tests\n\nconst skipCodeguard = true\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.CI(context.Background(), devtools.CIOptions{BaseRef: "main", SkipCodeGuard: true}); err != nil {
+		t.Fatalf("ci skip codeguard: %v\n%s", err, stdout.String())
+	}
+
+	if strings.Contains(stdout.String(), "==> codeguard") {
+		t.Fatalf("expected ci output to skip codeguard step, got:\n%s", stdout.String())
+	}
+}
+
 func TestDevtoolsCISemgrepFallsBackToPythonModule(t *testing.T) {
 	repo := initGitRepo(t, "main")
 	writeCIBaseFiles(t, repo)
@@ -565,6 +615,7 @@ func writeCIBaseFiles(t *testing.T, repo string) {
 	t.Helper()
 
 	mustWriteFile(t, filepath.Join(repo, "go.mod"), "module example.com/cleanrtest\n\ngo 1.20\n")
+	mustWriteFile(t, filepath.Join(repo, ".codeguard", "codeguard.yaml"), "name: test\n")
 	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 1 }\n")
 	mustWriteFile(t, filepath.Join(repo, "cmd", "cleanr", "main.go"), "package main\n\nfunc main() {}\n")
 	mustWriteFile(t, filepath.Join(repo, "internal", "thing.go"), "package internal\n")
@@ -626,6 +677,7 @@ exit 1
 	t.Setenv("FAKE_GOPATH", filepath.Join(repo, ".fake-gopath"))
 	t.Setenv("FAKE_GO_LOG", filepath.Join(repo, ".fake-go.log"))
 	t.Setenv("FAKE_COVERAGE_TOTAL", "70.0")
+	t.Setenv("CODEGUARD_LOG", filepath.Join(repo, ".codeguard.log"))
 	t.Setenv("SEMGREP_LOG", filepath.Join(repo, ".semgrep.log"))
 	t.Setenv("GOLANGCI_LINT_LOG", filepath.Join(repo, ".golangci-lint.log"))
 	t.Setenv("GOCACHE", filepath.Join(repo, ".gocache"))
@@ -664,6 +716,7 @@ exit 1
 	t.Setenv("FAKE_GOPATH", filepath.Join(repo, ".fake-gopath"))
 	t.Setenv("FAKE_GO_LOG", filepath.Join(repo, ".fake-go.log"))
 	t.Setenv("FAKE_COVERAGE_TOTAL", "70.0")
+	t.Setenv("CODEGUARD_LOG", filepath.Join(repo, ".codeguard.log"))
 	t.Setenv("SEMGREP_LOG", filepath.Join(repo, ".semgrep.log"))
 	t.Setenv("GOLANGCI_LINT_LOG", filepath.Join(repo, ".golangci-lint.log"))
 	t.Setenv("GOCACHE", filepath.Join(repo, ".gocache"))
@@ -748,6 +801,18 @@ fi
 exit "${GOLANGCI_LINT_EXIT:-0}"
 EOF
         chmod +x "$FAKE_GOPATH/bin/golangci-lint"
+        exit 0
+        ;;
+      github.com/devr-tools/codeguard/cmd/codeguard@*)
+        cat > "$FAKE_GOPATH/bin/codeguard" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >> "$CODEGUARD_LOG"
+if [ -n "$CODEGUARD_OUTPUT" ]; then
+  printf '%s\n' "$CODEGUARD_OUTPUT"
+fi
+exit "${CODEGUARD_EXIT:-0}"
+EOF
+        chmod +x "$FAKE_GOPATH/bin/codeguard"
         exit 0
         ;;
       golang.org/x/vuln/cmd/govulncheck@*)

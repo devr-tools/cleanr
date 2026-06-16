@@ -12,6 +12,7 @@ REPORT_FORMAT ?= text
 REPORT_PRESET ?= fail
 REPORT_INPUT ?=
 CI_BASE_REF ?=
+CODEGUARD_VERSION ?= v0.2.0
 UI_GOROOT ?= /opt/homebrew/opt/go/libexec
 UI_GOPATH ?= $(HOME)/go
 
@@ -52,6 +53,7 @@ menu:
 	@printf "  REPORT_PRESET=%s\n" "$(REPORT_PRESET)"
 	@printf "  REPORT_INPUT=%s\n" "$(REPORT_INPUT)"
 	@printf "  CI_BASE_REF=%s\n" "$(CI_BASE_REF)"
+	@printf "  CODEGUARD_VERSION=%s\n" "$(CODEGUARD_VERSION)"
 	@printf "  GOCACHE=%s\n" "$(GOCACHE)"
 	@printf "  UI_GOROOT=%s\n" "$(UI_GOROOT)"
 	@printf "  UI_GOPATH=%s\n\n" "$(UI_GOPATH)"
@@ -90,7 +92,8 @@ check:
 	$(GO) run ./cmd/cleanr-dev check
 
 ci:
-	$(GO) run ./cmd/cleanr-dev ci $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),)
+	$(GO) run ./cmd/cleanr-dev ci-package-codeguard $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),) -codeguard-version $(CODEGUARD_VERSION)
+	$(GO) run ./cmd/cleanr-dev ci -skip-codeguard $(if $(CI_BASE_REF),-base-ref $(CI_BASE_REF),)
 
 commit:
 	@./scripts/commit.sh

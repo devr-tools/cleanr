@@ -32,6 +32,8 @@ func run(args []string) int {
 		return runRunnerCommand("check", func() error { return runner.Check(ctx) })
 	case "ci":
 		return runCIDevCommand(ctx, runner, args[1:])
+	case "ci-package-codeguard":
+		return runCIPackageCodeGuardDevCommand(ctx, runner, args[1:])
 	case "ci-codeguard":
 		return runCICodeGuardDevCommand(ctx, runner, args[1:])
 	case "ci-scc":
@@ -79,6 +81,7 @@ func runCIDevCommand(ctx context.Context, runner devtools.Runner, args []string)
 	fs.SetOutput(os.Stderr)
 	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
 	buildOutput := fs.String("build-output", "dist/cleanr-linux-amd64", "Output path for the Linux amd64 snapshot build")
+	codeGuardVersion := fs.String("codeguard-version", "", "codeguard version to install")
 	govulncheckMode := fs.String("govulncheck-mode", "", "govulncheck mode: required or off")
 	govulncheckVersion := fs.String("govulncheck-version", "", "govulncheck version to install")
 	gocycloVersion := fs.String("gocyclo-version", "", "gocyclo version to install")
@@ -88,6 +91,7 @@ func runCIDevCommand(ctx context.Context, runner devtools.Runner, args []string)
 	golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
 	minCoverage := fs.Float64("min-internal-coverage", 0, "Minimum internal coverage percentage")
 	semgrepCommand := fs.String("semgrep-command", "", "Semgrep executable name or path")
+	skipCodeGuard := fs.Bool("skip-codeguard", false, "Skip the built-in cleanr codeguard step")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -95,6 +99,7 @@ func runCIDevCommand(ctx context.Context, runner devtools.Runner, args []string)
 		return runner.CI(ctx, devtools.CIOptions{
 			BaseRef:               *baseRef,
 			BuildOutput:           *buildOutput,
+			CodeGuardVersion:      *codeGuardVersion,
 			GovulncheckMode:       *govulncheckMode,
 			GovulncheckVersion:    *govulncheckVersion,
 			GocycloVersion:        *gocycloVersion,
@@ -104,6 +109,23 @@ func runCIDevCommand(ctx context.Context, runner devtools.Runner, args []string)
 			GolangCILintVersion:   *golangciLintVersion,
 			MinInternalCoverage:   *minCoverage,
 			SemgrepCommand:        *semgrepCommand,
+			SkipCodeGuard:         *skipCodeGuard,
+		})
+	})
+}
+
+func runCIPackageCodeGuardDevCommand(ctx context.Context, runner devtools.Runner, args []string) int {
+	fs := flag.NewFlagSet("ci-package-codeguard", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
+	codeGuardVersion := fs.String("codeguard-version", "", "codeguard version to install")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return runRunnerCommand("ci-package-codeguard", func() error {
+		return runner.PackageCodeGuard(ctx, devtools.CIOptions{
+			BaseRef:          *baseRef,
+			CodeGuardVersion: *codeGuardVersion,
 		})
 	})
 }
@@ -247,5 +269,5 @@ func runReportDevCommand(ctx context.Context, runner devtools.Runner, args []str
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-codeguard|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|test-review-ui|preview-review-ui|gofiles|build|release|homebrew-formula|report>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-package-codeguard|ci-codeguard|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|test-review-ui|preview-review-ui|gofiles|build|release|homebrew-formula|report>")
 }

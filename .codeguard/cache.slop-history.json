@@ -1,0 +1,26 @@
+{
+  "version": 1,
+  "entries": {
+    "slop_score.go.repository": [
+      {
+        "timestamp": "2026-06-16T18:03:24Z",
+        "score": 100,
+        "signals": 23,
+        "components": [
+          {
+            "rule_id": "quality.ai.dead-code",
+            "count": 8,
+            "weight": 3,
+            "contribution": 24
+          },
+          {
+            "rule_id": "quality.ai.error-style-drift",
+            "count": 15,
+            "weight": 2,
+            "contribution": 30
+          }
+        ]
+      }
+    ]
+  }
+}

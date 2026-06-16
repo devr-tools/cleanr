@@ -16,6 +16,7 @@ type ReleaseOptions struct {
 type CIOptions struct {
 	BaseRef               string
 	BuildOutput           string
+	CodeGuardVersion      string
 	GovulncheckMode       string
 	GovulncheckVersion    string
 	GocycloVersion        string
@@ -25,6 +26,7 @@ type CIOptions struct {
 	GolangCILintVersion   string
 	MinInternalCoverage   float64
 	SemgrepCommand        string
+	SkipCodeGuard         bool
 }
 
 type HomebrewFormulaOptions struct {

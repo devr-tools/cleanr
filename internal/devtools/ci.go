@@ -10,6 +10,7 @@ import (
 )
 
 const (
+	defaultCICodeGuardVersion      = "v0.2.0"
 	defaultCIGovulncheckMode       = "required"
 	defaultCIGovulncheckVersion    = "v1.0.4"
 	defaultCIGocycloVersion        = "v0.6.0"
@@ -34,12 +35,19 @@ func (r Runner) CI(ctx context.Context, opts CIOptions) error {
 		{name: "test-presence", fn: func() error { return r.checkTestPresence(ctx, resolved.BaseRef) }},
 		{name: "fmt", fn: func() error { return r.FormatCheck(ctx) }},
 		{name: "vet", fn: func() error { return r.Lint(ctx) }},
-		{name: "codeguard", fn: func() error { return r.runCICodeGuard(ctx, resolved) }},
 		{name: "test", fn: func() error { return r.Test(ctx) }},
 		{name: "build", fn: func() error { return r.runCIBuild(ctx, resolved.BuildOutput) }},
 		{name: "coverage", fn: func() error { return r.runCICoverage(ctx, resolved.MinInternalCoverage) }},
 		{name: "security", fn: func() error { return r.runCISecurity(ctx, resolved) }},
 		{name: "semgrep", fn: func() error { return r.runCISemgrep(ctx, resolved) }},
+	}
+	if !resolved.SkipCodeGuard {
+		steps = append(steps[:3], append([]struct {
+			name string
+			fn   func() error
+		}{
+			{name: "codeguard", fn: func() error { return r.runCICodeGuard(ctx, resolved) }},
+		}, steps[3:]...)...)
 	}
 
 	if normalizeBaseBranchName(resolved.BaseRef) == "develop" {
@@ -85,6 +93,7 @@ func (r Runner) resolveCIOptions(ctx context.Context, opts CIOptions) (CIOptions
 	return CIOptions{
 		BaseRef:               baseRef,
 		BuildOutput:           resolveCIString(opts.BuildOutput, "", filepath.Join("dist", "cleanr-linux-amd64")),
+		CodeGuardVersion:      resolveCIString(opts.CodeGuardVersion, "CODEGUARD_VERSION", defaultCICodeGuardVersion),
 		GovulncheckMode:       resolveCIString(opts.GovulncheckMode, "GOVULNCHECK_MODE", defaultCIGovulncheckMode),
 		GovulncheckVersion:    resolveCIString(opts.GovulncheckVersion, "GOVULNCHECK_VERSION", defaultCIGovulncheckVersion),
 		GocycloVersion:        resolveCIString(opts.GocycloVersion, "GOCYCLO_VERSION", defaultCIGocycloVersion),
@@ -94,6 +103,7 @@ func (r Runner) resolveCIOptions(ctx context.Context, opts CIOptions) (CIOptions
 		GolangCILintVersion:   resolveCIString(opts.GolangCILintVersion, "GOLANGCI_LINT_VERSION", defaultCIGolangciVersion),
 		MinInternalCoverage:   resolveCICoverageThreshold(opts.MinInternalCoverage),
 		SemgrepCommand:        resolveCIString(opts.SemgrepCommand, "SEMGREP", defaultCISemgrepCommand),
+		SkipCodeGuard:         opts.SkipCodeGuard,
 	}, nil
 }
 
