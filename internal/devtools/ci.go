@@ -10,15 +10,11 @@ import (
 )
 
 const (
-	defaultCIGovulncheckMode       = "required"
-	defaultCIGovulncheckVersion    = "v1.0.4"
-	defaultCIGocycloVersion        = "v0.6.0"
-	defaultCISCCVersion            = "v3.6.0"
-	defaultCIMaxFileCodeLines      = 400
-	defaultCIMaxFunctionComplexity = 20
-	defaultCIGolangciVersion       = "v2.12.2"
-	defaultCIMinCoverage           = 65.0
-	defaultCISemgrepCommand        = "semgrep"
+	defaultCICodeGuardVersion   = "v0.2.0"
+	defaultCIGovulncheckMode    = "required"
+	defaultCIGovulncheckVersion = "v1.0.4"
+	defaultCIMinCoverage        = 65.0
+	defaultCISemgrepCommand     = "semgrep"
 )
 
 func (r Runner) CI(ctx context.Context, opts CIOptions) error {
@@ -34,12 +30,15 @@ func (r Runner) CI(ctx context.Context, opts CIOptions) error {
 		{name: "test-presence", fn: func() error { return r.checkTestPresence(ctx, resolved.BaseRef) }},
 		{name: "fmt", fn: func() error { return r.FormatCheck(ctx) }},
 		{name: "vet", fn: func() error { return r.Lint(ctx) }},
-		{name: "codeguard", fn: func() error { return r.runCICodeGuard(ctx, resolved) }},
+		{name: "codeguard", fn: func() error { return r.runPackageCodeGuard(ctx, resolved) }},
 		{name: "test", fn: func() error { return r.Test(ctx) }},
 		{name: "build", fn: func() error { return r.runCIBuild(ctx, resolved.BuildOutput) }},
 		{name: "coverage", fn: func() error { return r.runCICoverage(ctx, resolved.MinInternalCoverage) }},
 		{name: "security", fn: func() error { return r.runCISecurity(ctx, resolved) }},
 		{name: "semgrep", fn: func() error { return r.runCISemgrep(ctx, resolved) }},
+	}
+	if resolved.SkipCodeGuard {
+		steps = append(steps[:3], steps[4:]...)
 	}
 
 	if normalizeBaseBranchName(resolved.BaseRef) == "develop" {
@@ -83,34 +82,27 @@ func (r Runner) resolveCIOptions(ctx context.Context, opts CIOptions) (CIOptions
 	}
 
 	return CIOptions{
-		BaseRef:               baseRef,
-		BuildOutput:           resolveCIString(opts.BuildOutput, "", filepath.Join("dist", "cleanr-linux-amd64")),
-		GovulncheckMode:       resolveCIString(opts.GovulncheckMode, "GOVULNCHECK_MODE", defaultCIGovulncheckMode),
-		GovulncheckVersion:    resolveCIString(opts.GovulncheckVersion, "GOVULNCHECK_VERSION", defaultCIGovulncheckVersion),
-		GocycloVersion:        resolveCIString(opts.GocycloVersion, "GOCYCLO_VERSION", defaultCIGocycloVersion),
-		SCCVersion:            resolveCIString(opts.SCCVersion, "SCC_VERSION", defaultCISCCVersion),
-		MaxFileCodeLines:      resolveCIMaxFileCodeLines(opts.MaxFileCodeLines),
-		MaxFunctionComplexity: resolveCIMaxFunctionComplexity(opts.MaxFunctionComplexity),
-		GolangCILintVersion:   resolveCIString(opts.GolangCILintVersion, "GOLANGCI_LINT_VERSION", defaultCIGolangciVersion),
-		MinInternalCoverage:   resolveCICoverageThreshold(opts.MinInternalCoverage),
-		SemgrepCommand:        resolveCIString(opts.SemgrepCommand, "SEMGREP", defaultCISemgrepCommand),
+		BaseRef:             baseRef,
+		BuildOutput:         resolveCIString(opts.BuildOutput, "", filepath.Join("dist", "cleanr-linux-amd64")),
+		CodeGuardVersion:    resolveCIString(opts.CodeGuardVersion, "CODEGUARD_VERSION", defaultCICodeGuardVersion),
+		GovulncheckMode:     resolveCIString(opts.GovulncheckMode, "GOVULNCHECK_MODE", defaultCIGovulncheckMode),
+		GovulncheckVersion:  resolveCIString(opts.GovulncheckVersion, "GOVULNCHECK_VERSION", defaultCIGovulncheckVersion),
+		MinInternalCoverage: resolveCICoverageThreshold(opts.MinInternalCoverage),
+		SemgrepCommand:      resolveCIString(opts.SemgrepCommand, "SEMGREP", defaultCISemgrepCommand),
+		SkipCodeGuard:       opts.SkipCodeGuard,
 	}, nil
 }
 
+// CISCC is kept for compatibility with older callers.
+// Deprecated: use PackageCodeGuard instead.
 func (r Runner) CISCC(ctx context.Context, opts CIOptions) error {
-	resolved, err := r.resolveCIOptions(ctx, opts)
-	if err != nil {
-		return err
-	}
-	return r.runCISCC(ctx, resolved.BaseRef, resolved.SCCVersion, resolved.MaxFileCodeLines)
+	return r.PackageCodeGuard(ctx, opts)
 }
 
+// CIGolangCILint is kept for compatibility with older callers.
+// Deprecated: use PackageCodeGuard instead.
 func (r Runner) CIGolangCILint(ctx context.Context, opts CIOptions) error {
-	resolved, err := r.resolveCIOptions(ctx, opts)
-	if err != nil {
-		return err
-	}
-	return r.runCIGolangCILint(ctx, resolved.BaseRef, resolved.GolangCILintVersion)
+	return r.PackageCodeGuard(ctx, opts)
 }
 
 type testPresenceChanges struct {

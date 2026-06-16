@@ -13,11 +13,3 @@ var (
 	ciDangerousAddPattern  = regexp.MustCompile(`^\+.*(exec\.Command(Context)?\(|http\.(Get|Post)\(|net\.Dial\(|os\.RemoveAll\(|os\.Setenv\(|syscall\.|unsafe \{|panic!\(|TODO|FIXME)`)
 	ciGoModAdditionPattern = regexp.MustCompile(`^\+[^+]`)
 )
-
-type gocycloFinding struct {
-	Complexity int
-	Path       string
-	Package    string
-	Symbol     string
-	Raw        string
-}

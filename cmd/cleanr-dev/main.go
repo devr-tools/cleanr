@@ -32,12 +32,8 @@ func run(args []string) int {
 		return runRunnerCommand("check", func() error { return runner.Check(ctx) })
 	case "ci":
 		return runCIDevCommand(ctx, runner, args[1:])
-	case "ci-codeguard":
-		return runCICodeGuardDevCommand(ctx, runner, args[1:])
-	case "ci-scc":
-		return runCISCCDevCommand(ctx, runner, args[1:])
-	case "ci-golangci-lint":
-		return runCIGolangCILintDevCommand(ctx, runner, args[1:])
+	case "ci-package-codeguard":
+		return runCIPackageCodeGuardDevCommand(ctx, runner, args[1:])
 	case "fmt":
 		return runRunnerCommand("fmt", func() error { return runner.Format(ctx) })
 	case "fmt-check":
@@ -79,89 +75,41 @@ func runCIDevCommand(ctx context.Context, runner devtools.Runner, args []string)
 	fs.SetOutput(os.Stderr)
 	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
 	buildOutput := fs.String("build-output", "dist/cleanr-linux-amd64", "Output path for the Linux amd64 snapshot build")
+	codeGuardVersion := fs.String("codeguard-version", "", "codeguard version to install")
 	govulncheckMode := fs.String("govulncheck-mode", "", "govulncheck mode: required or off")
 	govulncheckVersion := fs.String("govulncheck-version", "", "govulncheck version to install")
-	gocycloVersion := fs.String("gocyclo-version", "", "gocyclo version to install")
-	sccVersion := fs.String("scc-version", "", "scc version to install")
-	maxFileCodeLines := fs.Int("max-file-code-lines", 0, "Maximum Go code lines allowed in a changed file before it is treated as a god file")
-	maxFunctionComplexity := fs.Int("max-function-complexity", 0, "Maximum cyclomatic complexity allowed for a changed function before it is flagged")
-	golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
 	minCoverage := fs.Float64("min-internal-coverage", 0, "Minimum internal coverage percentage")
 	semgrepCommand := fs.String("semgrep-command", "", "Semgrep executable name or path")
+	skipCodeGuard := fs.Bool("skip-codeguard", false, "Skip the built-in cleanr codeguard step")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
 	return runRunnerCommand("ci", func() error {
 		return runner.CI(ctx, devtools.CIOptions{
-			BaseRef:               *baseRef,
-			BuildOutput:           *buildOutput,
-			GovulncheckMode:       *govulncheckMode,
-			GovulncheckVersion:    *govulncheckVersion,
-			GocycloVersion:        *gocycloVersion,
-			SCCVersion:            *sccVersion,
-			MaxFileCodeLines:      *maxFileCodeLines,
-			MaxFunctionComplexity: *maxFunctionComplexity,
-			GolangCILintVersion:   *golangciLintVersion,
-			MinInternalCoverage:   *minCoverage,
-			SemgrepCommand:        *semgrepCommand,
-		})
-	})
-}
-
-func runCISCCDevCommand(ctx context.Context, runner devtools.Runner, args []string) int {
-	fs := flag.NewFlagSet("ci-scc", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
-	sccVersion := fs.String("scc-version", "", "scc version to install")
-	maxFileCodeLines := fs.Int("max-file-code-lines", 0, "Maximum Go code lines allowed in a changed file before it is treated as a god file")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	return runRunnerCommand("ci-scc", func() error {
-		return runner.CISCC(ctx, devtools.CIOptions{
-			BaseRef:          *baseRef,
-			SCCVersion:       *sccVersion,
-			MaxFileCodeLines: *maxFileCodeLines,
-		})
-	})
-}
-
-func runCICodeGuardDevCommand(ctx context.Context, runner devtools.Runner, args []string) int {
-	fs := flag.NewFlagSet("ci-codeguard", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
-	gocycloVersion := fs.String("gocyclo-version", "", "gocyclo version to install")
-	sccVersion := fs.String("scc-version", "", "scc version to install")
-	maxFileCodeLines := fs.Int("max-file-code-lines", 0, "Maximum Go code lines allowed in a changed file before it is treated as a god file")
-	maxFunctionComplexity := fs.Int("max-function-complexity", 0, "Maximum cyclomatic complexity allowed for a changed function before it is flagged")
-	golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	return runRunnerCommand("ci-codeguard", func() error {
-		return runner.CodeGuard(ctx, devtools.CIOptions{
-			BaseRef:               *baseRef,
-			GocycloVersion:        *gocycloVersion,
-			SCCVersion:            *sccVersion,
-			MaxFileCodeLines:      *maxFileCodeLines,
-			MaxFunctionComplexity: *maxFunctionComplexity,
-			GolangCILintVersion:   *golangciLintVersion,
-		})
-	})
-}
-
-func runCIGolangCILintDevCommand(ctx context.Context, runner devtools.Runner, args []string) int {
-	fs := flag.NewFlagSet("ci-golangci-lint", flag.ContinueOnError)
-	fs.SetOutput(os.Stderr)
-	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
-	golangciLintVersion := fs.String("golangci-lint-version", "", "golangci-lint version to install")
-	if err := fs.Parse(args); err != nil {
-		return 2
-	}
-	return runRunnerCommand("ci-golangci-lint", func() error {
-		return runner.CIGolangCILint(ctx, devtools.CIOptions{
 			BaseRef:             *baseRef,
-			GolangCILintVersion: *golangciLintVersion,
+			BuildOutput:         *buildOutput,
+			CodeGuardVersion:    *codeGuardVersion,
+			GovulncheckMode:     *govulncheckMode,
+			GovulncheckVersion:  *govulncheckVersion,
+			MinInternalCoverage: *minCoverage,
+			SemgrepCommand:      *semgrepCommand,
+			SkipCodeGuard:       *skipCodeGuard,
+		})
+	})
+}
+
+func runCIPackageCodeGuardDevCommand(ctx context.Context, runner devtools.Runner, args []string) int {
+	fs := flag.NewFlagSet("ci-package-codeguard", flag.ContinueOnError)
+	fs.SetOutput(os.Stderr)
+	baseRef := fs.String("base-ref", "", "Base Git ref to diff against, for example origin/main")
+	codeGuardVersion := fs.String("codeguard-version", "", "codeguard version to install")
+	if err := fs.Parse(args); err != nil {
+		return 2
+	}
+	return runRunnerCommand("ci-package-codeguard", func() error {
+		return runner.PackageCodeGuard(ctx, devtools.CIOptions{
+			BaseRef:          *baseRef,
+			CodeGuardVersion: *codeGuardVersion,
 		})
 	})
 }
@@ -247,5 +195,5 @@ func runReportDevCommand(ctx context.Context, runner devtools.Runner, args []str
 }
 
 func usage(w *os.File) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-codeguard|ci-scc|ci-golangci-lint|fmt|fmt-check|lint|test|test-review-ui|preview-review-ui|gofiles|build|release|homebrew-formula|report>")
+	_, _ = fmt.Fprintln(w, "usage: cleanr-dev <check|ci|ci-package-codeguard|fmt|fmt-check|lint|test|test-review-ui|preview-review-ui|gofiles|build|release|homebrew-formula|report>")
 }

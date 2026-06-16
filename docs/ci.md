@@ -301,17 +301,11 @@ Release and branch-publishing details live in [release-automation.md](release-au
 
 Use `make ci` before committing when you want a local approximation of `.github/workflows/ci.yml`.
 
-It runs the same main gates locally: test presence, formatting, `go vet`, `codeguard` (`gocyclo` + `scc` + `golangci-lint`), `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
+It runs the same main gates locally: test presence, formatting, `go vet`, `codeguard`, `go test`, the Linux amd64 snapshot build, the internal coverage threshold, `govulncheck`, `semgrep`, and the `develop`-only doc review and DCO rules.
 
-The `codeguard` step renders a compact section summary and currently covers:
+The GitHub workflow uses the `Devr Codeguard` marketplace action from `devr-tools/codeguard@v0.2.0`. Local parity installs the matching CLI package with `go install github.com/devr-tools/codeguard/cmd/codeguard@$(CODEGUARD_VERSION)` and runs `codeguard scan` against [.codeguard/codeguard.yaml](../.codeguard/codeguard.yaml).
 
-- `gocyclo`, which compares changed files to the resolved base ref and fails only on new or worsened over-limit findings
-- `scc`, which treats changed non-test Go files above `400` code lines as god files and fails only on new or worsened size debt compared with the base ref
-- `golangci-lint`, which uses [.golangci.yml](../.golangci.yml) and reports only new maintainability findings against the merge-base with the target branch
-- advisory AST-based quality sections for `DRY`, `Clean Code`, and `Design Principles (SOLID/SoC)` on changed Go files
-
-God-file exceptions can be listed in [.codeguard-godfiles-allowlist](../.codeguard-godfiles-allowlist). Entries there are repo-relative paths and only exempt files from the `God Files` section; complexity and lint checks still apply.
-The main codeguard thresholds are environment-driven: `MAX_GO_FILE_CODE_LINES` for the god-file cap and `MAX_FUNCTION_COMPLEXITY` for the `gocyclo` function threshold.
+The active `codeguard` policy in this repository is defined in [.codeguard/codeguard.yaml](../.codeguard/codeguard.yaml) and currently enables quality, security, and CI checks with a `400` max-file-lines threshold and a `20` max-cyclomatic-complexity threshold. `govulncheck` runs through CodeGuard when it is available on `PATH`; this repo's GitHub workflow installs it before the CodeGuard action, and the separate CI security step remains as the dedicated vulnerability gate.
 If `govulncheck` cannot be installed for the current local Go toolchain, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 If `semgrep` is not installed locally, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 
@@ -331,7 +325,7 @@ make ci CI_BASE_REF=origin/develop
 Install or make available these local dependencies if you want full parity:
 
 - Go toolchain from `go.mod`
-- network access for `go install` of `gocyclo`, `scc`, `golangci-lint`, and `govulncheck`
+- network access for `go install` of `codeguard` and `govulncheck`
 - `semgrep` on your `PATH`
 
 ## Connected Secrets Workflow

@@ -14,13 +14,9 @@ permissions:
 env:
   GOCACHE: ${{ github.workspace }}/.gocache
   GO111MODULE: "on"
+  CODEGUARD_VERSION: v0.2.0
   GOVULNCHECK_MODE: required
   GOVULNCHECK_VERSION: v1.0.4
-  GOCYCLO_VERSION: v0.6.0
-  SCC_VERSION: v3.6.0
-  MAX_GO_FILE_CODE_LINES: "400"
-  MAX_FUNCTION_COMPLEXITY: "20"
-  GOLANGCI_LINT_VERSION: v2.12.2
   MIN_INTERNAL_COVERAGE: "65.0"
 
 concurrency:
@@ -123,16 +119,29 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Fetch base branch
+        run: git fetch origin "${PR_BASE_REF}" --depth=1
+
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
 
-      - name: Fetch base branch
-        run: git fetch origin "${PR_BASE_REF}" --depth=1
+      - name: Install govulncheck for codeguard
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
 
       - name: Run codeguard
-        run: go run ./cmd/cleanr-dev ci-codeguard -base-ref "origin/${PR_BASE_REF}"
+        uses: devr-tools/codeguard@v0.2.0
+        with:
+          config: .codeguard
+          mode: diff
+          base-ref: origin/${{ github.base_ref }}
+          format: github
+          version: ${{ env.CODEGUARD_VERSION }}
 
   test:
     name: test (${{ matrix.label }})
