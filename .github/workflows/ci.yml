@@ -122,6 +122,18 @@ jobs:
       - name: Fetch base branch
         run: git fetch origin "${PR_BASE_REF}" --depth=1
 
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Install govulncheck for codeguard
+        shell: bash
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION}
+          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
       - name: Run codeguard
         uses: devr-tools/codeguard@v0.2.0
         with:

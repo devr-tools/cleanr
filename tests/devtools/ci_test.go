@@ -76,6 +76,32 @@ func TestDevtoolsPackageCodeGuardRunsExternalCLI(t *testing.T) {
 	}
 }
 
+func TestDevtoolsPackageCodeGuardAddsGoBinToPath(t *testing.T) {
+	repo := initGitRepo(t, "main")
+	writeCIBaseFiles(t, repo)
+	gitCommitAll(t, repo, "base commit\n\nSigned-off-by: Test User <test@example.com>\n")
+	gitCheckoutNewBranch(t, repo, "feature/package-codeguard-path")
+
+	mustWriteFile(t, filepath.Join(repo, "cleanr", "app.go"), "package cleanr\n\nfunc Value() int { return 2 }\n")
+
+	var stdout bytes.Buffer
+	configureFakeCIToolchain(t, repo)
+	runner := devtools.NewRunner(repo, &stdout, &stdout)
+	if err := runner.PackageCodeGuard(context.Background(), devtools.CIOptions{BaseRef: "main", CodeGuardVersion: "v0.2.0"}); err != nil {
+		t.Fatalf("package codeguard: %v\n%s", err, stdout.String())
+	}
+
+	logData, err := os.ReadFile(filepath.Join(repo, ".codeguard.log"))
+	if err != nil {
+		t.Fatalf("read codeguard log: %v", err)
+	}
+	goBin := filepath.Join(repo, ".fake-gopath", "bin")
+	logText := string(logData)
+	if !strings.Contains(logText, "PATH="+goBin) {
+		t.Fatalf("expected codeguard PATH to include GOPATH/bin, got:\n%s", logText)
+	}
+}
+
 func TestDevtoolsCISkipCodeGuardSkipsBuiltInStep(t *testing.T) {
 	repo := initGitRepo(t, "main")
 	writeCIBaseFiles(t, repo)
@@ -806,6 +832,7 @@ EOF
       github.com/devr-tools/codeguard/cmd/codeguard@*)
         cat > "$FAKE_GOPATH/bin/codeguard" <<'EOF'
 #!/bin/sh
+printf 'PATH=%s\n' "$PATH" >> "$CODEGUARD_LOG"
 printf '%s\n' "$*" >> "$CODEGUARD_LOG"
 if [ -n "$CODEGUARD_OUTPUT" ]; then
   printf '%s\n' "$CODEGUARD_OUTPUT"

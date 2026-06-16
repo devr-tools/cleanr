@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
+	"strings"
 )
 
 const defaultCodeGuardConfigPath = ".codeguard"
@@ -29,9 +31,19 @@ func (r Runner) runPackageCodeGuard(ctx context.Context, opts CIOptions) error {
 	if _, err := fmt.Fprintf(r.Stdout, "running codeguard package against %s\n", opts.BaseRef); err != nil {
 		return err
 	}
+	env := map[string]string{}
+	if gopath, err := r.runOutputCommand(ctx, nil, "go", "env", "GOPATH"); err == nil {
+		goBin := filepath.Join(strings.TrimSpace(gopath), "bin")
+		pathValue := strings.TrimSpace(os.Getenv("PATH"))
+		if pathValue == "" {
+			env["PATH"] = goBin
+		} else {
+			env["PATH"] = goBin + string(os.PathListSeparator) + pathValue
+		}
+	}
 	return r.runCommand(
 		ctx,
-		nil,
+		env,
 		codeguardPath,
 		"scan",
 		"-config",

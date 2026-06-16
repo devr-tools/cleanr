@@ -305,7 +305,7 @@ It runs the same main gates locally: test presence, formatting, `go vet`, `codeg
 
 The GitHub workflow uses the `Devr Codeguard` marketplace action from `devr-tools/codeguard@v0.2.0`. Local parity installs the matching CLI package with `go install github.com/devr-tools/codeguard/cmd/codeguard@$(CODEGUARD_VERSION)` and runs `codeguard scan` against [.codeguard/codeguard.yaml](../.codeguard/codeguard.yaml).
 
-The active `codeguard` policy in this repository is defined in [.codeguard/codeguard.yaml](../.codeguard/codeguard.yaml) and currently enables quality, security, and CI checks with a `400` max-file-lines threshold and a `20` max-cyclomatic-complexity threshold. `govulncheck` itself is handled by the separate CI security step rather than by the CodeGuard config.
+The active `codeguard` policy in this repository is defined in [.codeguard/codeguard.yaml](../.codeguard/codeguard.yaml) and currently enables quality, security, and CI checks with a `400` max-file-lines threshold and a `20` max-cyclomatic-complexity threshold. `govulncheck` runs through CodeGuard when it is available on `PATH`; this repo's GitHub workflow installs it before the CodeGuard action, and the separate CI security step remains as the dedicated vulnerability gate.
 If `govulncheck` cannot be installed for the current local Go toolchain, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 If `semgrep` is not installed locally, `make ci` skips that step with a warning instead of failing before the rest of the pre-commit checks can run.
 

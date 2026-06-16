@@ -2,7 +2,7 @@ name: cleanr
 profile: startup
 targets:
   - name: repository
-    path: .
+    path: ..
     language: go
     entrypoints:
       - cmd/cleanr
@@ -21,27 +21,28 @@ checks:
   ci_rules:
     require_workflow_dir: true
     required_workflow_files:
-      - .github/workflows/ci.yml
-      - .github/workflows/cd.yml
-      - .github/workflows/release.yml
+      - ../.github/workflows/ci.yml
+      - ../.github/workflows/cd.yml
+      - ../.github/workflows/release.yml
     required_release_files:
-      - .goreleaser.yaml
-      - Dockerfile.release
-      - .github/release-please-config.json
-      - .release-please-manifest.json
-      - CHANGELOG.md
+      - ../.goreleaser.yaml
+      - ../Dockerfile.release
+      - ../.github/release-please-config.json
+      - ../.release-please-manifest.json
+      - ../CHANGELOG.md
     required_automation_paths:
-      - Makefile
-      - scripts/commit.sh
+      - ../Makefile
+      - ../scripts/commit.sh
   security_rules:
-    govulncheck_mode: off
+    govulncheck_mode: auto
+    govulncheck_command: govulncheck
 exclude:
   - vendor/**
   - "**/testdata/**"
   - dist/**
   - .gocache/**
 baseline:
-  path: codeguard-baseline.json
+  path: ../codeguard-baseline.json
 cache:
   enabled: true
   path: .codeguard/cache.json
