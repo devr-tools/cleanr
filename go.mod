@@ -8,6 +8,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/golang/protobuf v1.5.4
 	github.com/jhump/protoreflect v1.16.0
+	github.com/tetratelabs/wazero v1.9.0
 	google.golang.org/grpc v1.62.2
 	gopkg.in/yaml.v3 v3.0.1
 )

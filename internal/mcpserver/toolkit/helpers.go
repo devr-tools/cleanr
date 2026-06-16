@@ -64,6 +64,8 @@ func NormalizeReportFormat(format string) string {
 		return "sarif"
 	case "agent":
 		return "agent"
+	case "html":
+		return "html"
 	default:
 		return "text"
 	}
@@ -98,6 +100,8 @@ func NormalizeTrendFormat(format string) string {
 	switch strings.ToLower(strings.TrimSpace(format)) {
 	case "json":
 		return "json"
+	case "html":
+		return "html"
 	default:
 		return "text"
 	}

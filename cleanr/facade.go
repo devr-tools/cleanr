@@ -69,6 +69,7 @@ type ResultSinkConfig = core.ResultSinkConfig
 type TrendSourceConfig = core.TrendSourceConfig
 type SummaryConfig = core.SummaryConfig
 type PluginManifest = core.PluginManifest
+type PluginRuntimeConfig = core.PluginRuntimeConfig
 type PluginSuite = core.PluginSuite
 type PluginStateAdapter = core.PluginStateAdapter
 type PluginProbe = core.PluginProbe

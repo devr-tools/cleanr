@@ -163,6 +163,30 @@ func TestWriteReportSupportsAllFormats(t *testing.T) {
 		t.Fatalf("unexpected decoded report: %+v", decoded)
 	}
 
+	var html bytes.Buffer
+	if err := cleanr.WriteReport(&html, report, "html"); err != nil {
+		t.Fatalf("write html report: %v", err)
+	}
+	htmlOut := html.String()
+	for _, want := range []string{
+		"<!DOCTYPE html>",
+		"Static cleanr report dashboard",
+		"devr-tools / cleanr",
+		`aria-label="cleanr ascii logo"`,
+		`▄▄`,
+		"Primary evaluation results",
+		`status status-compact status-fail`,
+		`class="detail-grid"`,
+		`class="detail-key">claimed_tools</div>`,
+		`class="detail-chip">lookup_policy</span>`,
+		"semantic drift delta 0.180 exceeded gate 0.050",
+		"https://braintrust.dev/app/release-gate/build-2",
+		"claimed tool execution with no matching invocation",
+	} {
+		if !strings.Contains(htmlOut, want) {
+			t.Fatalf("expected %q in html report:\n%s", want, htmlOut)
+		}
+	}
 	var agent bytes.Buffer
 	if err := cleanr.WriteReport(&agent, report, "agent"); err != nil {
 		t.Fatalf("write agent report: %v", err)

@@ -616,9 +616,9 @@ func validateImportedTrendSource(errs *ValidationErrors, prefix string, source c
 
 func validateSummary(errs *ValidationErrors, prefix string, summary core.SummaryConfig) {
 	switch strings.TrimSpace(summary.Format) {
-	case "", "markdown", "json":
+	case "", "markdown", "json", "html":
 	default:
-		errs.Add(prefix+".format", "must be one of markdown or json", "use markdown for PR or release notes, or json for downstream automation")
+		errs.Add(prefix+".format", "must be one of markdown, json, or html", "use markdown for PR notes, json for downstream automation, or html for a static dashboard artifact")
 	}
 	requireNonEmpty(errs, prefix+".output", summary.Output, "set the output path for the generated PR or release summary artifact")
 }

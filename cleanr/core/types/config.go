@@ -534,35 +534,46 @@ type SummaryConfig struct {
 type PluginManifest struct {
 	Name          string               `json:"name"`
 	Version       string               `json:"version,omitempty"`
+	Source        string               `json:"source,omitempty"`
+	BaseDir       string               `json:"base_dir,omitempty"`
+	Runtime       PluginRuntimeConfig  `json:"runtime,omitempty"`
 	PolicyPacks   []string             `json:"policy_packs,omitempty"`
 	Suites        []PluginSuite        `json:"suites,omitempty"`
 	StateAdapters []PluginStateAdapter `json:"state_adapters,omitempty"`
 	Probes        []PluginProbe        `json:"probes,omitempty"`
 }
 
+type PluginRuntimeConfig struct {
+	Backend    string `json:"backend,omitempty"`
+	Entrypoint string `json:"entrypoint,omitempty"`
+}
+
 type PluginSuite struct {
-	Name      string            `json:"name"`
-	Command   string            `json:"command"`
-	Args      []string          `json:"args,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-	TimeoutMS int               `json:"timeout_ms,omitempty"`
+	Name      string              `json:"name"`
+	Command   string              `json:"command"`
+	Args      []string            `json:"args,omitempty"`
+	Env       map[string]string   `json:"env,omitempty"`
+	Runtime   PluginRuntimeConfig `json:"runtime,omitempty"`
+	TimeoutMS int                 `json:"timeout_ms,omitempty"`
 }
 
 type PluginStateAdapter struct {
-	Name      string            `json:"name"`
-	Command   string            `json:"command"`
-	Args      []string          `json:"args,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-	TimeoutMS int               `json:"timeout_ms,omitempty"`
+	Name      string              `json:"name"`
+	Command   string              `json:"command"`
+	Args      []string            `json:"args,omitempty"`
+	Env       map[string]string   `json:"env,omitempty"`
+	Runtime   PluginRuntimeConfig `json:"runtime,omitempty"`
+	TimeoutMS int                 `json:"timeout_ms,omitempty"`
 }
 
 type PluginProbe struct {
-	Name      string            `json:"name"`
-	Kind      string            `json:"kind,omitempty"`
-	Command   string            `json:"command"`
-	Args      []string          `json:"args,omitempty"`
-	Env       map[string]string `json:"env,omitempty"`
-	TimeoutMS int               `json:"timeout_ms,omitempty"`
+	Name      string              `json:"name"`
+	Kind      string              `json:"kind,omitempty"`
+	Command   string              `json:"command"`
+	Args      []string            `json:"args,omitempty"`
+	Env       map[string]string   `json:"env,omitempty"`
+	Runtime   PluginRuntimeConfig `json:"runtime,omitempty"`
+	TimeoutMS int                 `json:"timeout_ms,omitempty"`
 }
 
 type DBProbeObservation struct {

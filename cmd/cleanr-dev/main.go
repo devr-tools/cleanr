@@ -230,8 +230,9 @@ func runReportDevCommand(ctx context.Context, runner devtools.Runner, args []str
 	fs := flag.NewFlagSet("report", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	input := fs.String("input", "", "Optional path to a JSON cleanr report to render")
-	format := fs.String("format", "text", "Report format: text, json, junit, sarif, or agent")
+	format := fs.String("format", "text", "Report format: text, json, junit, sarif, agent, or html")
 	preset := fs.String("preset", "fail", "Built-in preview preset when -input is omitted: fail or pass")
+	output := fs.String("output", "", "Optional output file for the rendered report")
 	if err := fs.Parse(args); err != nil {
 		return 2
 	}
@@ -240,6 +241,7 @@ func runReportDevCommand(ctx context.Context, runner devtools.Runner, args []str
 			Input:  *input,
 			Format: *format,
 			Preset: *preset,
+			Output: *output,
 		})
 	})
 }

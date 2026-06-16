@@ -40,6 +40,9 @@ func datasetReviewCmd(args []string, stdout, stderr io.Writer) int {
 			_, _ = fmt.Fprintf(stderr, "dataset review warning: %v\n", err)
 		}
 	}
+	if err := maybeWriteGitLabReviewOutputs(cmd.GitLab, ctx, gate); err != nil {
+		_, _ = fmt.Fprintf(stderr, "dataset review warning: %v\n", err)
+	}
 	if err := maybeWriteBuildkiteReviewOutputs(cmd.Buildkite, ctx, gate); err != nil {
 		_, _ = fmt.Fprintf(stderr, "dataset review warning: %v\n", err)
 	}
@@ -73,6 +76,8 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 	buildkiteMeta := fs.Bool("buildkite-meta", false, "Write review metrics to Buildkite metadata when buildkite-agent is available")
 	buildkiteAnnotation := fs.Bool("buildkite-annotation", false, "Write a Buildkite annotation when the review gate fails and buildkite-agent is available")
 	buildkiteUploadArtifacts := fs.Bool("buildkite-upload-artifacts", false, "Upload reviewed artifacts with buildkite-agent when available")
+	gitlabDotenv := fs.String("gitlab-dotenv", "", "Write review metrics to a GitLab dotenv report file")
+	gitlabAnnotations := fs.String("gitlab-annotations", "", "Write a GitLab annotations report JSON file")
 	var approve repeatedStringFlag
 	var reject repeatedStringFlag
 	var promoteStable repeatedStringFlag
@@ -106,6 +111,10 @@ func parseDatasetReviewCommand(args []string, stderr io.Writer) (datasetReviewCo
 			Meta:            *buildkiteMeta,
 			Annotation:      *buildkiteAnnotation,
 			UploadArtifacts: *buildkiteUploadArtifacts,
+		},
+		GitLab: gitlabOptions{
+			DotenvPath:      strings.TrimSpace(*gitlabDotenv),
+			AnnotationsPath: strings.TrimSpace(*gitlabAnnotations),
 		},
 		Gate: datasetReviewGateOptions{
 			FailOnPending:  *failOnPending,

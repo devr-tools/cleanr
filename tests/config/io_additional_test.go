@@ -143,6 +143,8 @@ suites:
 	if err := os.WriteFile(pluginPath, []byte(`
 name: workflow-plugin
 version: v1
+runtime:
+  backend: command
 policy_packs:
   - ./plugin-pack.yaml
 suites:
@@ -179,6 +181,12 @@ scenarios:
 	}
 	if len(cfg.ResolvedPlugins) != 1 || cfg.ResolvedPlugins[0].Name != "workflow-plugin" {
 		t.Fatalf("expected resolved plugin manifest, got %+v", cfg.ResolvedPlugins)
+	}
+	if cfg.ResolvedPlugins[0].Source != pluginPath || cfg.ResolvedPlugins[0].BaseDir != dir {
+		t.Fatalf("expected plugin source metadata, got %+v", cfg.ResolvedPlugins[0])
+	}
+	if cfg.ResolvedPlugins[0].Runtime.Backend != "command" {
+		t.Fatalf("expected plugin runtime metadata, got %+v", cfg.ResolvedPlugins[0].Runtime)
 	}
 	if len(cfg.ResolvedPlugins[0].Probes) != 1 || cfg.ResolvedPlugins[0].Probes[0].Name != "db-ticket-probe" {
 		t.Fatalf("expected resolved plugin probes, got %+v", cfg.ResolvedPlugins[0].Probes)
@@ -225,6 +233,43 @@ scenarios:
 	_, err := cleanr.LoadConfigFile(configPath)
 	if err == nil || !strings.Contains(err.Error(), "probe[0] is missing command") {
 		t.Fatalf("expected missing probe command error, got %v", err)
+	}
+}
+
+func TestLoadConfigFileRejectsUnsupportedPluginRuntimeBackend(t *testing.T) {
+	t.Parallel()
+
+	dir := t.TempDir()
+	pluginPath := filepath.Join(dir, "workflow-plugin.yaml")
+	if err := os.WriteFile(pluginPath, []byte(`
+name: workflow-plugin
+suites:
+  - name: db-ticket-probe
+    command: ./plugin.wasm
+    runtime:
+      backend: mystery
+`), 0o644); err != nil {
+		t.Fatalf("write plugin: %v", err)
+	}
+	configPath := filepath.Join(dir, "cleanr.yaml")
+	if err := os.WriteFile(configPath, []byte(`
+version: v1alpha1
+plugins:
+  - ./workflow-plugin.yaml
+target:
+  url: https://example.com/v1/chat
+  prompt_field: input
+  response_field: output.text
+scenarios:
+  - name: x
+    input: y
+`), 0o644); err != nil {
+		t.Fatalf("write config: %v", err)
+	}
+
+	_, err := cleanr.LoadConfigFile(configPath)
+	if err == nil || !strings.Contains(err.Error(), `unsupported backend "mystery"`) {
+		t.Fatalf("expected unsupported runtime backend error, got %v", err)
 	}
 }
 

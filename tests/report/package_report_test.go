@@ -113,4 +113,12 @@ func TestReportPackageSupportsPlainAndColorText(t *testing.T) {
 	if decoded.Contract.Kind != "cleanr.report.agent" || decoded.Summary.Target != "demo" {
 		t.Fatalf("unexpected agent report: %+v", decoded)
 	}
+
+	var html bytes.Buffer
+	if err := reportpkg.Write(&html, report, "html"); err != nil {
+		t.Fatalf("write html report: %v", err)
+	}
+	if out := html.String(); !strings.Contains(out, "<!DOCTYPE html>") || !strings.Contains(out, "Static cleanr report dashboard") || !strings.Contains(out, "devr-tools / cleanr") || !strings.Contains(out, `aria-label="cleanr ascii logo"`) || !strings.Contains(out, `▄▄`) {
+		t.Fatalf("unexpected html report:\n%s", out)
+	}
 }

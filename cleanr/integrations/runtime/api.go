@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
+	reportpkg "github.com/devr-tools/cleanr/cleanr/report"
 	trendspkg "github.com/devr-tools/cleanr/cleanr/trends"
 )
 
@@ -245,6 +246,12 @@ func renderSummary(report core.Report, cfg core.SummaryConfig) ([]byte, error) {
 			return nil, fmt.Errorf("render summary: %w", err)
 		}
 		return append(data, '\n'), nil
+	case "html":
+		var buf bytes.Buffer
+		if err := reportpkg.Write(&buf, report, "html"); err != nil {
+			return nil, fmt.Errorf("render summary: %w", err)
+		}
+		return buf.Bytes(), nil
 	default:
 		return nil, fmt.Errorf("render summary: unsupported format %s", cfg.Format)
 	}

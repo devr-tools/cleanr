@@ -52,6 +52,7 @@ type ResultSinkConfig = typespkg.ResultSinkConfig
 type TrendSourceConfig = typespkg.TrendSourceConfig
 type SummaryConfig = typespkg.SummaryConfig
 type PluginManifest = typespkg.PluginManifest
+type PluginRuntimeConfig = typespkg.PluginRuntimeConfig
 type PluginSuite = typespkg.PluginSuite
 type PluginStateAdapter = typespkg.PluginStateAdapter
 type PluginProbe = typespkg.PluginProbe

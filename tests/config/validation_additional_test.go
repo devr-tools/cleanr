@@ -526,14 +526,13 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			wantSub: "integrations.trend_sources[0]",
 		},
 		{
-			name: "summary validates format",
+			name: "summary accepts html format",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Integrations.Summaries = []cleanr.SummaryConfig{{
 					Format: "html",
 					Output: "reports/summary.md",
 				}}
 			},
-			wantSub: "integrations.summaries[0].format",
 		},
 	}
 

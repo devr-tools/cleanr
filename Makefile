@@ -19,7 +19,9 @@ UI_GOPATH ?= $(HOME)/go
 
 export GOCACHE
 
-.PHONY: menu help fmt fmt-check lint test test-review-ui preview-review-ui gofiles check ci commit build release homebrew-formula deploy report clean
+DASHBOARD_OUTPUT ?= dist/dashboard/report.html
+
+.PHONY: menu help fmt fmt-check lint test test-dashboard dashboard test-review-ui preview-review-ui gofiles check ci commit build release homebrew-formula deploy report clean
 
 menu:
 	@printf "\ncleanr make menu\n\n"
@@ -27,6 +29,8 @@ menu:
 	@printf "  make fmt-check   Verify Go files are formatted\n"
 	@printf "  make lint        Run go vet\n"
 	@printf "  make test        Run the Go test suite\n"
+	@printf "  make test-dashboard  Run focused HTML dashboard tests\n"
+	@printf "  make dashboard   Render a sample HTML dashboard to dist/dashboard/\n"
 	@printf "  make test-review-ui  Run focused interactive dataset review tests\n"
 	@printf "  make preview-review-ui  Launch the live interactive dataset review preview\n"
 	@printf "  make gofiles     Validate and list Go file layout\n"
@@ -65,6 +69,13 @@ lint:
 
 test:
 	$(GO) run ./cmd/cleanr-dev test
+
+test-dashboard:
+	env -u GOROOT GOCACHE=$(GOCACHE) go test ./tests/report ./tests/cli -run 'Test(WriteReportSupportsAllFormats|ReportPackageSupportsPlainAndColorText|CLIRunWritesHTMLReport|TrendsCommandWritesHTMLSummary)$$'
+
+dashboard:
+	mkdir -p $(dir $(DASHBOARD_OUTPUT))
+	$(GO) run ./cmd/cleanr-dev report -format html -preset $(REPORT_PRESET) -output $(DASHBOARD_OUTPUT)
 
 test-review-ui:
 	@GOROOT=$(UI_GOROOT) GOPATH=$(UI_GOPATH) GOCACHE=$(GOCACHE) go run ./cmd/cleanr-dev test-review-ui

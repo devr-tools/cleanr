@@ -20,6 +20,8 @@ func Run(args []string, stdout, stderr io.Writer) int {
 	switch args[0] {
 	case "run":
 		return runCmd(args[1:], stdout, stderr)
+	case "watch":
+		return watchCmd(args[1:], stdout, stderr)
 	case "explain":
 		return explainCmd(args[1:], stdout, stderr)
 	case "generate":
@@ -54,5 +56,5 @@ func Run(args []string, stdout, stderr io.Writer) int {
 }
 
 func usage(w io.Writer) {
-	_, _ = fmt.Fprintln(w, "usage: cleanr <run|explain|generate|trends|dataset|sync|plugins|github|snapshot|validate|init|setup|mcp|version> [flags]")
+	_, _ = fmt.Fprintln(w, "usage: cleanr <run|watch|explain|generate|trends|dataset|sync|plugins|github|snapshot|validate|init|setup|mcp|version> [flags]")
 }

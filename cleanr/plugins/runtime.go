@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -35,34 +36,23 @@ type SuiteInput struct {
 	Plugin core.PluginManifest `json:"plugin"`
 }
 
-type jsonCommandSpec struct {
-	command   string
-	args      []string
-	env       map[string]string
-	timeoutMS int
-}
-
 func ApplyStateAdapters(ctx context.Context, req core.Request, resp core.Response, manifests []core.PluginManifest) (core.Response, error) {
-	for _, manifest := range manifests {
-		input := StateAdapterInput{
-			Scenario: req.Scenario,
-			Request:  req,
-			Response: resp,
+	registry := NewRegistry(manifests)
+	for _, adapter := range registry.StateAdapters() {
+		input := StateAdapterInput{Scenario: req.Scenario, Request: req, Response: resp}
+		delta, err := runStateAdapter(ctx, adapter, input)
+		if err != nil {
+			return resp, err
 		}
-		for _, adapter := range manifest.StateAdapters {
-			delta, err := runStateAdapter(ctx, adapter, input)
-			if err != nil {
-				return resp, err
-			}
-			resp = applyStateAdapterDelta(resp, delta)
+		resp = applyStateAdapterDelta(resp, delta)
+	}
+	for _, probe := range registry.Probes() {
+		input := StateAdapterInput{Scenario: req.Scenario, Request: req, Response: resp}
+		delta, err := runProbe(ctx, probe, input)
+		if err != nil {
+			return resp, err
 		}
-		for _, probe := range manifest.Probes {
-			delta, err := runProbe(ctx, probe, input)
-			if err != nil {
-				return resp, err
-			}
-			resp = applyStateAdapterDelta(resp, delta)
-		}
+		resp = applyStateAdapterDelta(resp, delta)
 	}
 	return resp, nil
 }
@@ -74,12 +64,8 @@ func RunPluginSuite(ctx context.Context, manifest core.PluginManifest, suite cor
 		Plugin: manifest,
 	}
 	var result core.SuiteResult
-	if err := runJSONCommand(ctx, jsonCommandSpec{
-		command:   suite.Command,
-		args:      suite.Args,
-		env:       suite.Env,
-		timeoutMS: suite.TimeoutMS,
-	}, input, &result); err != nil {
+	entry := buildEntry(manifest, "suite", suite.Name, suite.Command, suite.Args, suite.Env, suite.TimeoutMS, suite.Runtime)
+	if err := runJSONEntry(ctx, entry, input, &result); err != nil {
 		return core.SuiteResult{}, err
 	}
 	if strings.TrimSpace(result.Name) == "" {
@@ -88,31 +74,21 @@ func RunPluginSuite(ctx context.Context, manifest core.PluginManifest, suite cor
 	return result, nil
 }
 
-func runStateAdapter(ctx context.Context, adapter core.PluginStateAdapter, input StateAdapterInput) (StateAdapterDelta, error) {
+func runStateAdapter(ctx context.Context, adapter Entry, input StateAdapterInput) (StateAdapterDelta, error) {
 	var delta StateAdapterDelta
-	if err := runJSONCommand(ctx, jsonCommandSpec{
-		command:   adapter.Command,
-		args:      adapter.Args,
-		env:       adapter.Env,
-		timeoutMS: adapter.TimeoutMS,
-	}, input, &delta); err != nil {
+	if err := runJSONEntry(ctx, adapter, input, &delta); err != nil {
 		return StateAdapterDelta{}, fmt.Errorf("plugin state adapter %s: %w", adapter.Name, err)
 	}
 	return delta, nil
 }
 
-func runProbe(ctx context.Context, probe core.PluginProbe, input StateAdapterInput) (StateAdapterDelta, error) {
+func runProbe(ctx context.Context, probe Entry, input StateAdapterInput) (StateAdapterDelta, error) {
 	var delta StateAdapterDelta
-	if err := runJSONCommand(ctx, jsonCommandSpec{
-		command:   probe.Command,
-		args:      probe.Args,
-		env:       probe.Env,
-		timeoutMS: probe.TimeoutMS,
-	}, input, &delta); err != nil {
+	if err := runJSONEntry(ctx, probe, input, &delta); err != nil {
 		return StateAdapterDelta{}, fmt.Errorf("plugin probe %s: %w", probe.Name, err)
 	}
-	delta.StateChanges = append(delta.StateChanges, normalizeDBProbeObservations(probe, delta.DBObservations)...)
-	delta.StateChanges = append(delta.StateChanges, normalizeQueueProbeObservations(probe, delta.QueueObservations)...)
+	delta.StateChanges = append(delta.StateChanges, normalizeDBProbeObservations(probeDescriptor(probe), delta.DBObservations)...)
+	delta.StateChanges = append(delta.StateChanges, normalizeQueueProbeObservations(probeDescriptor(probe), delta.QueueObservations)...)
 	return delta, nil
 }
 
@@ -257,8 +233,8 @@ func cloneRawMap(src map[string]any) map[string]any {
 	return dst
 }
 
-func runJSONCommand(ctx context.Context, spec jsonCommandSpec, input any, output any) error {
-	timeout := time.Duration(spec.timeoutMS) * time.Millisecond
+func runJSONEntry(ctx context.Context, entry Entry, input any, output any) error {
+	timeout := time.Duration(entry.TimeoutMS) * time.Millisecond
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
@@ -269,27 +245,78 @@ func runJSONCommand(ctx context.Context, spec jsonCommandSpec, input any, output
 	if err != nil {
 		return err
 	}
-
-	cmd := exec.CommandContext(cmdCtx, spec.command, spec.args...)
-	cmd.Stdin = bytes.NewReader(data)
-	var stdout bytes.Buffer
-	var stderr bytes.Buffer
-	cmd.Stdout = &stdout
-	cmd.Stderr = &stderr
-	cmd.Env = append([]string(nil), os.Environ()...)
-	for key, value := range spec.env {
-		cmd.Env = append(cmd.Env, key+"="+value)
-	}
-
-	if err := cmd.Run(); err != nil {
-		msg := strings.TrimSpace(stderr.String())
-		if msg == "" {
-			msg = err.Error()
-		}
-		return fmt.Errorf("%s", msg)
+	stdout, err := executeEntry(cmdCtx, entry, data)
+	if err != nil {
+		return err
 	}
 	if err := json.Unmarshal(stdout.Bytes(), output); err != nil {
 		return fmt.Errorf("decode plugin output: %w", err)
 	}
 	return nil
+}
+
+func executeEntry(ctx context.Context, entry Entry, input []byte) (bytes.Buffer, error) {
+	switch backendFor(entry.Command, entry.Runtime) {
+	case BackendWASM:
+		return runWASMModule(ctx, entry, input)
+	default:
+		return runCommand(ctx, entry, input)
+	}
+}
+
+func runCommand(ctx context.Context, entry Entry, input []byte) (bytes.Buffer, error) {
+	cmd := exec.CommandContext(ctx, entry.Resolved, entry.Args...)
+	cmd.Stdin = bytes.NewReader(input)
+	var stdout bytes.Buffer
+	var stderr bytes.Buffer
+	cmd.Stdout = &stdout
+	cmd.Stderr = &stderr
+	cmd.Dir = commandWorkingDir(entry)
+	cmd.Env = buildEntryEnv(entry)
+	if err := cmd.Run(); err != nil {
+		msg := strings.TrimSpace(stderr.String())
+		if msg == "" {
+			msg = err.Error()
+		}
+		return bytes.Buffer{}, fmt.Errorf("%s", msg)
+	}
+	return stdout, nil
+}
+
+func buildEntryEnv(entry Entry) []string {
+	env := append([]string(nil), os.Environ()...)
+	for key, value := range entry.Env {
+		env = append(env, key+"="+value)
+	}
+	if strings.TrimSpace(entry.Plugin.BaseDir) != "" {
+		env = append(env, "CLEANR_PLUGIN_DIR="+entry.Plugin.BaseDir)
+	}
+	if strings.TrimSpace(entry.Plugin.Source) != "" {
+		env = append(env, "CLEANR_PLUGIN_SOURCE="+entry.Plugin.Source)
+	}
+	if strings.TrimSpace(entry.Plugin.Name) != "" {
+		env = append(env, "CLEANR_PLUGIN_NAME="+entry.Plugin.Name)
+	}
+	return env
+}
+
+func commandWorkingDir(entry Entry) string {
+	if strings.TrimSpace(entry.WorkingDir) != "" {
+		return entry.WorkingDir
+	}
+	if strings.TrimSpace(entry.Resolved) != "" && filepath.IsAbs(entry.Resolved) {
+		return filepath.Dir(entry.Resolved)
+	}
+	return ""
+}
+
+func probeDescriptor(entry Entry) core.PluginProbe {
+	return core.PluginProbe{
+		Name:    entry.Name,
+		Kind:    entry.ProbeKind,
+		Command: entry.Command,
+		Args:    append([]string(nil), entry.Args...),
+		Env:     cloneStringMap(entry.Env),
+		Runtime: entry.Runtime,
+	}
 }
