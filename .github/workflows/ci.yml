@@ -17,7 +17,11 @@ env:
   CODEGUARD_VERSION: v0.2.0
   GOVULNCHECK_MODE: required
   GOVULNCHECK_VERSION: v1.0.4
-  MIN_INTERNAL_COVERAGE: "65.0"
+  # Combined coverage gate across product (cleanr/...) and CLI (internal/...)
+  # code. Measured combined coverage is ~76% today; 65 is a conservative floor
+  # kept below that so the first combined run does not hard-fail. Ratchet this
+  # up toward the actual number over time.
+  MIN_COVERAGE: "65.0"
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
@@ -205,22 +209,22 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Enforce internal coverage gate
+      - name: Enforce coverage gate
         shell: bash
         run: |
           set -euo pipefail
 
-          go test ./... -coverpkg=./internal/... -coverprofile=.coverage.internal.out
-          total="$(go tool cover -func=.coverage.internal.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
+          go test ./... -coverpkg=./cleanr/...,./internal/... -coverprofile=.coverage.combined.out
+          total="$(go tool cover -func=.coverage.combined.out | awk '/^total:/ {gsub(/%/, "", $3); print $3}')"
 
           {
             echo "## Coverage"
             echo
-            echo "Total internal coverage: ${total}%"
-            echo "Required minimum: ${MIN_INTERNAL_COVERAGE}%"
+            echo "Total combined coverage (cleanr + internal): ${total}%"
+            echo "Required minimum: ${MIN_COVERAGE}%"
           } >> "$GITHUB_STEP_SUMMARY"
 
-          awk -v total="$total" -v min="$MIN_INTERNAL_COVERAGE" 'BEGIN { exit !(total + 0 >= min + 0) }'
+          awk -v total="$total" -v min="$MIN_COVERAGE" 'BEGIN { exit !(total + 0 >= min + 0) }'
 
   security:
     name: security scan

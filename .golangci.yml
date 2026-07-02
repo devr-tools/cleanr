@@ -5,9 +5,20 @@ run:
   relative-path-mode: gomod
   tests: false
 
+# NOTE: switching from `default: none` to `default: standard` and adding
+# errcheck/staticcheck/bodyclose surfaces ~60 pre-existing findings across
+# packages that are out of scope for this change (internal/devtools, cleanr/
+# engines, adapters, plugins, integrations, openapi, config/io.go, and some
+# CLI files). golangci-lint is not currently a CI gate (see
+# .github/workflows/ci.yml, which has no lint job), so this config change does
+# not hard-fail CI. A dedicated follow-up pass should clean up the pre-existing
+# findings so these linters can be promoted to a gating check.
 linters:
-  default: none
+  default: standard
   enable:
+    - bodyclose
+    - errcheck
+    - staticcheck
     - funlen
     - gocognit
     - maintidx

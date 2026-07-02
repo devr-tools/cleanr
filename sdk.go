@@ -1,3 +1,17 @@
+// Package cleanr (root) is a thin, legacy forwarding facade over the canonical
+// public API in the cleanr/ subpackage (github.com/devr-tools/cleanr/cleanr,
+// defined in cleanr/facade.go). Every symbol here is an alias or a one-line
+// forward to that canonical package, which is where all new public API should
+// be added.
+//
+// This root package exists only for backwards compatibility with earlier
+// import paths and intentionally re-exports a drifted subset of the canonical
+// facade. Do NOT add new API surface here; add it to cleanr/facade.go and, only
+// if back-compat requires it, forward the new symbol from this file.
+//
+// TODO(pre-v1): reconcile this root facade with cleanr/facade.go — either
+// regenerate it as a complete, mechanical mirror or remove it in favor of the
+// canonical import path once external consumers have migrated.
 package cleanr
 
 import (
