@@ -29,6 +29,8 @@ type SuiteResult struct {
 type Report struct {
 	Name            string             `json:"name"`
 	Passed          bool               `json:"passed"`
+	Interrupted     bool               `json:"interrupted,omitempty"`
+	SkippedSuites   []string           `json:"skipped_suites,omitempty"`
 	GeneratedAt     time.Time          `json:"generated_at"`
 	Duration        time.Duration      `json:"duration"`
 	TotalSuites     int                `json:"total_suites"`

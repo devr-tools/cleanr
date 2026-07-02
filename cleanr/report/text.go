@@ -26,12 +26,18 @@ func writeReportSummary(b *strings.Builder, palette textPalette, report core.Rep
 	if !report.Passed {
 		status = "FAIL"
 	}
+	if report.Interrupted {
+		status = "INTERRUPTED"
+	}
 	if banner := renderBanner(palette); banner != "" {
 		fmt.Fprintf(b, "%s\n\n", banner)
 	}
 	fmt.Fprintf(b, "%s\n", palette.accent("Report Summary"))
 	fmt.Fprintf(b, "%s\n", palette.accent(strings.Repeat("=", 48)))
 	writeKeyValue(b, palette, "Status", palette.status(report.Passed, status))
+	if len(report.SkippedSuites) > 0 {
+		writeKeyValue(b, palette, "Skipped", strings.Join(report.SkippedSuites, ", "))
+	}
 	writeKeyValue(b, palette, "Target", report.Name)
 	if !report.GeneratedAt.IsZero() {
 		writeKeyValue(b, palette, "Generated", report.GeneratedAt.Format(time.RFC3339))

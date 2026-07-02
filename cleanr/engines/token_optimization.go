@@ -26,9 +26,11 @@ func (e TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContex
 	scenarios := runCtx.Config.Scenarios
 	cases := make([]core.CaseResult, len(scenarios))
 	metrics := make([]tokenOptimizationMetrics, len(scenarios))
-	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+	ran := runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
 		cases[i], metrics[i] = e.evaluateScenario(ctx, runCtx, scenarios[i], cfg)
 	})
+	cases = cases[:ran]
+	metrics = metrics[:ran]
 
 	totalInput := 0
 	totalOutput := 0

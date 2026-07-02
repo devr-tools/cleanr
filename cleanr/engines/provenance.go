@@ -20,9 +20,10 @@ func (ProvenanceEngine) Run(ctx context.Context, runCtx *core.RunContext) core.S
 	cases := make([]core.CaseResult, len(scenarios))
 	// Provenance mutates the request per scenario (canary injection), so it does
 	// not share the read-only response cache, but each scenario is independent.
-	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+	ran := runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
 		cases[i] = runProvenanceScenario(ctx, runCtx, scenarios[i], cfg)
 	})
+	cases = cases[:ran]
 
 	return core.SuiteResult{Name: "provenance", Passed: allPassed(cases), Cases: cases}
 }

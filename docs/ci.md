@@ -7,8 +7,9 @@
 - `0`: all suites passed
 - `1`: one or more suites or cases failed
 - `2`: invalid configuration or runtime error
+- `130`: the run was interrupted (SIGINT/SIGTERM or `-timeout`) before every suite executed; the partial report is written with `"interrupted": true` and the skipped suite names, and the run is neither recorded in trend history nor attested
 
-That split lets pipelines distinguish product regressions from setup or infrastructure failures.
+That split lets pipelines distinguish product regressions from setup or infrastructure failures — and truncated runs from either.
 
 ## Pick an Integration Shape
 

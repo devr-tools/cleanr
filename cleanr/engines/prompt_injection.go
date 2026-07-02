@@ -18,9 +18,10 @@ func (PromptInjectionEngine) Run(ctx context.Context, runCtx *core.RunContext) c
 	cases := make([]core.CaseResult, len(scenarios))
 	// Each scenario is invoked with a distinct injection payload, so cases are
 	// independent and safe to run in a bounded worker pool.
-	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+	ran := runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
 		cases[i] = promptInjectionCase(ctx, runCtx, scenarios[i], cfg)
 	})
+	cases = cases[:ran]
 	return core.SuiteResult{Name: "prompt-injection", Passed: allPassed(cases), Cases: cases}
 }
 

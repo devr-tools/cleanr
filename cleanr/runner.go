@@ -47,9 +47,11 @@ func (r *Runner) Run(ctx context.Context) Report {
 	for _, engine := range r.engines {
 		// Stop launching further engines once the run's deadline/cancellation
 		// fires so we don't spend time producing spurious "context deadline
-		// exceeded" findings after the budget is gone.
+		// exceeded" findings after the budget is gone. Skipped suites are
+		// recorded so a truncated run can never be mistaken for a full one.
 		if ctx.Err() != nil {
-			break
+			report.SkippedSuites = append(report.SkippedSuites, engine.Name())
+			continue
 		}
 		suiteStart := time.Now()
 		result := engine.Run(ctx, runCtx)
@@ -67,7 +69,11 @@ func (r *Runner) Run(ctx context.Context) Report {
 		}
 	}
 
-	report.Passed = report.FailedSuites == 0 && report.FailedCases == 0
+	// An interrupted run must never report success: suites that did not execute
+	// cannot vouch for the target, so downstream gates and attestations treat
+	// the report as failed regardless of the suites that happened to finish.
+	report.Interrupted = ctx.Err() != nil
+	report.Passed = !report.Interrupted && report.FailedSuites == 0 && report.FailedCases == 0
 	report.Duration = time.Since(start)
 	report.Recommendations = buildRecommendations(report)
 	return report

@@ -17,6 +17,12 @@ import (
 	"github.com/devr-tools/cleanr/cleanr"
 )
 
+// exitInterrupted is returned when the run was cut short by SIGINT/SIGTERM or
+// the -timeout budget: the partial report is still written, but suites that
+// never executed mean the result must not be treated as pass or fail. 130
+// matches the shell convention for termination by SIGINT (128+2).
+const exitInterrupted = 130
+
 type runOptions struct {
 	configPath         string
 	profile            string
@@ -66,9 +72,9 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 	defer cancel()
 	slog.Debug("run starting", "format", cfg.Reporting.Format, "output", cfg.Reporting.Output)
 	report := cleanr.NewHTTPRunner(cfg).Run(ctx)
-	if ctx.Err() != nil {
-		_, _ = fmt.Fprintf(stderr, "run interrupted: %v; writing partial report\n", ctx.Err())
-		slog.Warn("run interrupted", "error", ctx.Err())
+	if report.Interrupted {
+		_, _ = fmt.Fprintf(stderr, "run interrupted: %v; writing partial report marked as interrupted\n", ctx.Err())
+		slog.Warn("run interrupted", "error", ctx.Err(), "skipped_suites", report.SkippedSuites)
 	}
 
 	// persistWarnings accumulates non-fatal bookkeeping failures so the run can
@@ -77,13 +83,19 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 
 	// Trend history enriches the report and its gates can flip pass/fail, so it
 	// must run before the report is written. A persistence failure here is
-	// downgraded to a warning instead of discarding the whole run.
-	if err := cleanr.AttachTrendHistory(&report, cfg.Reporting.TrendFile, cfg.Reporting.BuildID, cfg.Reporting.TrendLimit); err != nil {
-		_, _ = fmt.Fprintf(stderr, "trend history warning: %v\n", err)
-		slog.Warn("trend history persistence failed", "error", err)
-		persistWarnings = append(persistWarnings, "trend history")
+	// downgraded to a warning instead of discarding the whole run. An
+	// interrupted run is never appended to history: a partial run would skew
+	// every later build-over-build comparison against it.
+	if report.Interrupted {
+		_, _ = fmt.Fprintln(stderr, "trend history skipped: interrupted runs are not recorded")
+	} else {
+		if err := cleanr.AttachTrendHistory(&report, cfg.Reporting.TrendFile, cfg.Reporting.BuildID, cfg.Reporting.TrendLimit); err != nil {
+			_, _ = fmt.Fprintf(stderr, "trend history warning: %v\n", err)
+			slog.Warn("trend history persistence failed", "error", err)
+			persistWarnings = append(persistWarnings, "trend history")
+		}
+		cleanr.EvaluateTrendGates(&report, cfg.Reporting.TrendGates)
 	}
-	cleanr.EvaluateTrendGates(&report, cfg.Reporting.TrendGates)
 
 	// Build the replay artifact and attestation in memory and publish
 	// integrations before writing the report: these enrich the report content
@@ -91,10 +103,20 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 	// contain. Only the on-disk persistence of these artifacts is deferred until
 	// after the report is written.
 	replayArtifact, hasReplayArtifact := buildReplayArtifact(cfg, report)
-	attestation, err := buildAttestation(cfg, report, replayArtifact, hasReplayArtifact, stderr)
-	if err != nil {
-		slog.Warn("attestation build failed", "error", err)
-		persistWarnings = append(persistWarnings, "attestation")
+	// A release-gate attestation vouches for a completed run; never sign one
+	// whose suites were cut short.
+	var attestation *cleanr.ReleaseGateAttestation
+	if report.Interrupted {
+		if cfg.Governance.Attestation.Enabled {
+			_, _ = fmt.Fprintln(stderr, "attestation skipped: interrupted runs are not attested")
+		}
+	} else {
+		built, err := buildAttestation(cfg, report, replayArtifact, hasReplayArtifact, stderr)
+		if err != nil {
+			slog.Warn("attestation build failed", "error", err)
+			persistWarnings = append(persistWarnings, "attestation")
+		}
+		attestation = built
 	}
 	publishIntegrations(ctx, cfg, &report, replayArtifact, hasReplayArtifact, attestation, resolvedConfigPath, stderr)
 
@@ -121,6 +143,11 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 
 	// Primary pass/fail from the run result takes precedence; only when the run
 	// itself passed do bookkeeping failures surface as the distinct exit code 2.
+	// Interrupted runs get their own exit code so CI can distinguish "the
+	// target failed" from "the run never finished".
+	if report.Interrupted {
+		return exitInterrupted
+	}
 	if !report.Passed {
 		return 1
 	}
