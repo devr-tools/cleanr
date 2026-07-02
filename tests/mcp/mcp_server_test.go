@@ -389,6 +389,67 @@ func TestMCPServerLifecycleToolsReturnStructuredArtifacts(t *testing.T) {
 	}
 }
 
+func TestMCPServerContainsPanickingToolHandler(t *testing.T) {
+	server := initializedMCPServer(t)
+
+	cfg := cleanr.ExampleConfig()
+	cfg.Scenarios = nil
+	cfg.ScenarioGeneration = cleanr.ScenarioGenerationConfig{
+		Enabled: true,
+		Provider: cleanr.TargetConfig{
+			Type:          "http",
+			URL:           "https://generator.example.test/v1",
+			Method:        http.MethodPost,
+			PromptField:   "input",
+			ResponseField: "output.text",
+		},
+		Spec: cleanr.ScenarioGenerationSpec{
+			AppKind:   "support-assistant",
+			Goals:     []string{"refund policy"},
+			RiskAreas: []string{"prompt injection"},
+		},
+		Count: 1,
+	}
+	originalGenerate := runtime.GenerateScenarioDatasetFunc
+	runtime.GenerateScenarioDatasetFunc = func(context.Context, cleanr.Config, *http.Client) (cleanr.ScenarioDataset, error) {
+		panic("boom")
+	}
+	defer func() { runtime.GenerateScenarioDatasetFunc = originalGenerate }()
+	configJSON, err := json.Marshal(cfg)
+	if err != nil {
+		t.Fatalf("marshal config: %v", err)
+	}
+
+	resp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      8,
+		"method":  "tools/call",
+		"params": map[string]any{
+			"name": "cleanr_generate_dataset",
+			"arguments": map[string]any{
+				"config": string(configJSON),
+			},
+		},
+	})
+	respErr, ok := resp["error"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected JSON-RPC error for panicking tool, got %#v", resp)
+	}
+	if msg, _ := respErr["message"].(string); !strings.Contains(msg, "panicked") {
+		t.Fatalf("expected panic message in error, got %q", msg)
+	}
+
+	// The server must keep serving after containing the panic.
+	pingResp := mustHandleMCP(t, server, map[string]any{
+		"jsonrpc": "2.0",
+		"id":      9,
+		"method":  "ping",
+	})
+	if _, ok := pingResp["result"]; !ok {
+		t.Fatalf("expected ping to succeed after tool panic, got %#v", pingResp)
+	}
+}
+
 func initializedMCPServer(t *testing.T) *mcpserver.Server {
 	t.Helper()
 	server := mcpserver.New()
