@@ -30,12 +30,16 @@ func NewHTTP(cfg core.TargetConfig, client *http.Client) *HTTP {
 // (initial attempt plus retries).
 const maxRequestAttempts = 3
 
-// doWithRetry issues the request built by build for each attempt, retrying on
-// transport errors and HTTP 429/503 with exponential backoff plus jitter. It
-// honors a Retry-After header when present and never sleeps past the request
-// context deadline: if the next backoff would exceed the remaining budget it
-// returns the last result instead of waiting. build must return a fresh
-// *http.Request per call so the body can be re-read on retry.
+// doWithRetry issues the request built by build for each attempt, retrying
+// HTTP 429/503 (for any method — the server rejected the request, so a replay
+// cannot double-apply it) and transport errors (for idempotent methods only —
+// a connection can die after the request was fully delivered, and replaying a
+// POST there risks duplicate writes or charges) with exponential backoff plus
+// jitter. It honors a Retry-After header when present and never sleeps past
+// the request context deadline: if the next backoff would exceed the
+// remaining budget it returns the last result, with its body still readable.
+// build must return a fresh *http.Request per call so the body can be re-read
+// on retry.
 func doWithRetry(ctx context.Context, client *http.Client, build func() (*http.Request, error)) (*http.Response, error) {
 	var lastResp *http.Response
 	var lastErr error
@@ -47,20 +51,28 @@ func doWithRetry(ctx context.Context, client *http.Client, build func() (*http.R
 		resp, err := client.Do(httpReq)
 		lastResp, lastErr = resp, err
 
-		if err == nil && !retryableStatus(resp.StatusCode) {
+		if err != nil {
+			if !idempotentMethod(httpReq.Method) {
+				return nil, err
+			}
+		} else if !retryableStatus(resp.StatusCode) {
 			return resp, nil
 		}
 		if attempt == maxRequestAttempts-1 {
 			break
 		}
-		// Drain and close the retryable response before the next attempt.
 		wait := backoffDelay(attempt, resp)
-		if err == nil && resp != nil {
-			resp.Body.Close()
-		}
 		if !sleepWithin(ctx, wait) {
-			// Not enough budget left to retry; surface the last result.
+			// Not enough budget left to retry; surface the last result. The
+			// body is intentionally NOT closed here — the caller reads it.
 			return lastResp, lastErr
+		}
+		// Committed to another attempt: drain and close the retryable
+		// response so its keep-alive connection can be reused instead of
+		// forcing a new TCP+TLS handshake against an already-degraded server.
+		if err == nil && resp != nil {
+			_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 256<<10))
+			_ = resp.Body.Close()
 		}
 	}
 	return lastResp, lastErr
@@ -68,6 +80,18 @@ func doWithRetry(ctx context.Context, client *http.Client, build func() (*http.R
 
 func retryableStatus(status int) bool {
 	return status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable
+}
+
+// idempotentMethod reports whether a request may be safely replayed after a
+// transport error, when it is unknowable whether the server already processed
+// the request.
+func idempotentMethod(method string) bool {
+	switch strings.ToUpper(method) {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return true
+	default:
+		return false
+	}
 }
 
 func backoffDelay(attempt int, resp *http.Response) time.Duration {
