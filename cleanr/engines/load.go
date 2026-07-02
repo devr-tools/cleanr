@@ -46,6 +46,15 @@ type loadEvaluation struct {
 func (LoadEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteResult {
 	cfg := runCtx.Config.Suites.Load
 	scenarios := selectLoadScenarios(runCtx.Config.Scenarios, cfg.ScenarioTags)
+	if len(scenarios) == 0 {
+		// Without scenarios the request loop would divide by zero when selecting
+		// a scenario; report a skipped suite instead of panicking.
+		return core.SuiteResult{
+			Name:   "load",
+			Passed: true,
+			Meta:   map[string]any{"skipped": "no scenarios available for load testing"},
+		}
+	}
 	start := time.Now()
 	samples := runLoadSamples(ctx, runCtx, scenarios, cfg)
 	elapsed := time.Since(start)

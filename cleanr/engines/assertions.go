@@ -8,9 +8,27 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
 )
+
+// assertionRegexCache memoizes compiled regex assertion patterns so identical
+// patterns are not recompiled on every case evaluation. Patterns are validated
+// at config load, but they are still recompiled per eval without this cache.
+var assertionRegexCache sync.Map // pattern string -> *regexp.Regexp
+
+func compileAssertionRegex(pattern string) (*regexp.Regexp, error) {
+	if cached, ok := assertionRegexCache.Load(pattern); ok {
+		return cached.(*regexp.Regexp), nil
+	}
+	re, err := regexp.Compile(pattern)
+	if err != nil {
+		return nil, err
+	}
+	assertionRegexCache.Store(pattern, re)
+	return re, nil
+}
 
 type assertionEvaluator func(core.Assertion, map[string]any, core.Response) (core.Finding, bool)
 
@@ -172,8 +190,8 @@ func evaluateRegexAssertion(assertion core.Assertion, view map[string]any) (core
 	if !ok {
 		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: %s was not present", path)), true
 	}
-	matched, err := regexp.MatchString(assertion.Pattern, renderAssertionValue(actual))
-	if err != nil || !matched {
+	re, err := compileAssertionRegex(assertion.Pattern)
+	if err != nil || !re.MatchString(renderAssertionValue(actual)) {
 		return newAssertionFinding(assertion, fmt.Sprintf("assertion failed: expected %s to match %q", path, assertion.Pattern)), true
 	}
 	return core.Finding{}, false

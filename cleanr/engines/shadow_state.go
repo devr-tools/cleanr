@@ -29,8 +29,13 @@ func (ShadowStateEngine) Run(ctx context.Context, runCtx *core.RunContext) core.
 		return shadowStateSetupFailure(fmt.Errorf("normalize shadow-state allowed_write_paths: %w", err))
 	}
 
+	// shadow-state captures filesystem state around each invoke, so it stays
+	// serial to avoid interleaving observations across concurrent scenarios.
 	cases := make([]core.CaseResult, 0, len(runCtx.Config.Scenarios))
 	for _, scenario := range runCtx.Config.Scenarios {
+		if ctx.Err() != nil {
+			break
+		}
 		cases = append(cases, runShadowStateScenario(ctx, runCtx, roots, allowed, scenario))
 	}
 

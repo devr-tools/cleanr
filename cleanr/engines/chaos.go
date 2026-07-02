@@ -24,6 +24,9 @@ func (ChaosEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 	errors := 0
 
 	for _, scenario := range runCtx.Config.Scenarios {
+		if ctx.Err() != nil {
+			break
+		}
 		for _, fault := range faults {
 			start := time.Now()
 			req := scenarioRequest(scenario, runCtx.Config.Target.Timeout())

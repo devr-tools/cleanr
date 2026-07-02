@@ -11,6 +11,7 @@ import (
 	"os"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
@@ -20,20 +21,32 @@ import (
 type OpenAI struct {
 	cfg    core.TargetConfig
 	client *http.Client
+
+	keyOnce sync.Once
+	apiKeyV string
+	apiKeyE error
 }
 
 func NewOpenAI(cfg core.TargetConfig, client *http.Client) *OpenAI {
 	return &OpenAI{cfg: cfg, client: client}
 }
 
+// resolveAPIKey resolves the API key once per target so a missing env key does
+// not re-read and re-parse the stored profile on every Invoke.
+func (t *OpenAI) resolveAPIKey() (string, error) {
+	t.keyOnce.Do(func() {
+		t.apiKeyV, t.apiKeyE = t.apiKey(t.apiKeyEnv())
+	})
+	return t.apiKeyV, t.apiKeyE
+}
+
 func (t *OpenAI) Invoke(ctx context.Context, req core.Request) core.Response {
-	apiKeyEnv := t.apiKeyEnv()
-	apiKey, err := t.apiKey(apiKeyEnv)
+	apiKey, err := t.resolveAPIKey()
 	if err != nil {
 		return core.Response{Err: err}
 	}
 	if apiKey == "" {
-		return core.Response{Err: fmt.Errorf("openai api key env %q is not set", apiKeyEnv)}
+		return core.Response{Err: fmt.Errorf("openai api key env %q is not set", t.apiKeyEnv())}
 	}
 
 	body, err := t.buildRequestBody(req)
@@ -52,34 +65,37 @@ func (t *OpenAI) Invoke(ctx context.Context, req core.Request) core.Response {
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, t.endpointURL(), bytes.NewReader(data))
-	if err != nil {
-		return core.Response{Err: err}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	for k, v := range t.cfg.Headers {
-		httpReq.Header.Set(k, v)
-	}
-	for k, v := range req.Headers {
-		httpReq.Header.Set(k, v)
-	}
-	authHeader := t.cfg.OpenAI.AuthHeaderForTarget(t.cfg.TargetType())
-	if httpReq.Header.Get(authHeader) == "" {
-		authValue := strings.TrimSpace(apiKey)
-		if scheme := strings.TrimSpace(t.cfg.OpenAI.AuthSchemeForTarget(t.cfg.TargetType())); scheme != "" {
-			authValue = scheme + " " + authValue
+	build := func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, t.endpointURL(), bytes.NewReader(data))
+		if err != nil {
+			return nil, err
 		}
-		httpReq.Header.Set(authHeader, authValue)
-	}
-	if t.cfg.OpenAI.Organization != "" && httpReq.Header.Get("OpenAI-Organization") == "" {
-		httpReq.Header.Set("OpenAI-Organization", t.cfg.OpenAI.Organization)
-	}
-	if t.cfg.OpenAI.Project != "" && httpReq.Header.Get("OpenAI-Project") == "" {
-		httpReq.Header.Set("OpenAI-Project", t.cfg.OpenAI.Project)
+		httpReq.Header.Set("Content-Type", "application/json")
+		for k, v := range t.cfg.Headers {
+			httpReq.Header.Set(k, v)
+		}
+		for k, v := range req.Headers {
+			httpReq.Header.Set(k, v)
+		}
+		authHeader := t.cfg.OpenAI.AuthHeaderForTarget(t.cfg.TargetType())
+		if httpReq.Header.Get(authHeader) == "" {
+			authValue := strings.TrimSpace(apiKey)
+			if scheme := strings.TrimSpace(t.cfg.OpenAI.AuthSchemeForTarget(t.cfg.TargetType())); scheme != "" {
+				authValue = scheme + " " + authValue
+			}
+			httpReq.Header.Set(authHeader, authValue)
+		}
+		if t.cfg.OpenAI.Organization != "" && httpReq.Header.Get("OpenAI-Organization") == "" {
+			httpReq.Header.Set("OpenAI-Organization", t.cfg.OpenAI.Organization)
+		}
+		if t.cfg.OpenAI.Project != "" && httpReq.Header.Get("OpenAI-Project") == "" {
+			httpReq.Header.Set("OpenAI-Project", t.cfg.OpenAI.Project)
+		}
+		return httpReq, nil
 	}
 
 	start := time.Now()
-	httpResp, err := t.client.Do(httpReq)
+	httpResp, err := doWithRetry(reqCtx, t.client, build)
 	latency := time.Since(start)
 	if err != nil {
 		return core.Response{Err: err, Latency: latency}

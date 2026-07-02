@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	neturl "net/url"
+	"strconv"
 	"strings"
 	"time"
 
@@ -20,6 +23,99 @@ type HTTP struct {
 
 func NewHTTP(cfg core.TargetConfig, client *http.Client) *HTTP {
 	return &HTTP{cfg: cfg, client: client}
+}
+
+// maxRequestAttempts bounds how many times a transient HTTP failure is retried
+// (initial attempt plus retries).
+const maxRequestAttempts = 3
+
+// doWithRetry issues the request built by build for each attempt, retrying on
+// transport errors and HTTP 429/503 with exponential backoff plus jitter. It
+// honors a Retry-After header when present and never sleeps past the request
+// context deadline: if the next backoff would exceed the remaining budget it
+// returns the last result instead of waiting. build must return a fresh
+// *http.Request per call so the body can be re-read on retry.
+func doWithRetry(ctx context.Context, client *http.Client, build func() (*http.Request, error)) (*http.Response, error) {
+	var lastResp *http.Response
+	var lastErr error
+	for attempt := 0; attempt < maxRequestAttempts; attempt++ {
+		httpReq, err := build()
+		if err != nil {
+			return nil, err
+		}
+		resp, err := client.Do(httpReq)
+		lastResp, lastErr = resp, err
+
+		if err == nil && !retryableStatus(resp.StatusCode) {
+			return resp, nil
+		}
+		if attempt == maxRequestAttempts-1 {
+			break
+		}
+		// Drain and close the retryable response before the next attempt.
+		wait := backoffDelay(attempt, resp)
+		if err == nil && resp != nil {
+			resp.Body.Close()
+		}
+		if !sleepWithin(ctx, wait) {
+			// Not enough budget left to retry; surface the last result.
+			return lastResp, lastErr
+		}
+	}
+	return lastResp, lastErr
+}
+
+func retryableStatus(status int) bool {
+	return status == http.StatusTooManyRequests || status == http.StatusServiceUnavailable
+}
+
+func backoffDelay(attempt int, resp *http.Response) time.Duration {
+	if resp != nil {
+		if ra := parseRetryAfter(resp.Header.Get("Retry-After")); ra > 0 {
+			return ra
+		}
+	}
+	base := time.Duration(200*(1<<attempt)) * time.Millisecond
+	jitter := time.Duration(rand.Int63n(int64(base/2) + 1))
+	return base + jitter
+}
+
+func parseRetryAfter(value string) time.Duration {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return 0
+	}
+	if secs, err := strconv.Atoi(value); err == nil && secs >= 0 {
+		return time.Duration(secs) * time.Second
+	}
+	if when, err := http.ParseTime(value); err == nil {
+		if d := time.Until(when); d > 0 {
+			return d
+		}
+	}
+	return 0
+}
+
+// sleepWithin waits for d unless the context deadline would be exceeded first.
+// It returns false (without sleeping) when there is not enough remaining budget,
+// signaling the caller to stop retrying.
+func sleepWithin(ctx context.Context, d time.Duration) bool {
+	if d <= 0 {
+		return ctx.Err() == nil
+	}
+	if deadline, ok := ctx.Deadline(); ok {
+		if time.Until(deadline) <= d {
+			return false
+		}
+	}
+	timer := time.NewTimer(d)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return false
+	case <-timer.C:
+		return true
+	}
 }
 
 func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
@@ -41,25 +137,28 @@ func (t *HTTP) Invoke(ctx context.Context, req core.Request) core.Response {
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(reqCtx, method, requestURL, bytes.NewReader(data))
-	if err != nil {
-		return core.Response{Err: err}
-	}
-	for k, v := range t.cfg.Headers {
-		httpReq.Header.Set(k, v)
-	}
-	for k, v := range headers {
-		httpReq.Header.Set(k, v)
-	}
-	for k, v := range req.Headers {
-		httpReq.Header.Set(k, v)
-	}
-	if t.cfg.Stream && httpReq.Header.Get("Accept") == "" {
-		httpReq.Header.Set("Accept", "text/event-stream")
+	build := func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(reqCtx, method, requestURL, bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		for k, v := range t.cfg.Headers {
+			httpReq.Header.Set(k, v)
+		}
+		for k, v := range headers {
+			httpReq.Header.Set(k, v)
+		}
+		for k, v := range req.Headers {
+			httpReq.Header.Set(k, v)
+		}
+		if t.cfg.Stream && httpReq.Header.Get("Accept") == "" {
+			httpReq.Header.Set("Accept", "text/event-stream")
+		}
+		return httpReq, nil
 	}
 
 	start := time.Now()
-	httpResp, err := t.client.Do(httpReq)
+	httpResp, err := doWithRetry(reqCtx, t.client, build)
 	latency := time.Since(start)
 	if err != nil {
 		return core.Response{Err: err, Latency: latency}
@@ -311,11 +410,11 @@ func extractResponseField(body []byte, path string) (string, error) {
 	for _, part := range strings.Split(path, ".") {
 		obj, ok := cur.(map[string]any)
 		if !ok {
-			return "", io.EOF
+			return "", fmt.Errorf("response field %q not found in payload", path)
 		}
 		cur, ok = obj[part]
 		if !ok {
-			return "", io.EOF
+			return "", fmt.Errorf("response field %q not found in payload", path)
 		}
 	}
 

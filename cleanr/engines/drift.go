@@ -25,6 +25,9 @@ func (DriftEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteR
 	}
 	cases := make([]core.CaseResult, 0, len(stable))
 	for _, scenario := range stable {
+		if ctx.Err() != nil {
+			break
+		}
 		cases = append(cases, evaluateDriftScenario(ctx, runCtx, cfg, baseline, scenario))
 	}
 	return core.SuiteResult{Name: "drift", Passed: allPassed(cases), Cases: cases, Meta: driftMeta(cfg)}
