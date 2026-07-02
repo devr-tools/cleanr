@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/fsatomic"
 	"gopkg.in/yaml.v3"
 )
 
@@ -41,7 +42,9 @@ func WriteConfigFile(path string, cfg core.Config) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	// Atomic so an interrupted write (setup, dataset merge) can never destroy
+	// the user's existing hand-edited config.
+	return fsatomic.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 func MarshalConfig(cfg core.Config, format string) ([]byte, error) {
