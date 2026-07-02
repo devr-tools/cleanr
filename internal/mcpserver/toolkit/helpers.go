@@ -23,7 +23,11 @@ func DecodeArgs(args map[string]any, dest any) error {
 
 func LoadConfigSource(src ConfigSource) (cleanr.Config, error) {
 	if strings.TrimSpace(src.ConfigPath) != "" {
-		return cleanr.LoadConfigFile(strings.TrimSpace(src.ConfigPath))
+		path, err := secureLocalPath(src.ConfigPath)
+		if err != nil {
+			return cleanr.Config{}, err
+		}
+		return cleanr.LoadConfigFile(path)
 	}
 	if strings.TrimSpace(src.Config) == "" {
 		return cleanr.Config{}, fmt.Errorf("provide config or config_path")
@@ -249,7 +253,12 @@ func LoadReplayArtifactSource(path, data, format string) (cleanr.ReplayArtifact,
 
 func loadSource[T any](path, data, format, label, pathLabel string, loadFile func(string) (T, error), loadData func([]byte, string) (T, error)) (T, error) {
 	if strings.TrimSpace(path) != "" {
-		return loadFile(strings.TrimSpace(path))
+		resolved, err := secureLocalPath(path)
+		if err != nil {
+			var zero T
+			return zero, err
+		}
+		return loadFile(resolved)
 	}
 	if strings.TrimSpace(data) == "" {
 		var zero T
