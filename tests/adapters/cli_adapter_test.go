@@ -23,10 +23,12 @@ func TestCLITargetInvokeCapturesStdoutAndExtractsJSON(t *testing.T) {
 		},
 	})
 
+	// A generous timeout: the helper is this test binary re-exec'd, which under
+	// -race instrumentation can take well over a second to start.
 	resp := target.Invoke(context.Background(), cleanr.BuildScenarioRequest(cleanr.Scenario{
 		Name:  "cli-target",
 		Input: "hello",
-	}, time.Second))
+	}, 10*time.Second))
 	if resp.Err != nil || resp.ExtractError != nil {
 		t.Fatalf("unexpected cli response errors: err=%v extract=%v", resp.Err, resp.ExtractError)
 	}
@@ -49,7 +51,7 @@ func TestCLITargetInvokeCapturesExitCodeAndStderr(t *testing.T) {
 		},
 	})
 
-	resp := target.Invoke(context.Background(), cleanr.Request{Timeout: time.Second})
+	resp := target.Invoke(context.Background(), cleanr.Request{Timeout: 10 * time.Second})
 	if resp.Err == nil {
 		t.Fatal("expected cli error")
 	}
