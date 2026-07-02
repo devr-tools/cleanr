@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/fsatomic"
 	"gopkg.in/yaml.v3"
 )
 
@@ -75,7 +76,8 @@ func WriteReleaseGateAttestationFile(path string, attestation core.ReleaseGateAt
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	// Atomic: a torn attestation would carry a signature that can never verify.
+	return fsatomic.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 func parsePrivateKey(raw string) (ed25519.PrivateKey, error) {

@@ -31,9 +31,6 @@ func applyScenarioGenerationDefaults(cfg *core.Config) {
 	if cfg.ScenarioGeneration.Count == 0 {
 		cfg.ScenarioGeneration.Count = 12
 	}
-	if !cfg.ScenarioGeneration.RequireReview {
-		cfg.ScenarioGeneration.RequireReview = true
-	}
 }
 
 func applyOpenAPIDefaults(cfg *core.Config) {
@@ -64,9 +61,6 @@ func applyLLMJudgeDefaults(cfg *core.LLMJudgeConfig) {
 	applyTargetDefaults(&cfg.Provider, true)
 	if cfg.Scale <= 1 {
 		cfg.Scale = 5
-	}
-	if cfg.MinScore == 0 {
-		cfg.MinScore = 0.6
 	}
 	if cfg.Samples <= 0 {
 		cfg.Samples = 1
@@ -134,24 +128,8 @@ func applyDriftDefaults(cfg *core.DriftConfig) {
 	if cfg.Iterations == 0 {
 		cfg.Iterations = 3
 	}
-	if cfg.MaxNormalizedDrift == 0 {
-		cfg.MaxNormalizedDrift = 0.3
-	}
-	if cfg.MaxSemanticDrift == 0 {
-		cfg.MaxSemanticDrift = 0.25
-	}
-	if cfg.MaxSnapshotDrift == 0 {
-		cfg.MaxSnapshotDrift = cfg.MaxNormalizedDrift
-	}
-	if cfg.MaxSemanticSnapshotDrift == 0 {
-		cfg.MaxSemanticSnapshotDrift = cfg.MaxSemanticDrift
-	}
-	if cfg.MinConsistencyScore == 0 {
-		cfg.MinConsistencyScore = 0.7
-	}
-	if cfg.MinSemanticConsistencyScore == 0 {
-		cfg.MinSemanticConsistencyScore = 0.75
-	}
+	// Drift/consistency thresholds are pointer-typed and default through their
+	// *Value accessors so an explicit zero survives.
 	if cfg.ConfidenceLevel == 0 {
 		cfg.ConfidenceLevel = 0.95
 	}
@@ -258,7 +236,7 @@ func applyReportingDefaults(cfg *core.Config) {
 		cfg.Reporting.ReplayArtifactFile = deriveReplayArtifactPath(cfg.Reporting.TrendFile)
 	}
 	applyTrendGatePreset(&cfg.Reporting.TrendGates)
-	if cfg.Reporting.TrendGates.Enabled && cfg.Reporting.TrendGates.RequiredWindow == 0 {
+	if cfg.Reporting.TrendGates.EnabledValue() && cfg.Reporting.TrendGates.RequiredWindow == 0 {
 		cfg.Reporting.TrendGates.RequiredWindow = 2
 	}
 }

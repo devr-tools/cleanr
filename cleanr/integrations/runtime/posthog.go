@@ -25,10 +25,17 @@ func newPostHogClient(sink core.ResultSinkConfig) (*postHogClient, error) {
 	if token == "" {
 		return nil, fmt.Errorf("missing PostHog project token in %s", emptyValue(sink.ProjectTokenEnv))
 	}
+	baseURL := normalizedBaseURL(sink.BaseURL, sink.Endpoint, defaultPostHogBaseURL)
+	// The token travels in the request body, so it bypasses applyAuth; enforce
+	// the same egress policy here so a config cannot point a provider secret
+	// (e.g. project_token_env: OPENAI_API_KEY) at an arbitrary host.
+	if !CredentialEgressAllowed(sink.ProjectTokenEnv, baseURL) {
+		return nil, fmt.Errorf("refusing to send credential %q to untrusted host %q", strings.TrimSpace(sink.ProjectTokenEnv), destinationHost(baseURL))
+	}
 	return &postHogClient{
 		token: token,
 		http: newJSONAPIClient(
-			normalizedBaseURL(sink.BaseURL, sink.Endpoint, defaultPostHogBaseURL),
+			baseURL,
 			sink.Headers,
 			sink.TimeoutMS,
 			nil,

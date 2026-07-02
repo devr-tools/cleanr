@@ -19,7 +19,9 @@ func applyTrendGatePreset(gates *core.TrendGateConfig) {
 	switch normalizeTrendGatePreset(gates.Preset) {
 	case trendGatePresetStrict:
 		gates.Preset = trendGatePresetStrict
-		gates.Enabled = true
+		if gates.Enabled == nil {
+			gates.Enabled = boolPtr(true)
+		}
 		if gates.RequiredWindow == 0 {
 			gates.RequiredWindow = 2
 		}
@@ -41,7 +43,9 @@ func applyTrendGatePreset(gates *core.TrendGateConfig) {
 		gates.FailOnRegressedSuites = true
 	case trendGatePresetModerate:
 		gates.Preset = trendGatePresetModerate
-		gates.Enabled = true
+		if gates.Enabled == nil {
+			gates.Enabled = boolPtr(true)
+		}
 		if gates.RequiredWindow == 0 {
 			gates.RequiredWindow = 2
 		}
@@ -63,7 +67,11 @@ func applyTrendGatePreset(gates *core.TrendGateConfig) {
 		gates.FailOnRegressedSuites = true
 	case trendGatePresetExploratory:
 		gates.Preset = trendGatePresetExploratory
-		gates.Enabled = false
+		// Non-blocking by default only: an explicit `enabled: true` keeps the
+		// relaxed thresholds while leaving gating active.
+		if gates.Enabled == nil {
+			gates.Enabled = boolPtr(false)
+		}
 		if gates.RequiredWindow == 0 {
 			gates.RequiredWindow = 2
 		}
@@ -91,5 +99,9 @@ func intPtr(v int) *int {
 }
 
 func float64Ptr(v float64) *float64 {
+	return &v
+}
+
+func boolPtr(v bool) *bool {
 	return &v
 }

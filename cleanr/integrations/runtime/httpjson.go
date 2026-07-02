@@ -8,7 +8,6 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"time"
 )
 
 type headerAuthFunc func(http.Header)
@@ -21,14 +20,10 @@ type jsonAPIClient struct {
 }
 
 func newJSONAPIClient(baseURL string, headers map[string]string, timeoutMS int, applyAuth headerAuthFunc) *jsonAPIClient {
-	timeout := 10 * time.Second
-	if timeoutMS > 0 {
-		timeout = time.Duration(timeoutMS) * time.Millisecond
-	}
 	return &jsonAPIClient{
 		baseURL:    baseURL,
 		headers:    headers,
-		httpClient: &http.Client{Timeout: timeout},
+		httpClient: newIntegrationHTTPClient(timeoutMS),
 		applyAuth:  applyAuth,
 	}
 }

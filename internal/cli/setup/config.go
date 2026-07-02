@@ -172,14 +172,14 @@ func applyStarterProfile(cfg *cleanr.Config, options starterConfigOptions) {
 		cfg.Suites.Drift = cleanr.DriftConfig{
 			Enabled:                     true,
 			Iterations:                  2,
-			MaxNormalizedDrift:          0.22,
-			MaxSemanticDrift:            0.16,
-			MaxSnapshotDrift:            0.12,
-			MaxSemanticSnapshotDrift:    0.10,
+			MaxNormalizedDrift:          float64Ptr(0.22),
+			MaxSemanticDrift:            float64Ptr(0.16),
+			MaxSnapshotDrift:            float64Ptr(0.12),
+			MaxSemanticSnapshotDrift:    float64Ptr(0.10),
 			BaselineFile:                defaultBaselinePath(cfg.Target.Name),
 			StableTags:                  []string{"stable"},
-			MinConsistencyScore:         0.78,
-			MinSemanticConsistencyScore: 0.84,
+			MinConsistencyScore:         float64Ptr(0.78),
+			MinSemanticConsistencyScore: float64Ptr(0.84),
 		}
 		cfg.Suites.TokenOptimization = cleanr.TokenOptimizationConfig{
 			Enabled:                     true,
@@ -202,14 +202,14 @@ func applyStarterProfile(cfg *cleanr.Config, options starterConfigOptions) {
 		cfg.Suites.Drift = cleanr.DriftConfig{
 			Enabled:                     true,
 			Iterations:                  3,
-			MaxNormalizedDrift:          0.24,
-			MaxSemanticDrift:            0.18,
-			MaxSnapshotDrift:            0.14,
-			MaxSemanticSnapshotDrift:    0.12,
+			MaxNormalizedDrift:          float64Ptr(0.24),
+			MaxSemanticDrift:            float64Ptr(0.18),
+			MaxSnapshotDrift:            float64Ptr(0.14),
+			MaxSemanticSnapshotDrift:    float64Ptr(0.12),
 			BaselineFile:                defaultBaselinePath(cfg.Target.Name),
 			StableTags:                  []string{"stable"},
-			MinConsistencyScore:         0.76,
-			MinSemanticConsistencyScore: 0.82,
+			MinConsistencyScore:         float64Ptr(0.76),
+			MinSemanticConsistencyScore: float64Ptr(0.82),
 		}
 		cfg.Suites.TokenOptimization = cleanr.TokenOptimizationConfig{
 			Enabled:                     true,
@@ -243,14 +243,14 @@ func applyStarterProfile(cfg *cleanr.Config, options starterConfigOptions) {
 		cfg.Suites.Drift = cleanr.DriftConfig{
 			Enabled:                     true,
 			Iterations:                  4,
-			MaxNormalizedDrift:          0.28,
-			MaxSemanticDrift:            0.20,
-			MaxSnapshotDrift:            0.16,
-			MaxSemanticSnapshotDrift:    0.14,
+			MaxNormalizedDrift:          float64Ptr(0.28),
+			MaxSemanticDrift:            float64Ptr(0.20),
+			MaxSnapshotDrift:            float64Ptr(0.16),
+			MaxSemanticSnapshotDrift:    float64Ptr(0.14),
 			BaselineFile:                defaultBaselinePath(cfg.Target.Name),
 			StableTags:                  []string{"stable"},
-			MinConsistencyScore:         0.72,
-			MinSemanticConsistencyScore: 0.80,
+			MinConsistencyScore:         float64Ptr(0.72),
+			MinSemanticConsistencyScore: float64Ptr(0.80),
 		}
 		cfg.Suites.TokenOptimization = cleanr.TokenOptimizationConfig{
 			Enabled:                     true,

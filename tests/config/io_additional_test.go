@@ -115,7 +115,7 @@ scenarios:
 	if len(cfg.Suites.ReleasePolicy.Rules) != 1 || cfg.Suites.ReleasePolicy.Rules[0].Tools[0] != "send_email" {
 		t.Fatalf("expected pack release-policy rules, got %+v", cfg.Suites.ReleasePolicy.Rules)
 	}
-	if cfg.Reporting.TrendGates.Preset != "moderate" || !cfg.Reporting.TrendGates.Enabled {
+	if cfg.Reporting.TrendGates.Preset != "moderate" || !cfg.Reporting.TrendGates.EnabledValue() {
 		t.Fatalf("expected policy pack trend gate preset, got %+v", cfg.Reporting.TrendGates)
 	}
 }
@@ -298,7 +298,7 @@ func TestScenarioGenerationConfigRoundTrips(t *testing.T) {
 		},
 		OutputFile:    "generated/cleanr.dataset.yaml",
 		Count:         4,
-		RequireReview: true,
+		RequireReview: boolPtr(true),
 	}
 
 	path := filepath.Join(t.TempDir(), "cleanr.yaml")

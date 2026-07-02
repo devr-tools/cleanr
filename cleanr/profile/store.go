@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/devr-tools/cleanr/cleanr/fsatomic"
 )
 
 const (
@@ -81,7 +83,9 @@ func Save(file File) error {
 	if err != nil {
 		return fmt.Errorf("encode profile: %w", err)
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o600)
+	// Atomic so a crash mid-save cannot corrupt the profile and lose every
+	// stored provider credential.
+	return fsatomic.WriteFile(path, append(data, '\n'), 0o600)
 }
 
 func UpsertProvider(provider Provider) error {

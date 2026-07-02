@@ -10,6 +10,7 @@ import (
 	"strings"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/fsatomic"
 	"gopkg.in/yaml.v3"
 )
 
@@ -121,7 +122,9 @@ func WriteReplayArtifactFile(path string, artifact core.ReplayArtifact) error {
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(data, '\n'), 0o644)
+	// Atomic to match the trend-history writer: attestation digests and replay
+	// tooling must never observe a truncated artifact.
+	return fsatomic.WriteFile(path, append(data, '\n'), 0o644)
 }
 
 func encodeReplayArtifact(artifact core.ReplayArtifact, path string) ([]byte, error) {

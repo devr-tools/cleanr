@@ -136,7 +136,7 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 			name: "snapshot drift threshold must be between zero and one",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Drift.Enabled = true
-				cfg.Suites.Drift.MaxSnapshotDrift = 1.5
+				cfg.Suites.Drift.MaxSnapshotDrift = float64Ptr(1.5)
 			},
 			wantErr: "invalid config: suites.drift.max_snapshot_drift: must be between 0 and 1. Fix: use a decimal threshold such as 0.18",
 		},
@@ -144,7 +144,7 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 			name: "semantic drift threshold must be between zero and one",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Drift.Enabled = true
-				cfg.Suites.Drift.MaxSemanticDrift = -0.1
+				cfg.Suites.Drift.MaxSemanticDrift = float64Ptr(-0.1)
 			},
 			wantErr: "invalid config: suites.drift.max_semantic_drift: must be between 0 and 1. Fix: use a decimal threshold such as 0.25",
 		},
@@ -152,7 +152,7 @@ func TestValidateConfigInvalidLoadAndDriftSettings(t *testing.T) {
 			name: "semantic consistency score must be between zero and one",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Drift.Enabled = true
-				cfg.Suites.Drift.MinSemanticConsistencyScore = 1.1
+				cfg.Suites.Drift.MinSemanticConsistencyScore = float64Ptr(1.1)
 			},
 			wantErr: "invalid config: suites.drift.min_semantic_consistency_score: must be between 0 and 1. Fix: use a decimal threshold such as 0.75",
 		},
@@ -421,10 +421,10 @@ func TestLoadConfigFileAppliesDefaultsBeforeValidation(t *testing.T) {
 	if cfg.Suites.Drift.Iterations != 3 {
 		t.Fatalf("expected default drift iterations 3, got %d", cfg.Suites.Drift.Iterations)
 	}
-	if cfg.Suites.Drift.MaxSemanticDrift != 0.25 {
+	if cfg.Suites.Drift.MaxSemanticDriftValue() != 0.25 {
 		t.Fatalf("expected default semantic drift 0.25, got %v", cfg.Suites.Drift.MaxSemanticDrift)
 	}
-	if cfg.Suites.Drift.MinSemanticConsistencyScore != 0.75 {
+	if cfg.Suites.Drift.MinSemanticConsistencyScoreValue() != 0.75 {
 		t.Fatalf("expected default semantic consistency 0.75, got %v", cfg.Suites.Drift.MinSemanticConsistencyScore)
 	}
 }
@@ -476,10 +476,10 @@ suites:
 			if cfg.Suites.Drift.Iterations != 3 {
 				t.Fatalf("expected default drift iterations 3, got %d", cfg.Suites.Drift.Iterations)
 			}
-			if cfg.Suites.Drift.MaxSemanticDrift != 0.25 {
+			if cfg.Suites.Drift.MaxSemanticDriftValue() != 0.25 {
 				t.Fatalf("expected default semantic drift 0.25, got %v", cfg.Suites.Drift.MaxSemanticDrift)
 			}
-			if cfg.Suites.Drift.MinSemanticConsistencyScore != 0.75 {
+			if cfg.Suites.Drift.MinSemanticConsistencyScoreValue() != 0.75 {
 				t.Fatalf("expected default semantic consistency 0.75, got %v", cfg.Suites.Drift.MinSemanticConsistencyScore)
 			}
 		})

@@ -19,9 +19,10 @@ func (e ReleasePolicyEngine) Run(ctx context.Context, runCtx *core.RunContext) c
 	cfg := releasePolicyConfigWithDefaults(runCtx.Config.Suites.ReleasePolicy)
 	scenarios := runCtx.Config.Scenarios
 	cases := make([]core.CaseResult, len(scenarios))
-	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+	ran := runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
 		cases[i] = e.evaluateScenario(ctx, runCtx, scenarios[i], cfg)
 	})
+	cases = cases[:ran]
 	return core.SuiteResult{Name: "release-policy", Passed: allPassed(cases), Cases: cases}
 }
 

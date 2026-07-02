@@ -163,7 +163,7 @@ func loadTrendSource(ctx context.Context, source core.TrendSourceConfig, baseDir
 	case "file":
 		return trendspkg.LoadFile(resolveRelativePath(baseDir, source.Path))
 	case "http":
-		client := &http.Client{Timeout: time.Duration(source.TimeoutMS) * time.Millisecond}
+		client := newIntegrationHTTPClient(source.TimeoutMS)
 		req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(source.URL), nil)
 		if err != nil {
 			return trendspkg.HistoryFile{}, fmt.Errorf("load trend source %s: %w", displayName(source.Name, source.Type), err)
@@ -200,7 +200,7 @@ func postSinkPayload(ctx context.Context, sink core.ResultSinkConfig, payload Si
 	if err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
-	client := &http.Client{Timeout: time.Duration(sink.TimeoutMS) * time.Millisecond}
+	client := newIntegrationHTTPClient(sink.TimeoutMS)
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, strings.TrimSpace(sink.Endpoint), bytes.NewReader(data))
 	if err != nil {
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)

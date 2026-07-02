@@ -170,7 +170,7 @@ jobs:
           cache: true
 
       - name: Run test suite
-        run: go test ./...
+        run: go test -race -shuffle=on ./...
 
   build:
     name: build

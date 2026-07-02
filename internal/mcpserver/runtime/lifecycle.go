@@ -241,7 +241,11 @@ func GenerateDataset(ctx context.Context, args map[string]any) (toolkit.Result, 
 		return toolkit.Result{}, err
 	}
 
-	dataset, err := GenerateScenarioDatasetFunc(ctx, cfg, (*http.Client)(nil))
+	// A real client is required: the generation path calls client.Do directly,
+	// so a nil *http.Client panics on first use. Mirror the CLI generate
+	// command's provider-timeout client.
+	client := &http.Client{Timeout: cfg.ScenarioGeneration.Provider.Timeout()}
+	dataset, err := GenerateScenarioDatasetFunc(ctx, cfg, client)
 	if err != nil {
 		return toolkit.Result{}, err
 	}

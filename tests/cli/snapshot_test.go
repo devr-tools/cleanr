@@ -35,8 +35,10 @@ func snapshotJSONResponse(t *testing.T, statusCode int, body map[string]any) *ht
 }
 
 func TestCLISnapshotCommandWritesBaseline(t *testing.T) {
-	t.Parallel()
-
+	// Not parallel: this test swaps the process-global http.DefaultTransport,
+	// which parallel tests read through clients with a nil Transport. Sequential
+	// tests never overlap parallel ones, so the swap is race-free only without
+	// t.Parallel().
 	original := http.DefaultTransport
 	http.DefaultTransport = snapshotRoundTripper(func(req *http.Request) (*http.Response, error) {
 		return snapshotJSONResponse(t, http.StatusOK, map[string]any{

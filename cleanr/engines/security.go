@@ -34,9 +34,10 @@ func (e SecurityEngine) Run(ctx context.Context, runCtx *core.RunContext) core.S
 
 	scenarios := runCtx.Config.Scenarios
 	cases := make([]core.CaseResult, len(scenarios))
-	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+	ran := runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
 		cases[i] = e.evaluateScenario(ctx, runCtx, scenarios[i], cfg, piiPatterns, extraPatterns)
 	})
+	cases = cases[:ran]
 	return core.SuiteResult{Name: "security", Passed: allPassed(cases), Cases: cases}
 }
 

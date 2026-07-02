@@ -1,6 +1,7 @@
 package runtime
 
 import (
+	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -8,6 +9,18 @@ import (
 )
 
 const defaultIntegrationFamily = "cleanr-release-gate"
+
+// newIntegrationHTTPClient builds the client for integration HTTP calls with a
+// 10s default when timeout_ms is unset: a zero http.Client timeout means no
+// timeout at all, and a single hung sink or trend endpoint would otherwise
+// stall the whole run indefinitely.
+func newIntegrationHTTPClient(timeoutMS int) *http.Client {
+	timeout := 10 * time.Second
+	if timeoutMS > 0 {
+		timeout = time.Duration(timeoutMS) * time.Millisecond
+	}
+	return &http.Client{Timeout: timeout}
+}
 
 func integrationFamily(name string) string {
 	name = strings.TrimSpace(name)

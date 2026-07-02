@@ -358,7 +358,7 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			name: "drift invalid normalized drift",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Drift.Enabled = true
-				cfg.Suites.Drift.MaxNormalizedDrift = 2
+				cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(2)
 			},
 			wantSub: "suites.drift.max_normalized_drift",
 		},
@@ -366,7 +366,7 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			name: "drift invalid consistency score",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Drift.Enabled = true
-				cfg.Suites.Drift.MinConsistencyScore = -0.1
+				cfg.Suites.Drift.MinConsistencyScore = float64Ptr(-0.1)
 			},
 			wantSub: "suites.drift.min_consistency_score",
 		},
@@ -374,9 +374,9 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			name: "drift invalid semantic thresholds",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Suites.Drift.Enabled = true
-				cfg.Suites.Drift.MaxSemanticDrift = 2
-				cfg.Suites.Drift.MaxSemanticSnapshotDrift = -1
-				cfg.Suites.Drift.MinSemanticConsistencyScore = 2
+				cfg.Suites.Drift.MaxSemanticDrift = float64Ptr(2)
+				cfg.Suites.Drift.MaxSemanticSnapshotDrift = float64Ptr(-1)
+				cfg.Suites.Drift.MinSemanticConsistencyScore = float64Ptr(2)
 			},
 			wantSub: "suites.drift.max_semantic_drift",
 		},
@@ -427,7 +427,7 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			name: "trend gates require trend file",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Reporting.TrendFile = ""
-				cfg.Reporting.TrendGates.Enabled = true
+				cfg.Reporting.TrendGates.Enabled = boolPtr(true)
 				cfg.Reporting.TrendGates.RequiredWindow = 2
 			},
 			wantSub: "reporting.trend_file",
@@ -436,7 +436,7 @@ func TestValidateConfigCoversProviderAndSuiteEdgeCases(t *testing.T) {
 			name: "trend gates validate thresholds",
 			mutate: func(cfg *cleanr.Config) {
 				cfg.Reporting.TrendFile = "reports/history.yaml"
-				cfg.Reporting.TrendGates.Enabled = true
+				cfg.Reporting.TrendGates.Enabled = boolPtr(true)
 				cfg.Reporting.TrendGates.RequiredWindow = 1
 				cfg.Reporting.TrendGates.MaxFailedCasesDelta = assertionIntPtr(-1)
 			},
@@ -592,7 +592,7 @@ reporting:
 	if cfg.Reporting.TrendGates.MaxDurationIncreasePct == nil || *cfg.Reporting.TrendGates.MaxDurationIncreasePct != 40 {
 		t.Fatalf("expected duration override to survive load, got %+v", cfg.Reporting.TrendGates)
 	}
-	if !cfg.Reporting.TrendGates.Enabled {
+	if !cfg.Reporting.TrendGates.EnabledValue() {
 		t.Fatalf("expected moderate preset to enable gates, got %+v", cfg.Reporting.TrendGates)
 	}
 	if cfg.Reporting.TrendGates.MaxSemanticDriftDelta == nil || *cfg.Reporting.TrendGates.MaxSemanticDriftDelta != 0.08 {

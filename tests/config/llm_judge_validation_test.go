@@ -55,7 +55,7 @@ func TestValidateLLMJudgeRejectsOutOfRangeMinScore(t *testing.T) {
 	cfg := judgeBaseConfig(core.LLMJudgeConfig{
 		Enabled:  true,
 		Provider: core.TargetConfig{Type: "openai", OpenAI: core.OpenAIConfig{Model: "gpt-4.1-mini", APIMode: "responses"}},
-		MinScore: 1.5,
+		MinScore: float64Ptr(1.5),
 	}, core.Scenario{Name: "s", Input: "hi"})
 	msg := validationMessage(t, cleanr.ValidateConfig(cfg), "min_score")
 	if !strings.Contains(msg, "suites.llm_judge.min_score") {
@@ -87,7 +87,7 @@ func TestValidateLLMJudgeValidConfigPasses(t *testing.T) {
 	judge := core.LLMJudgeConfig{
 		Enabled:          true,
 		Provider:         core.TargetConfig{Type: "anthropic", Anthropic: core.AnthropicConfig{Model: "claude-sonnet-4-20250514"}},
-		MinScore:         0.7,
+		MinScore:         float64Ptr(0.7),
 		Samples:          3,
 		MaxDisagreement:  0.4,
 		RequireReference: true,
@@ -182,7 +182,7 @@ func TestApplyLLMJudgeDefaults(t *testing.T) {
 	if j.Scale != 5 {
 		t.Fatalf("expected default scale 5, got %d", j.Scale)
 	}
-	if j.MinScore != 0.6 {
+	if j.MinScoreValue() != 0.6 {
 		t.Fatalf("expected default min_score 0.6, got %v", j.MinScore)
 	}
 	if j.MaxDisagreement != 0.4 {

@@ -99,7 +99,7 @@ func TestSetupAgentCommandUsesStoredProviderAndInjectsPrompt(t *testing.T) {
 	if cfg.Reporting.TrendFile != filepath.Join("reports", "support-agent.trends.yaml") {
 		t.Fatalf("unexpected trend file: %s", cfg.Reporting.TrendFile)
 	}
-	if !cfg.Reporting.TrendGates.Enabled {
+	if !cfg.Reporting.TrendGates.EnabledValue() {
 		t.Fatalf("expected trend gates to be enabled in generated agent config")
 	}
 	if cfg.Reporting.TrendGates.RequiredWindow != 2 {
@@ -134,7 +134,7 @@ func TestSetupCommandSupportsExploratoryTrendGatePreset(t *testing.T) {
 	if cfg.Reporting.TrendGates.Preset != "exploratory" {
 		t.Fatalf("expected exploratory preset, got %+v", cfg.Reporting.TrendGates)
 	}
-	if cfg.Reporting.TrendGates.Enabled {
+	if cfg.Reporting.TrendGates.EnabledValue() {
 		t.Fatalf("expected exploratory preset to be non-blocking, got %+v", cfg.Reporting.TrendGates)
 	}
 }

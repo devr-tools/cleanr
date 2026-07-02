@@ -20,27 +20,32 @@ func scenarioRequest(scenario core.Scenario, timeout time.Duration) core.Request
 // pool of at most limit goroutines. fn must write only to its own index i;
 // callers pre-size result slices so output stays deterministically ordered
 // regardless of completion order. Iteration stops early if ctx is cancelled.
-func runBoundedByIndex(ctx context.Context, count, limit int, fn func(i int)) {
+// It returns the number of indices actually invoked — always a prefix of
+// [0,count) — so callers can truncate pre-sized result slices instead of
+// reporting never-run entries as zero-value failures.
+func runBoundedByIndex(ctx context.Context, count, limit int, fn func(i int)) int {
 	if limit < 1 {
 		limit = 1
 	}
 	if limit == 1 || count <= 1 {
 		for i := 0; i < count; i++ {
 			if ctx.Err() != nil {
-				return
+				return i
 			}
 			fn(i)
 		}
-		return
+		return count
 	}
 	sem := make(chan struct{}, limit)
 	var wg sync.WaitGroup
+	launched := 0
 	for i := 0; i < count; i++ {
 		if ctx.Err() != nil {
 			break
 		}
 		sem <- struct{}{}
 		wg.Add(1)
+		launched++
 		go func(i int) {
 			defer wg.Done()
 			defer func() { <-sem }()
@@ -48,6 +53,7 @@ func runBoundedByIndex(ctx context.Context, count, limit int, fn func(i int)) {
 		}(i)
 	}
 	wg.Wait()
+	return launched
 }
 
 // responseCache memoizes target responses for identical plain scenario requests

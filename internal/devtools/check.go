@@ -13,10 +13,13 @@ func (r Runner) Lint(ctx context.Context) error {
 }
 
 func (r Runner) Test(ctx context.Context) error {
-	if _, err := fmt.Fprintln(r.Stdout, "running go test"); err != nil {
+	if _, err := fmt.Fprintln(r.Stdout, "running go test -race"); err != nil {
 		return err
 	}
-	return r.runGoTestFiltered(ctx, "./...")
+	// -race so concurrency bugs in the engines and test suite fail the gate
+	// instead of shipping; -shuffle surfaces hidden inter-test ordering
+	// dependencies.
+	return r.runGoTestFiltered(ctx, "-race", "-shuffle=on", "./...")
 }
 
 func (r Runner) TestReviewUI(ctx context.Context) error {

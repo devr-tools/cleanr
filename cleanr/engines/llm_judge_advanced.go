@@ -139,7 +139,7 @@ func calibrateJudgeCases(cfg core.LLMJudgeConfig, cases []core.CaseResult) (map[
 		if label.Pass != nil {
 			expectedPass = *label.Pass
 		} else if label.Score != nil {
-			threshold := cfg.MinScore
+			threshold := cfg.MinScoreValue()
 			if cfg.ModeValue() == "pairwise" {
 				threshold = cfg.MinWinRate
 			}
@@ -220,7 +220,7 @@ func buildComparisonMatrix(ctx context.Context, runCtx *core.RunContext, cfg cor
 	run := scoreRun{
 		scale:           cfg.ScaleValue(),
 		samples:         cfg.SamplesValue(),
-		minScore:        cfg.MinScore,
+		minScore:        cfg.MinScoreValue(),
 		maxDisagreement: cfg.MaxDisagreement,
 		confidenceLevel: cfg.ConfidenceLevelValue(),
 		minPassRate:     cfg.MinPassRate,

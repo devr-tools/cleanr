@@ -53,7 +53,7 @@ func (e LLMJudgeEngine) runScore(ctx context.Context, runCtx *core.RunContext, c
 	run := scoreRun{
 		scale:           cfg.ScaleValue(),
 		samples:         cfg.SamplesValue(),
-		minScore:        cfg.MinScore,
+		minScore:        cfg.MinScoreValue(),
 		maxDisagreement: cfg.MaxDisagreement,
 		confidenceLevel: cfg.ConfidenceLevelValue(),
 		minPassRate:     cfg.MinPassRate,

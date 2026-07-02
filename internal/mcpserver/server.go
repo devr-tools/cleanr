@@ -132,11 +132,22 @@ func (s *Server) handleToolCall(ctx context.Context, req requestEnvelope) *respo
 		params.Arguments = map[string]any{}
 	}
 
-	result, err := mcptools.Call(ctx, params.Name, params.Arguments)
+	result, err := safeToolCall(ctx, params.Name, params.Arguments)
 	if err != nil {
 		return errorResponse(req.ID, jsonRPCInternalError, err.Error(), nil)
 	}
 	return successResponse(req.ID, result)
+}
+
+// safeToolCall contains a panicking tool handler: the server speaks stdio, so
+// an uncaught panic would kill the whole process and every session with it.
+func safeToolCall(ctx context.Context, name string, args map[string]any) (result any, err error) {
+	defer func() {
+		if r := recover(); r != nil {
+			err = fmt.Errorf("tool %s panicked: %v", name, r)
+		}
+	}()
+	return mcptools.Call(ctx, name, args)
 }
 
 func (s *Server) requireInitialized(id any) *responseEnvelope {
