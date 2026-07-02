@@ -17,8 +17,8 @@ import (
 type MCP struct {
 	cfg          core.TargetConfig
 	client       *http.Client
-	initOnce     sync.Once
-	initErr      error
+	initMu       sync.Mutex
+	initialized  bool
 	requestIDSeq int64
 	mu           sync.Mutex
 }
@@ -72,34 +72,43 @@ func (t *MCP) Invoke(ctx context.Context, req core.Request) core.Response {
 	}
 }
 
+// initialize performs the MCP handshake at most once per adapter. A failed
+// attempt is NOT cached: the next Invoke retries, so a transient failure (a
+// restarting server, the first scenario's deadline expiring mid-handshake)
+// fails that one scenario instead of poisoning every remaining scenario in
+// the run. The lock serializes concurrent first invokes, matching the
+// blocking behavior sync.Once had.
 func (t *MCP) initialize(ctx context.Context) error {
-	t.initOnce.Do(func() {
-		initReq := map[string]any{
-			"jsonrpc": "2.0",
-			"id":      t.nextRequestID(),
-			"method":  "initialize",
-			"params": map[string]any{
-				"protocolVersion": "2025-06-18",
-				"capabilities":    map[string]any{},
-				"clientInfo": map[string]any{
-					"name":    "cleanr",
-					"version": "v1alpha1",
-				},
+	t.initMu.Lock()
+	defer t.initMu.Unlock()
+	if t.initialized {
+		return nil
+	}
+	initReq := map[string]any{
+		"jsonrpc": "2.0",
+		"id":      t.nextRequestID(),
+		"method":  "initialize",
+		"params": map[string]any{
+			"protocolVersion": "2025-06-18",
+			"capabilities":    map[string]any{},
+			"clientInfo": map[string]any{
+				"name":    "cleanr",
+				"version": "v1alpha1",
 			},
-		}
-		if _, _, err := t.postJSONRPC(ctx, initReq); err != nil {
-			t.initErr = fmt.Errorf("initialize mcp target: %w", err)
-			return
-		}
-		notify := map[string]any{
-			"jsonrpc": "2.0",
-			"method":  "notifications/initialized",
-		}
-		if _, _, err := t.postJSONRPC(ctx, notify); err != nil {
-			t.initErr = fmt.Errorf("notify initialized mcp target: %w", err)
-		}
-	})
-	return t.initErr
+		},
+	}
+	if _, _, err := t.postJSONRPC(ctx, initReq); err != nil {
+		return fmt.Errorf("initialize mcp target: %w", err)
+	}
+	notify := map[string]any{
+		"jsonrpc": "2.0",
+		"method":  "notifications/initialized",
+	}
+	if _, _, err := t.postJSONRPC(ctx, notify); err != nil {
+		return fmt.Errorf("notify initialized mcp target: %w", err)
+	}
+	t.initialized = true
+	return nil
 }
 
 func (t *MCP) nextRequestID() int64 {
