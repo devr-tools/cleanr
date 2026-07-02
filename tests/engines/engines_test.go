@@ -217,8 +217,8 @@ func TestPromptChaosDriftAndTokenOptimizationCoverage(t *testing.T) {
 		cfg.Suites.Drift.Enabled = true
 		cfg.Suites.Drift.StableTags = []string{"stable"}
 		cfg.Suites.Drift.Iterations = 2
-		cfg.Suites.Drift.MaxNormalizedDrift = 0
-		cfg.Suites.Drift.MinConsistencyScore = 0.99
+		cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(0)
+		cfg.Suites.Drift.MinConsistencyScore = float64Ptr(0.99)
 		cfg.Suites.TokenOptimization.Enabled = true
 		cfg.Suites.TokenOptimization.MaxInputTokens = 1
 		cfg.Suites.TokenOptimization.MaxOutputTokens = 1
@@ -253,10 +253,10 @@ func TestPromptChaosDriftAndTokenOptimizationCoverage(t *testing.T) {
 		cfg.Suites.Drift.Enabled = true
 		cfg.Suites.Drift.StableTags = []string{"stable"}
 		cfg.Suites.Drift.Iterations = 3
-		cfg.Suites.Drift.MaxNormalizedDrift = 0.05
-		cfg.Suites.Drift.MaxSemanticDrift = 0.25
-		cfg.Suites.Drift.MinConsistencyScore = 0.5
-		cfg.Suites.Drift.MinSemanticConsistencyScore = 0.75
+		cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(0.05)
+		cfg.Suites.Drift.MaxSemanticDrift = float64Ptr(0.25)
+		cfg.Suites.Drift.MinConsistencyScore = float64Ptr(0.5)
+		cfg.Suites.Drift.MinSemanticConsistencyScore = float64Ptr(0.75)
 
 		report := cleanr.NewRunner(cfg, target).Run(context.Background())
 		if !report.Passed {

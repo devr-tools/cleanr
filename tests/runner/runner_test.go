@@ -109,6 +109,50 @@ func (failingAssertionTarget) Invoke(context.Context, cleanr.Request) cleanr.Res
 	}
 }
 
+func TestRunnerMarksInterruptedRunAsNotPassed(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Target.Name = "mock"
+	cfg.Target.ResponseField = "output.text"
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	report := cleanr.NewRunner(cfg, mockTarget{}).Run(ctx)
+
+	if !report.Interrupted {
+		t.Fatalf("expected interrupted report")
+	}
+	if report.Passed {
+		t.Fatalf("interrupted run must not report passed")
+	}
+	if len(report.SkippedSuites) == 0 {
+		t.Fatalf("expected skipped suite names on interrupted run")
+	}
+	if report.TotalSuites != 0 {
+		t.Fatalf("expected no executed suites, got %d", report.TotalSuites)
+	}
+	for _, suite := range report.Suites {
+		for _, c := range suite.Cases {
+			if c.Name == "" {
+				t.Fatalf("suite %s contains a phantom zero-value case", suite.Name)
+			}
+		}
+	}
+}
+
+func TestRunnerCompletedRunIsNotInterrupted(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Target.Name = "mock"
+	cfg.Target.ResponseField = "output.text"
+	report := cleanr.NewRunner(cfg, mockTarget{}).Run(context.Background())
+
+	if report.Interrupted {
+		t.Fatalf("uninterrupted run must not be marked interrupted")
+	}
+	if len(report.SkippedSuites) != 0 {
+		t.Fatalf("unexpected skipped suites: %v", report.SkippedSuites)
+	}
+}
+
 func TestRunnerWithMockTarget(t *testing.T) {
 	cfg := cleanr.ExampleConfig()
 	cfg.Target.Name = "mock"
@@ -132,7 +176,7 @@ func TestDriftSuitePassesStableResponses(t *testing.T) {
 	cfg.Suites.TokenOptimization.Enabled = false
 	cfg.Suites.Drift.Enabled = true
 	cfg.Suites.Drift.Iterations = 3
-	cfg.Suites.Drift.MaxNormalizedDrift = 0.01
+	cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(0.01)
 
 	report := cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
 	if len(report.Suites) != 1 || report.Suites[0].Name != "drift" {
@@ -530,11 +574,58 @@ func writeExecutableScript(t *testing.T, body string) string {
 	return path
 }
 
+func TestRunnerWASMPluginTimeoutInterruptsHangingGuest(t *testing.T) {
+	cfg := cleanr.ExampleConfig()
+	cfg.Suites.PromptInjection.Enabled = false
+	cfg.Suites.Security.Enabled = false
+	cfg.Suites.Load.Enabled = false
+	cfg.Suites.Chaos.Enabled = false
+	cfg.Suites.Drift.Enabled = false
+	cfg.Suites.ShadowState.Enabled = false
+	cfg.Suites.Provenance.Enabled = false
+	cfg.Suites.ClaimTrace.Enabled = false
+	cfg.Suites.ReleasePolicy.Enabled = false
+	cfg.Suites.MemorySafety.Enabled = false
+	cfg.Suites.TokenOptimization.Enabled = false
+
+	dir := t.TempDir()
+	modulePath := buildWASMPluginFromSource(t, dir, `package main
+
+func main() {
+	for {
+	}
+}
+`)
+	cfg.ResolvedPlugins = []cleanr.PluginManifest{{
+		Name:    "org-plugin",
+		Source:  filepath.Join(dir, "plugin.yaml"),
+		BaseDir: dir,
+		Suites: []cleanr.PluginSuite{{
+			Name:      "wasm-hang",
+			Command:   filepath.Base(modulePath),
+			TimeoutMS: 1500,
+			Runtime:   cleanr.PluginRuntimeConfig{Backend: "wasm"},
+		}},
+	}}
+
+	done := make(chan cleanr.Report, 1)
+	go func() {
+		done <- cleanr.NewRunner(cfg, stableTarget{}).Run(context.Background())
+	}()
+	select {
+	case report := <-done:
+		if report.Passed {
+			t.Fatalf("expected hanging wasm plugin suite to fail: %+v", report)
+		}
+	case <-time.After(30 * time.Second):
+		t.Fatal("wasm plugin ignored its timeout: run still hanging after 30s")
+	}
+}
+
 func buildWASMPlugin(t *testing.T, dir string) string {
 	t.Helper()
 
-	sourcePath := filepath.Join(dir, "main.go")
-	if err := os.WriteFile(sourcePath, []byte(`package main
+	return buildWASMPluginFromSource(t, dir, `package main
 
 import (
 	"encoding/json"
@@ -557,7 +648,14 @@ func main() {
 	}
 	_ = json.NewEncoder(os.Stdout).Encode(out)
 }
-`), 0o644); err != nil {
+`)
+}
+
+func buildWASMPluginFromSource(t *testing.T, dir, source string) string {
+	t.Helper()
+
+	sourcePath := filepath.Join(dir, "main.go")
+	if err := os.WriteFile(sourcePath, []byte(source), 0o644); err != nil {
 		t.Fatalf("write wasm source: %v", err)
 	}
 
@@ -670,8 +768,8 @@ func TestDriftSuitePassesMatchingBaseline(t *testing.T) {
 	cfg.Suites.Drift.Enabled = true
 	cfg.Suites.Drift.Iterations = 3
 	cfg.Suites.Drift.StableTags = []string{"stable"}
-	cfg.Suites.Drift.MaxNormalizedDrift = 0.01
-	cfg.Suites.Drift.MaxSnapshotDrift = 0.05
+	cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(0.01)
+	cfg.Suites.Drift.MaxSnapshotDrift = float64Ptr(0.05)
 
 	baselinePath := t.TempDir() + "/snapshots.yaml"
 	err := cleanr.WriteSnapshotFile(baselinePath, cleanr.SnapshotFile{
@@ -724,12 +822,12 @@ func TestDriftSuitePassesSemanticParaphraseBaseline(t *testing.T) {
 	cfg.Suites.Drift.Enabled = true
 	cfg.Suites.Drift.Iterations = 3
 	cfg.Suites.Drift.StableTags = []string{"stable"}
-	cfg.Suites.Drift.MaxNormalizedDrift = 0.05
-	cfg.Suites.Drift.MaxSemanticDrift = 0.25
-	cfg.Suites.Drift.MaxSnapshotDrift = 0.05
-	cfg.Suites.Drift.MaxSemanticSnapshotDrift = 0.25
-	cfg.Suites.Drift.MinConsistencyScore = 0.6
-	cfg.Suites.Drift.MinSemanticConsistencyScore = 0.75
+	cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(0.05)
+	cfg.Suites.Drift.MaxSemanticDrift = float64Ptr(0.25)
+	cfg.Suites.Drift.MaxSnapshotDrift = float64Ptr(0.05)
+	cfg.Suites.Drift.MaxSemanticSnapshotDrift = float64Ptr(0.25)
+	cfg.Suites.Drift.MinConsistencyScore = float64Ptr(0.6)
+	cfg.Suites.Drift.MinSemanticConsistencyScore = float64Ptr(0.75)
 
 	baselinePath := t.TempDir() + "/snapshots.yaml"
 	err := cleanr.WriteSnapshotFile(baselinePath, cleanr.SnapshotFile{
@@ -760,14 +858,14 @@ func TestDriftSuitePassesSemanticParaphraseBaseline(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected numeric baseline_drift, got %+v", details["baseline_drift"])
 	}
-	if baselineDrift <= cfg.Suites.Drift.MaxSnapshotDrift {
+	if baselineDrift <= cfg.Suites.Drift.MaxSnapshotDriftValue() {
 		t.Fatalf("expected lexical baseline drift to exceed threshold, got %+v", details)
 	}
 	baselineSemanticDrift, ok := details["baseline_semantic_drift"].(float64)
 	if !ok {
 		t.Fatalf("expected numeric baseline_semantic_drift, got %+v", details["baseline_semantic_drift"])
 	}
-	if baselineSemanticDrift >= cfg.Suites.Drift.MaxSemanticSnapshotDrift {
+	if baselineSemanticDrift >= cfg.Suites.Drift.MaxSemanticSnapshotDriftValue() {
 		t.Fatalf("expected semantic baseline drift to remain within threshold, got %+v", details)
 	}
 	if _, ok := details["baseline_lexical_note"]; !ok {
@@ -791,8 +889,8 @@ func TestDriftSuiteFailsOnBaselineRegression(t *testing.T) {
 	cfg.Suites.Drift.Enabled = true
 	cfg.Suites.Drift.Iterations = 3
 	cfg.Suites.Drift.StableTags = []string{"stable"}
-	cfg.Suites.Drift.MaxNormalizedDrift = 0.01
-	cfg.Suites.Drift.MaxSnapshotDrift = 0.05
+	cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(0.01)
+	cfg.Suites.Drift.MaxSnapshotDrift = float64Ptr(0.05)
 
 	baselinePath := t.TempDir() + "/snapshots.yaml"
 	err := cleanr.WriteSnapshotFile(baselinePath, cleanr.SnapshotFile{
@@ -822,6 +920,10 @@ func TestDriftSuiteFailsOnBaselineRegression(t *testing.T) {
 	if len(findings) == 0 || !strings.Contains(findings[0].Message, "baseline drift") && (len(findings) < 2 || !strings.Contains(findings[1].Message, "baseline drift")) {
 		t.Fatalf("expected baseline drift finding, got %+v", findings)
 	}
+}
+
+func float64Ptr(v float64) *float64 {
+	return &v
 }
 
 func intPtr(v int) *int {

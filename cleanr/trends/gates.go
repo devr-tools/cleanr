@@ -9,7 +9,7 @@ import (
 )
 
 func EvaluateGates(report *core.Report, cfg core.TrendGateConfig) {
-	if report == nil || !cfg.Enabled {
+	if report == nil || !cfg.EnabledValue() {
 		return
 	}
 

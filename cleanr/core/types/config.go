@@ -98,7 +98,17 @@ type ScenarioGenerationConfig struct {
 	Spec          ScenarioGenerationSpec `json:"spec"`
 	OutputFile    string                 `json:"output_file,omitempty"`
 	Count         int                    `json:"count,omitempty"`
-	RequireReview bool                   `json:"require_review,omitempty"`
+	RequireReview *bool                  `json:"require_review,omitempty"`
+}
+
+// RequireReviewValue reports whether generated scenarios need human review
+// before use. It defaults to true; a pointer keeps an explicit
+// `require_review: false` expressible instead of being silently inverted.
+func (c ScenarioGenerationConfig) RequireReviewValue() bool {
+	if c.RequireReview != nil {
+		return *c.RequireReview
+	}
+	return true
 }
 
 type ScenarioGenerationSpec struct {
@@ -317,20 +327,75 @@ type ChaosConfig struct {
 	ResponseField string   `json:"response_field"`
 }
 
+// DriftConfig thresholds are pointers so an explicit zero ("no drift
+// tolerated at all") survives default application instead of being replaced
+// by the default; use the *Value accessors to read them.
 type DriftConfig struct {
 	Enabled                     bool     `json:"enabled"`
 	Iterations                  int      `json:"iterations"`
-	MaxNormalizedDrift          float64  `json:"max_normalized_drift"`
-	MaxSemanticDrift            float64  `json:"max_semantic_drift"`
-	MaxSnapshotDrift            float64  `json:"max_snapshot_drift"`
-	MaxSemanticSnapshotDrift    float64  `json:"max_semantic_snapshot_drift"`
+	MaxNormalizedDrift          *float64 `json:"max_normalized_drift,omitempty"`
+	MaxSemanticDrift            *float64 `json:"max_semantic_drift,omitempty"`
+	MaxSnapshotDrift            *float64 `json:"max_snapshot_drift,omitempty"`
+	MaxSemanticSnapshotDrift    *float64 `json:"max_semantic_snapshot_drift,omitempty"`
 	BaselineFile                string   `json:"baseline_file"`
 	StableTags                  []string `json:"stable_tags"`
-	MinConsistencyScore         float64  `json:"min_consistency_score"`
-	MinSemanticConsistencyScore float64  `json:"min_semantic_consistency_score"`
+	MinConsistencyScore         *float64 `json:"min_consistency_score,omitempty"`
+	MinSemanticConsistencyScore *float64 `json:"min_semantic_consistency_score,omitempty"`
 	ConfidenceLevel             float64  `json:"confidence_level,omitempty"`
 	MinPassRate                 float64  `json:"min_pass_rate,omitempty"`
 	MaxFlakeRate                float64  `json:"max_flake_rate,omitempty"`
+}
+
+// MaxNormalizedDriftValue returns the lexical drift ceiling, defaulting to 0.3.
+func (c DriftConfig) MaxNormalizedDriftValue() float64 {
+	if c.MaxNormalizedDrift != nil {
+		return *c.MaxNormalizedDrift
+	}
+	return 0.3
+}
+
+// MaxSemanticDriftValue returns the semantic drift ceiling, defaulting to 0.25.
+func (c DriftConfig) MaxSemanticDriftValue() float64 {
+	if c.MaxSemanticDrift != nil {
+		return *c.MaxSemanticDrift
+	}
+	return 0.25
+}
+
+// MaxSnapshotDriftValue returns the baseline drift ceiling, defaulting to the
+// lexical drift ceiling.
+func (c DriftConfig) MaxSnapshotDriftValue() float64 {
+	if c.MaxSnapshotDrift != nil {
+		return *c.MaxSnapshotDrift
+	}
+	return c.MaxNormalizedDriftValue()
+}
+
+// MaxSemanticSnapshotDriftValue returns the semantic baseline drift ceiling,
+// defaulting to the semantic drift ceiling.
+func (c DriftConfig) MaxSemanticSnapshotDriftValue() float64 {
+	if c.MaxSemanticSnapshotDrift != nil {
+		return *c.MaxSemanticSnapshotDrift
+	}
+	return c.MaxSemanticDriftValue()
+}
+
+// MinConsistencyScoreValue returns the lexical consistency floor, defaulting
+// to 0.7.
+func (c DriftConfig) MinConsistencyScoreValue() float64 {
+	if c.MinConsistencyScore != nil {
+		return *c.MinConsistencyScore
+	}
+	return 0.7
+}
+
+// MinSemanticConsistencyScoreValue returns the semantic consistency floor,
+// defaulting to 0.75.
+func (c DriftConfig) MinSemanticConsistencyScoreValue() float64 {
+	if c.MinSemanticConsistencyScore != nil {
+		return *c.MinSemanticConsistencyScore
+	}
+	return 0.75
 }
 
 type ShadowStateConfig struct {
@@ -407,7 +472,7 @@ type LLMJudgeConfig struct {
 	Baseline               TargetConfig   `json:"baseline,omitempty"`
 	Criteria               []string       `json:"criteria,omitempty"`
 	Scale                  int            `json:"scale,omitempty"`
-	MinScore               float64        `json:"min_score,omitempty"`
+	MinScore               *float64       `json:"min_score,omitempty"`
 	MinWinRate             float64        `json:"min_win_rate,omitempty"`
 	Samples                int            `json:"samples,omitempty"`
 	MaxDisagreement        float64        `json:"max_disagreement,omitempty"`
@@ -441,6 +506,15 @@ func (c LLMJudgeConfig) ScaleValue() int {
 		return 5
 	}
 	return c.Scale
+}
+
+// MinScoreValue returns the normalized pass threshold, defaulting to 0.6. A
+// pointer keeps an explicit `min_score: 0` (no floor) expressible.
+func (c LLMJudgeConfig) MinScoreValue() float64 {
+	if c.MinScore != nil {
+		return *c.MinScore
+	}
+	return 0.6
 }
 
 // SamplesValue returns the configured self-consistency sample count,
@@ -602,7 +676,7 @@ type QueueProbeObservation struct {
 
 type TrendGateConfig struct {
 	Preset                        string   `json:"preset,omitempty"`
-	Enabled                       bool     `json:"enabled"`
+	Enabled                       *bool    `json:"enabled,omitempty"`
 	RequiredWindow                int      `json:"required_window"`
 	MaxFailedSuitesDelta          *int     `json:"max_failed_suites_delta,omitempty"`
 	MaxFailedCasesDelta           *int     `json:"max_failed_cases_delta,omitempty"`
@@ -610,6 +684,16 @@ type TrendGateConfig struct {
 	MaxSemanticDriftDelta         *float64 `json:"max_semantic_drift_delta,omitempty"`
 	MaxBaselineSemanticDriftDelta *float64 `json:"max_baseline_semantic_drift_delta,omitempty"`
 	FailOnRegressedSuites         bool     `json:"fail_on_regressed_suites,omitempty"`
+}
+
+// EnabledValue reports whether trend gates are active, defaulting to false. A
+// pointer keeps an explicit `enabled:` distinguishable from unset, so presets
+// can supply a default without overriding the user's choice.
+func (c TrendGateConfig) EnabledValue() bool {
+	if c.Enabled != nil {
+		return *c.Enabled
+	}
+	return false
 }
 
 // defaultTargetTimeoutMS mirrors the request timeout applied by the config

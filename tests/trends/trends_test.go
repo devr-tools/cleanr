@@ -434,9 +434,9 @@ func cleanTrendConfig() cleanr.Config {
 	cfg.Suites.TokenOptimization.Enabled = false
 	cfg.Suites.Drift.Enabled = true
 	cfg.Suites.Drift.Iterations = 2
-	cfg.Suites.Drift.MaxNormalizedDrift = 1
-	cfg.Suites.Drift.MaxSemanticDrift = 1
-	cfg.Suites.Drift.MinConsistencyScore = 0
-	cfg.Suites.Drift.MinSemanticConsistencyScore = 0
+	cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(1)
+	cfg.Suites.Drift.MaxSemanticDrift = float64Ptr(1)
+	cfg.Suites.Drift.MinConsistencyScore = float64Ptr(0)
+	cfg.Suites.Drift.MinSemanticConsistencyScore = float64Ptr(0)
 	return cfg
 }

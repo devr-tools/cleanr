@@ -998,7 +998,7 @@ Preset behavior:
 
 - `strict`: blocks on any new failed suite or case, allows up to `15%` duration growth, `0.05` semantic drift delta, and `0.03` baseline semantic drift delta.
 - `moderate`: blocks on any new failed suite or case, allows up to `25%` duration growth, `0.08` semantic drift delta, and `0.05` baseline semantic drift delta.
-- `exploratory`: keeps trend reporting enabled but makes trend gates non-blocking by default.
+- `exploratory`: keeps trend reporting enabled but makes trend gates non-blocking by default. An explicit `enabled: true` beside the preset keeps the relaxed thresholds with gating active — presets never override an explicit `enabled:` value.
 
 You can start from a preset and override only one dimension. For example, this keeps the `moderate` preset but allows more latency growth between builds:
 

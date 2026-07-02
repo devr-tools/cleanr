@@ -302,9 +302,7 @@ func validateLLMJudgeThresholds(errs *ValidationErrors, cfg core.LLMJudgeConfig)
 	if cfg.Scale != 0 && cfg.Scale < 2 {
 		errs.Add("suites.llm_judge.scale", "must be >= 2", "use a Likert ceiling such as 5, or omit the field to use the default")
 	}
-	if cfg.MinScore < 0 || cfg.MinScore > 1 {
-		errs.Add("suites.llm_judge.min_score", "must be between 0 and 1", "use a normalized pass threshold such as 0.6 (3 out of 5)")
-	}
+	validateOptionalUnitInterval(errs, "suites.llm_judge.min_score", cfg.MinScore, "use a normalized pass threshold such as 0.6 (3 out of 5)")
 	if cfg.Samples < 0 {
 		errs.Add("suites.llm_judge.samples", "must be >= 0", "set the self-consistency sample count to a positive integer or omit the field to use a single judge call")
 	}
@@ -437,12 +435,12 @@ func validateDriftSuite(errs *ValidationErrors, cfg core.DriftConfig) {
 	if cfg.Iterations < 2 {
 		errs.Add("suites.drift.iterations", "must be >= 2", "set iterations to 2 or more so drift can compare repeated runs")
 	}
-	validateUnitInterval(errs, "suites.drift.max_normalized_drift", cfg.MaxNormalizedDrift, "use a decimal threshold such as 0.3")
-	validateUnitInterval(errs, "suites.drift.max_semantic_drift", cfg.MaxSemanticDrift, "use a decimal threshold such as 0.25")
-	validateUnitInterval(errs, "suites.drift.max_snapshot_drift", cfg.MaxSnapshotDrift, "use a decimal threshold such as 0.18")
-	validateUnitInterval(errs, "suites.drift.max_semantic_snapshot_drift", cfg.MaxSemanticSnapshotDrift, "use a decimal threshold such as 0.2")
-	validateUnitInterval(errs, "suites.drift.min_consistency_score", cfg.MinConsistencyScore, "use a decimal threshold such as 0.7")
-	validateUnitInterval(errs, "suites.drift.min_semantic_consistency_score", cfg.MinSemanticConsistencyScore, "use a decimal threshold such as 0.75")
+	validateOptionalUnitInterval(errs, "suites.drift.max_normalized_drift", cfg.MaxNormalizedDrift, "use a decimal threshold such as 0.3")
+	validateOptionalUnitInterval(errs, "suites.drift.max_semantic_drift", cfg.MaxSemanticDrift, "use a decimal threshold such as 0.25")
+	validateOptionalUnitInterval(errs, "suites.drift.max_snapshot_drift", cfg.MaxSnapshotDrift, "use a decimal threshold such as 0.18")
+	validateOptionalUnitInterval(errs, "suites.drift.max_semantic_snapshot_drift", cfg.MaxSemanticSnapshotDrift, "use a decimal threshold such as 0.2")
+	validateOptionalUnitInterval(errs, "suites.drift.min_consistency_score", cfg.MinConsistencyScore, "use a decimal threshold such as 0.7")
+	validateOptionalUnitInterval(errs, "suites.drift.min_semantic_consistency_score", cfg.MinSemanticConsistencyScore, "use a decimal threshold such as 0.75")
 	validateUnitInterval(errs, "suites.drift.confidence_level", cfg.ConfidenceLevel, "use a confidence level such as 0.95 for Wilson pass-rate intervals")
 	validateUnitInterval(errs, "suites.drift.min_pass_rate", cfg.MinPassRate, "use a fractional pass-rate gate such as 0.9 for a 9/10 stability threshold")
 	validateUnitInterval(errs, "suites.drift.max_flake_rate", cfg.MaxFlakeRate, "use a fractional instability budget such as 0.1")
@@ -522,7 +520,7 @@ func validateReportingConfig(errs *ValidationErrors, cfg core.ReportingConfig) {
 	if !isValidTrendGatePreset(cfg.TrendGates.Preset) {
 		errs.Add("reporting.trend_gates.preset", "must be one of strict, moderate, or exploratory", "choose a built-in trend gate preset or remove the field to set thresholds manually")
 	}
-	if !cfg.TrendGates.Enabled {
+	if !cfg.TrendGates.EnabledValue() {
 		return
 	}
 	if strings.TrimSpace(cfg.TrendFile) == "" {

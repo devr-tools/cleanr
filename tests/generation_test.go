@@ -44,7 +44,7 @@ func TestGenerateScenarioDatasetAdversarialModeTagsScenarios(t *testing.T) {
 		},
 		Count:         1,
 		OutputFile:    "generated/cleanr.dataset.yaml",
-		RequireReview: true,
+		RequireReview: boolPtr(true),
 	}
 
 	dataset, err := cleanr.GenerateScenarioDataset(context.Background(), cfg, client)

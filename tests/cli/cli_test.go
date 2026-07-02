@@ -387,7 +387,7 @@ func TestGenerateCommandWritesReviewedDataset(t *testing.T) {
 		},
 		OutputFile:    "generated/cleanr.dataset.yaml",
 		Count:         2,
-		RequireReview: true,
+		RequireReview: boolPtr(true),
 	}
 
 	configPath := filepath.Join(t.TempDir(), "cleanr.yaml")
@@ -2333,10 +2333,10 @@ func TestRunCommandPersistsTrendHistory(t *testing.T) {
 	cfg.Suites.Drift.Enabled = true
 	cfg.Suites.Drift.Iterations = 2
 	cfg.Suites.Drift.StableTags = []string{"stable"}
-	cfg.Suites.Drift.MaxNormalizedDrift = 1
-	cfg.Suites.Drift.MaxSemanticDrift = 1
-	cfg.Suites.Drift.MinConsistencyScore = 0
-	cfg.Suites.Drift.MinSemanticConsistencyScore = 0
+	cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(1)
+	cfg.Suites.Drift.MaxSemanticDrift = float64Ptr(1)
+	cfg.Suites.Drift.MinConsistencyScore = float64Ptr(0)
+	cfg.Suites.Drift.MinSemanticConsistencyScore = float64Ptr(0)
 	cfg.Reporting.Format = "json"
 	cfg.Reporting.TrendFile = "reports/cleanr.trends.yaml"
 	cfg.Reporting.TrendLimit = 5
@@ -2606,13 +2606,13 @@ func TestRunCommandTrendGatesFailOnConfiguredRegression(t *testing.T) {
 	cfg.Suites.Drift.Enabled = true
 	cfg.Suites.Drift.Iterations = 2
 	cfg.Suites.Drift.StableTags = []string{"stable"}
-	cfg.Suites.Drift.MaxNormalizedDrift = 1
-	cfg.Suites.Drift.MaxSemanticDrift = 1
-	cfg.Suites.Drift.MinConsistencyScore = 0
-	cfg.Suites.Drift.MinSemanticConsistencyScore = 0
+	cfg.Suites.Drift.MaxNormalizedDrift = float64Ptr(1)
+	cfg.Suites.Drift.MaxSemanticDrift = float64Ptr(1)
+	cfg.Suites.Drift.MinConsistencyScore = float64Ptr(0)
+	cfg.Suites.Drift.MinSemanticConsistencyScore = float64Ptr(0)
 	cfg.Reporting.Format = "json"
 	cfg.Reporting.TrendFile = "reports/cleanr.trends.yaml"
-	cfg.Reporting.TrendGates.Enabled = true
+	cfg.Reporting.TrendGates.Enabled = boolPtr(true)
 	cfg.Reporting.TrendGates.RequiredWindow = 2
 	cfg.Reporting.TrendGates.MaxSemanticDriftDelta = float64Ptr(0.05)
 
@@ -2906,5 +2906,9 @@ func testTrendTime(day int) time.Time {
 }
 
 func float64Ptr(v float64) *float64 {
+	return &v
+}
+
+func boolPtr(v bool) *bool {
 	return &v
 }

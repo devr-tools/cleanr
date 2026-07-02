@@ -48,7 +48,7 @@ func GenerateDataset(ctx context.Context, cfg core.Config, client *http.Client) 
 		Source:         "cleanr-generation",
 		Target:         cfg.Target.Name,
 		GeneratedAt:    time.Now().UTC(),
-		ReviewRequired: cfg.ScenarioGeneration.RequireReview,
+		ReviewRequired: cfg.ScenarioGeneration.RequireReviewValue(),
 		Warnings:       warnings,
 		Generator: &integrationspkg.ScenarioDatasetGenerator{
 			Provider:       resp.Normalized.Provider,

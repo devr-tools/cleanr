@@ -62,8 +62,8 @@ func judgeConfig(judge core.LLMJudgeConfig, scenarios ...core.Scenario) core.Con
 	if judge.Scale == 0 {
 		judge.Scale = 5
 	}
-	if judge.MinScore == 0 {
-		judge.MinScore = 0.6
+	if judge.MinScore == nil {
+		judge.MinScore = float64Ptr(0.6)
 	}
 	if judge.Samples == 0 {
 		judge.Samples = 1
