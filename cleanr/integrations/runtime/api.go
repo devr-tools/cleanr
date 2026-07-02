@@ -345,12 +345,24 @@ func applyAuth(headers http.Header, apiKeyEnv, destURL string) {
 	}
 
 	host := destinationHost(destURL)
-	if looksLikeProviderSecret(apiKeyEnv) && !hostAllowedForSecret(host) {
+	if !CredentialEgressAllowed(apiKeyEnv, destURL) {
 		log.Printf("cleanr integrations: refusing to send credential %q to untrusted host %q", apiKeyEnv, host)
 		return
 	}
 	log.Printf("cleanr integrations: sending credential %q to host %q", apiKeyEnv, host)
 	headers.Set("Authorization", "Bearer "+value)
+}
+
+// CredentialEgressAllowed reports whether the credential named by apiKeyEnv may
+// be sent to destURL. A well-known provider secret (e.g. OPENAI_API_KEY) may
+// only be sent to a host on the egress allowlist or to loopback; a generic
+// (non-provider) token may be sent anywhere. This is the pure egress policy that
+// applyAuth enforces.
+func CredentialEgressAllowed(apiKeyEnv, destURL string) bool {
+	if !looksLikeProviderSecret(apiKeyEnv) {
+		return true
+	}
+	return hostAllowedForSecret(destinationHost(destURL))
 }
 
 func destinationHost(rawURL string) string {

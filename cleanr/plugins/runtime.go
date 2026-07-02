@@ -272,7 +272,7 @@ func runCommand(ctx context.Context, entry Entry, input []byte) (bytes.Buffer, e
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Dir = commandWorkingDir(entry)
-	cmd.Env = buildEntryEnv(entry)
+	cmd.Env = BuildEntryEnv(entry)
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
@@ -289,21 +289,21 @@ func runCommand(ctx context.Context, entry Entry, input []byte) (bytes.Buffer, e
 // plus cleanr's own CLEANR_PLUGIN_* namespace are passed through.
 const pluginEnvPrefix = "CLEANR_PLUGIN_"
 
-// buildEntryEnv builds the environment for a subprocess plugin. It starts from
+// BuildEntryEnv builds the environment for a subprocess plugin. It starts from
 // an empty environment and adds only an explicit allowlist: the plugin's
 // declared entry.Env, any host CLEANR_PLUGIN_* variables, and cleanr's own
 // plugin context variables. The full host environment is intentionally NOT
 // forwarded so that host secrets cannot be exfiltrated by plugin code.
-func buildEntryEnv(entry Entry) []string {
+func BuildEntryEnv(entry Entry) []string {
 	env := hostPluginEnv()
 	return append(env, manifestEntryEnv(entry)...)
 }
 
-// buildWASMEnv builds the environment for a wazero WASM module. Nothing beyond
+// BuildWASMEnv builds the environment for a wazero WASM module. Nothing beyond
 // what the plugin manifest declares is injected: host CLEANR_PLUGIN_* variables
 // are deliberately excluded so the sandbox only ever sees manifest-declared
 // values.
-func buildWASMEnv(entry Entry) []string {
+func BuildWASMEnv(entry Entry) []string {
 	return manifestEntryEnv(entry)
 }
 

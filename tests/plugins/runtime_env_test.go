@@ -1,10 +1,11 @@
-package plugins
+package tests
 
 import (
 	"strings"
 	"testing"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
+	"github.com/devr-tools/cleanr/cleanr/plugins"
 )
 
 func hasEnvKey(env []string, key string) bool {
@@ -20,11 +21,11 @@ func TestBuildEntryEnvDoesNotLeakHostSecrets(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-secret")
 	t.Setenv("CLEANR_PLUGIN_TOKEN", "allowed")
 
-	entry := Entry{
+	entry := plugins.Entry{
 		Env:    map[string]string{"DECLARED": "1"},
 		Plugin: core.PluginManifest{Name: "p", BaseDir: "/tmp/p"},
 	}
-	env := buildEntryEnv(entry)
+	env := plugins.BuildEntryEnv(entry)
 
 	if hasEnvKey(env, "OPENAI_API_KEY") {
 		t.Fatal("host secret leaked into plugin subprocess env")
@@ -44,11 +45,11 @@ func TestBuildWASMEnvInjectsOnlyManifestDeclared(t *testing.T) {
 	t.Setenv("OPENAI_API_KEY", "sk-secret")
 	t.Setenv("CLEANR_PLUGIN_TOKEN", "allowed")
 
-	entry := Entry{
+	entry := plugins.Entry{
 		Env:    map[string]string{"DECLARED": "1"},
 		Plugin: core.PluginManifest{Name: "p", BaseDir: "/tmp/p"},
 	}
-	env := buildWASMEnv(entry)
+	env := plugins.BuildWASMEnv(entry)
 
 	if hasEnvKey(env, "OPENAI_API_KEY") {
 		t.Fatal("host secret leaked into WASM sandbox")

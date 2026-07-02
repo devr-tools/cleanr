@@ -42,7 +42,7 @@ func runWASMModule(ctx context.Context, entry Entry, input []byte) (bytes.Buffer
 		WithSysWalltime().
 		WithSysNanotime().
 		WithSysNanosleep()
-	for _, item := range buildWASMEnv(entry) {
+	for _, item := range BuildWASMEnv(entry) {
 		key, value, ok := strings.Cut(item, "=")
 		if !ok {
 			continue
