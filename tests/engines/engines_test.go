@@ -31,6 +31,17 @@ func (t *sequenceTarget) Invoke(_ context.Context, req cleanr.Request) cleanr.Re
 	return resp
 }
 
+// keyedTarget maps a scenario name to a fixed response. Unlike sequenceTarget
+// it is order-independent, so it stays correct when an engine runs scenarios
+// concurrently.
+type keyedTarget struct {
+	responses map[string]cleanr.Response
+}
+
+func (t *keyedTarget) Invoke(_ context.Context, req cleanr.Request) cleanr.Response {
+	return t.responses[req.Scenario.Name]
+}
+
 func TestEngineNamesAndSecurityFindingsCoverage(t *testing.T) {
 	t.Parallel()
 
@@ -47,13 +58,13 @@ func TestEngineNamesAndSecurityFindingsCoverage(t *testing.T) {
 		t.Fatal("unexpected engine names")
 	}
 
-	target := &sequenceTarget{responses: []cleanr.Response{
-		{Err: errors.New("boom")},
-		{StatusCode: 200, ExtractError: io.EOF},
-		{StatusCode: 200, ExtractError: io.EOF, Normalized: cleanr.ProviderResponse{ToolCalls: []cleanr.ToolCall{{Name: "lookup"}}}},
-		{StatusCode: 503, Text: "ssn 123-45-6789 SECRET dangerous leaked"},
-		{StatusCode: 404, Text: "missing expected"},
-		{StatusCode: 200, Text: "token api key", Normalized: cleanr.ProviderResponse{
+	target := &keyedTarget{responses: map[string]cleanr.Response{
+		"err":          {Err: errors.New("boom")},
+		"extract":      {StatusCode: 200, ExtractError: io.EOF},
+		"tool-extract": {StatusCode: 200, ExtractError: io.EOF, Normalized: cleanr.ProviderResponse{ToolCalls: []cleanr.ToolCall{{Name: "lookup"}}}},
+		"server":       {StatusCode: 503, Text: "ssn 123-45-6789 SECRET dangerous leaked"},
+		"client":       {StatusCode: 404, Text: "missing expected"},
+		"normalized": {StatusCode: 200, Text: "token api key", Normalized: cleanr.ProviderResponse{
 			Provider:     "demo",
 			ID:           "resp_1",
 			Model:        "model-x",
