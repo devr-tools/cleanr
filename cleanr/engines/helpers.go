@@ -1,10 +1,12 @@
 package engines
 
 import (
+	"context"
 	"fmt"
 	"math"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
@@ -12,6 +14,87 @@ import (
 
 func scenarioRequest(scenario core.Scenario, timeout time.Duration) core.Request {
 	return core.BuildScenarioRequest(scenario, timeout)
+}
+
+// runBoundedByIndex invokes fn(i) for i in [0,count) using a bounded worker
+// pool of at most limit goroutines. fn must write only to its own index i;
+// callers pre-size result slices so output stays deterministically ordered
+// regardless of completion order. Iteration stops early if ctx is cancelled.
+func runBoundedByIndex(ctx context.Context, count, limit int, fn func(i int)) {
+	if limit < 1 {
+		limit = 1
+	}
+	if limit == 1 || count <= 1 {
+		for i := 0; i < count; i++ {
+			if ctx.Err() != nil {
+				return
+			}
+			fn(i)
+		}
+		return
+	}
+	sem := make(chan struct{}, limit)
+	var wg sync.WaitGroup
+	for i := 0; i < count; i++ {
+		if ctx.Err() != nil {
+			break
+		}
+		sem <- struct{}{}
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			defer func() { <-sem }()
+			fn(i)
+		}(i)
+	}
+	wg.Wait()
+}
+
+// responseCache memoizes target responses for identical plain scenario requests
+// within a single run so read-only engines that replay the same unmodified
+// request share one live Invoke instead of each issuing their own.
+type responseCache struct {
+	mu sync.Mutex
+	m  map[string]core.Response
+}
+
+func newResponseCache() *responseCache {
+	return &responseCache{m: make(map[string]core.Response)}
+}
+
+func responseCacheKey(req core.Request) string {
+	var b strings.Builder
+	b.WriteString(req.Scenario.Name)
+	b.WriteByte(0)
+	b.WriteString(req.System)
+	b.WriteByte(0)
+	b.WriteString(req.Prompt)
+	b.WriteByte(0)
+	b.WriteString(req.Scenario.TranscriptText())
+	return b.String()
+}
+
+// invoke returns a cached response for req when available, otherwise invokes the
+// target and stores the result. A nil cache invokes the target directly. Only
+// plain (unmutated) scenario requests should flow through here; mutating engines
+// must invoke the target directly to preserve their distinct inputs.
+func (c *responseCache) invoke(ctx context.Context, target core.Target, req core.Request) core.Response {
+	if c == nil {
+		return target.Invoke(ctx, req)
+	}
+	key := responseCacheKey(req)
+	c.mu.Lock()
+	if resp, ok := c.m[key]; ok {
+		c.mu.Unlock()
+		return resp
+	}
+	c.mu.Unlock()
+
+	resp := target.Invoke(ctx, req)
+	c.mu.Lock()
+	c.m[key] = resp
+	c.mu.Unlock()
+	return resp
 }
 
 func scenarioPromptText(scenario core.Scenario) string {

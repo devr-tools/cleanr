@@ -8,21 +8,60 @@ import (
 	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
-type TokenOptimizationEngine struct{}
+type TokenOptimizationEngine struct {
+	cache *responseCache
+}
 
 func (TokenOptimizationEngine) Name() string { return "token-optimization" }
 
-func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteResult {
+type tokenOptimizationMetrics struct {
+	inputTokens  int
+	outputTokens int
+	savings      int
+	heuristic    bool
+}
+
+func (e TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteResult {
 	cfg := runCtx.Config.Suites.TokenOptimization
-	cases := make([]core.CaseResult, 0, len(runCtx.Config.Scenarios))
+	scenarios := runCtx.Config.Scenarios
+	cases := make([]core.CaseResult, len(scenarios))
+	metrics := make([]tokenOptimizationMetrics, len(scenarios))
+	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+		cases[i], metrics[i] = e.evaluateScenario(ctx, runCtx, scenarios[i], cfg)
+	})
+
 	totalInput := 0
 	totalOutput := 0
 	totalSavings := 0
 	heuristicOnly := true
+	for _, m := range metrics {
+		totalInput += m.inputTokens
+		totalOutput += m.outputTokens
+		totalSavings += m.savings
+		if !m.heuristic {
+			heuristicOnly = false
+		}
+	}
 
-	for _, scenario := range runCtx.Config.Scenarios {
+	passed := allPassed(cases)
+	return core.SuiteResult{
+		Name:   "token-optimization",
+		Passed: passed,
+		Cases:  cases,
+		Meta: map[string]any{
+			"total_input_tokens":   totalInput,
+			"total_output_tokens":  totalOutput,
+			"total_tokens":         totalInput + totalOutput,
+			"estimated_savings":    totalSavings,
+			"heuristic_estimation": heuristicOnly,
+		},
+	}
+}
+
+func (e TokenOptimizationEngine) evaluateScenario(ctx context.Context, runCtx *core.RunContext, scenario core.Scenario, cfg core.TokenOptimizationConfig) (core.CaseResult, tokenOptimizationMetrics) {
+	{
 		start := time.Now()
-		resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
+		resp := e.cache.invoke(ctx, runCtx.Target, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 		findings := responseFindings(resp, nil)
 		usage := inferTokenUsage(scenario, resp)
 		promptRatio := duplicationRatio(scenarioPromptText(scenario))
@@ -32,12 +71,6 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext)
 			outputInputRatio = float64(usage.OutputTokens) / float64(usage.InputTokens)
 		}
 		savings := estimatedTokenSavings(usage, promptRatio, responseRatio, cfg)
-		totalInput += usage.InputTokens
-		totalOutput += usage.OutputTokens
-		totalSavings += savings
-		if !usage.Heuristic {
-			heuristicOnly = false
-		}
 
 		if usage.InputTokens > cfg.MaxInputTokens {
 			findings = append(findings, core.Finding{Severity: "high", Message: fmt.Sprintf("estimated input tokens %d exceeded threshold %d", usage.InputTokens, cfg.MaxInputTokens)})
@@ -58,7 +91,7 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext)
 			findings = append(findings, core.Finding{Severity: "medium", Message: fmt.Sprintf("response duplication ratio %.2f exceeded threshold %.2f", responseRatio, cfg.MaxResponseDuplicationRatio)})
 		}
 
-		cases = append(cases, core.CaseResult{
+		result := core.CaseResult{
 			Name:     scenario.Name,
 			Passed:   len(findings) == 0,
 			Duration: time.Since(start),
@@ -75,20 +108,12 @@ func (TokenOptimizationEngine) Run(ctx context.Context, runCtx *core.RunContext)
 				"estimated_savings_tokens":    savings,
 				"optimization_hints":          tokenOptimizationHints(usage, promptRatio, responseRatio, outputInputRatio, cfg),
 			}),
-		})
-	}
-
-	passed := allPassed(cases)
-	return core.SuiteResult{
-		Name:   "token-optimization",
-		Passed: passed,
-		Cases:  cases,
-		Meta: map[string]any{
-			"total_input_tokens":   totalInput,
-			"total_output_tokens":  totalOutput,
-			"total_tokens":         totalInput + totalOutput,
-			"estimated_savings":    totalSavings,
-			"heuristic_estimation": heuristicOnly,
-		},
+		}
+		return result, tokenOptimizationMetrics{
+			inputTokens:  usage.InputTokens,
+			outputTokens: usage.OutputTokens,
+			savings:      savings,
+			heuristic:    usage.Heuristic,
+		}
 	}
 }

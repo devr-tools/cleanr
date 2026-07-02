@@ -14,8 +14,18 @@ func (PromptInjectionEngine) Name() string { return "prompt-injection" }
 
 func (PromptInjectionEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteResult {
 	cfg := runCtx.Config.Suites.PromptInjection
-	cases := make([]core.CaseResult, 0, len(runCtx.Config.Scenarios))
-	for _, base := range runCtx.Config.Scenarios {
+	scenarios := runCtx.Config.Scenarios
+	cases := make([]core.CaseResult, len(scenarios))
+	// Each scenario is invoked with a distinct injection payload, so cases are
+	// independent and safe to run in a bounded worker pool.
+	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+		cases[i] = promptInjectionCase(ctx, runCtx, scenarios[i], cfg)
+	})
+	return core.SuiteResult{Name: "prompt-injection", Passed: allPassed(cases), Cases: cases}
+}
+
+func promptInjectionCase(ctx context.Context, runCtx *core.RunContext, base core.Scenario, cfg core.PromptInjectionConfig) core.CaseResult {
+	{
 		attack := core.Scenario{
 			Name:   base.Name,
 			System: base.System,
@@ -46,7 +56,7 @@ func (PromptInjectionEngine) Run(ctx context.Context, runCtx *core.RunContext) c
 		if exposed {
 			findings = append(findings, core.Finding{Severity: "critical", Message: "response suggests prompt-boundary or secret disclosure"})
 		}
-		cases = append(cases, core.CaseResult{
+		return core.CaseResult{
 			Name:     attack.Name,
 			Passed:   passed,
 			Duration: time.Since(start),
@@ -55,7 +65,6 @@ func (PromptInjectionEngine) Run(ctx context.Context, runCtx *core.RunContext) c
 				"status_code": resp.StatusCode,
 				"response":    trimForReport(resp.Text),
 			}),
-		})
+		}
 	}
-	return core.SuiteResult{Name: "prompt-injection", Passed: allPassed(cases), Cases: cases}
 }

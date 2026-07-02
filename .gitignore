@@ -3,6 +3,9 @@
 /.gomodcache/
 /reports/
 
+# Local dev binary (built from ./cmd/cleanr-dev)
+/cleanr-dev
+
 # Local configuration
 /cleanr.connected.yaml
 

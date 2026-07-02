@@ -111,6 +111,17 @@ func Run(ctx context.Context, args map[string]any) (toolkit.Result, error) {
 		return toolkit.StructuredToolResult(out, out.ReportText), nil
 	}
 
+	if err := toolkit.GuardMCPConfig(cfg); err != nil {
+		out := toolkit.RunOutput{
+			Passed:       false,
+			ExitCode:     2,
+			ReportFormat: toolkit.NormalizeReportFormat(input.ReportType),
+			ReportText:   err.Error(),
+			Error:        err.Error(),
+		}
+		return toolkit.StructuredToolResult(out, out.ReportText), nil
+	}
+
 	out, err := toolkit.RunWithConfig(ctx, cfg, input.ReportType, input.TimeoutMS)
 	if err != nil {
 		return toolkit.Result{}, err

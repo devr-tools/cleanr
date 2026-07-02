@@ -10,6 +10,7 @@ type Config struct {
 	Version            string                   `json:"version"`
 	PolicyPacks        []string                 `json:"policy_packs,omitempty"`
 	Plugins            []string                 `json:"plugins,omitempty"`
+	Concurrency        int                      `json:"concurrency,omitempty"`
 	Target             TargetConfig             `json:"target"`
 	ScenarioGeneration ScenarioGenerationConfig `json:"scenario_generation,omitempty"`
 	OpenAPI            OpenAPIConfig            `json:"openapi,omitempty"`
@@ -611,8 +612,32 @@ type TrendGateConfig struct {
 	FailOnRegressedSuites         bool     `json:"fail_on_regressed_suites,omitempty"`
 }
 
+// defaultTargetTimeoutMS mirrors the request timeout applied by the config
+// package's applyDefaults. SDK-built configs never run applyDefaults, so
+// Timeout() falls back to this value when TimeoutMS is unset to avoid handing
+// callers a zero-length deadline (which expires immediately).
+const defaultTargetTimeoutMS = 5000
+
 func (c TargetConfig) Timeout() time.Duration {
-	return time.Duration(c.TimeoutMS) * time.Millisecond
+	ms := c.TimeoutMS
+	if ms <= 0 {
+		ms = defaultTargetTimeoutMS
+	}
+	return time.Duration(ms) * time.Millisecond
+}
+
+// defaultCaseConcurrency bounds the per-scenario worker pool used by the
+// read-heavy engines when the config does not specify a value.
+const defaultCaseConcurrency = 4
+
+// CaseConcurrency returns the bounded worker-pool size engines use when
+// invoking the target for independent scenarios. It is configurable via the
+// top-level "concurrency" field and defaults to a safe value when unset.
+func (c Config) CaseConcurrency() int {
+	if c.Concurrency > 0 {
+		return c.Concurrency
+	}
+	return defaultCaseConcurrency
 }
 
 func (c OpenAPIConfig) HasSource() bool {

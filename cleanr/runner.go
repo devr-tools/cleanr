@@ -45,6 +45,12 @@ func (r *Runner) Run(ctx context.Context) Report {
 	}
 
 	for _, engine := range r.engines {
+		// Stop launching further engines once the run's deadline/cancellation
+		// fires so we don't spend time producing spurious "context deadline
+		// exceeded" findings after the budget is gone.
+		if ctx.Err() != nil {
+			break
+		}
 		suiteStart := time.Now()
 		result := engine.Run(ctx, runCtx)
 		result.Duration = time.Since(suiteStart)

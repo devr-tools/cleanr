@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
+	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -165,7 +168,7 @@ func loadTrendSource(ctx context.Context, source core.TrendSourceConfig, baseDir
 		if err != nil {
 			return trendspkg.HistoryFile{}, fmt.Errorf("load trend source %s: %w", displayName(source.Name, source.Type), err)
 		}
-		applyAuth(req.Header, source.APIKeyEnv)
+		applyAuth(req.Header, source.APIKeyEnv, source.URL)
 		applyHeaders(req.Header, source.Headers)
 		resp, err := client.Do(req)
 		if err != nil {
@@ -203,7 +206,7 @@ func postSinkPayload(ctx context.Context, sink core.ResultSinkConfig, payload Si
 		return "", fmt.Errorf("publish result sink %s: %w", displayName(sink.Name, sink.Type), err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	applyAuth(req.Header, sink.APIKeyEnv)
+	applyAuth(req.Header, sink.APIKeyEnv, sink.Endpoint)
 	applyHeaders(req.Header, sink.Headers)
 	resp, err := client.Do(req)
 	if err != nil {
@@ -303,14 +306,104 @@ func resolveRelativePath(baseDir, path string) string {
 	return filepath.Join(baseDir, path)
 }
 
-func applyAuth(headers http.Header, apiKeyEnv string) {
+// integrationEgressAllowlist holds host suffixes trusted to receive integration
+// credentials. A provider-secret-looking env var is only ever sent to a host
+// that matches one of these suffixes (or a loopback host used for testing).
+var integrationEgressAllowlist = []string{
+	"braintrust.dev",
+	"langfuse.com",
+	"posthog.com",
+	"i.posthog.com",
+	"smith.langchain.com",
+	"api.smith.langchain.com",
+}
+
+// providerSecretTokens are substrings that mark an env var name as a
+// third-party provider credential which must not be exfiltrated to an
+// arbitrary, config-specified host.
+var providerSecretTokens = []string{
+	"OPENAI", "ANTHROPIC", "CLAUDE", "AWS", "AZURE", "GCP", "GOOGLE",
+	"GEMINI", "VERTEX", "COHERE", "MISTRAL", "HUGGINGFACE", "HUGGING_FACE",
+	"HF_TOKEN", "GITHUB", "GITLAB", "SLACK", "STRIPE", "TWILIO",
+	"SENDGRID", "DATABASE_URL", "PRIVATE_KEY", "SESSION_TOKEN",
+}
+
+// applyAuth reads the credential named by apiKeyEnv and attaches it as a Bearer
+// token for the request to destURL. To prevent a config from exfiltrating a
+// well-known provider secret (e.g. OPENAI_API_KEY) to an arbitrary host, an env
+// var whose name matches a provider-secret pattern is only sent to hosts on the
+// egress allowlist (or loopback). Every credential send is logged with the env
+// var name and destination host.
+func applyAuth(headers http.Header, apiKeyEnv, destURL string) {
 	apiKeyEnv = strings.TrimSpace(apiKeyEnv)
 	if apiKeyEnv == "" {
 		return
 	}
-	if value := strings.TrimSpace(os.Getenv(apiKeyEnv)); value != "" {
-		headers.Set("Authorization", "Bearer "+value)
+	value := strings.TrimSpace(os.Getenv(apiKeyEnv))
+	if value == "" {
+		return
 	}
+
+	host := destinationHost(destURL)
+	if !CredentialEgressAllowed(apiKeyEnv, destURL) {
+		log.Printf("cleanr integrations: refusing to send credential %q to untrusted host %q", apiKeyEnv, host)
+		return
+	}
+	log.Printf("cleanr integrations: sending credential %q to host %q", apiKeyEnv, host)
+	headers.Set("Authorization", "Bearer "+value)
+}
+
+// CredentialEgressAllowed reports whether the credential named by apiKeyEnv may
+// be sent to destURL. A well-known provider secret (e.g. OPENAI_API_KEY) may
+// only be sent to a host on the egress allowlist or to loopback; a generic
+// (non-provider) token may be sent anywhere. This is the pure egress policy that
+// applyAuth enforces.
+func CredentialEgressAllowed(apiKeyEnv, destURL string) bool {
+	if !looksLikeProviderSecret(apiKeyEnv) {
+		return true
+	}
+	return hostAllowedForSecret(destinationHost(destURL))
+}
+
+func destinationHost(rawURL string) string {
+	rawURL = strings.TrimSpace(rawURL)
+	if rawURL == "" {
+		return ""
+	}
+	parsed, err := url.Parse(rawURL)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(parsed.Hostname())
+}
+
+func looksLikeProviderSecret(name string) bool {
+	upper := strings.ToUpper(strings.TrimSpace(name))
+	for _, token := range providerSecretTokens {
+		if strings.Contains(upper, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func hostAllowedForSecret(host string) bool {
+	host = strings.ToLower(strings.TrimSpace(host))
+	if host == "" {
+		return false
+	}
+	if host == "localhost" {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return true
+	}
+	for _, suffix := range integrationEgressAllowlist {
+		if host == suffix || strings.HasSuffix(host, "."+suffix) {
+			return true
+		}
+	}
+	return false
 }
 
 func applyHeaders(headers http.Header, values map[string]string) {

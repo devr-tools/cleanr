@@ -3,7 +3,6 @@ package tests
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"io"
 	"net/http"
 	"strings"
@@ -340,8 +339,11 @@ func TestHTTPTargetInvokeHandlesResponseFallbacks(t *testing.T) {
 		}, client)
 
 		resp := target.Invoke(context.Background(), cleanr.Request{})
-		if !errors.Is(resp.ExtractError, io.EOF) {
-			t.Fatalf("expected EOF extract error, got %v", resp.ExtractError)
+		if resp.ExtractError == nil {
+			t.Fatalf("expected extract error for missing field, got nil")
+		}
+		if !strings.Contains(resp.ExtractError.Error(), "output.text") {
+			t.Fatalf("expected extract error to name the missing field, got %v", resp.ExtractError)
 		}
 	})
 

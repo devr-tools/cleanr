@@ -8,6 +8,9 @@ import (
 	"strings"
 	"time"
 
+	"crypto/tls"
+	"net"
+
 	"github.com/devr-tools/cleanr/cleanr/core"
 	"github.com/golang/protobuf/jsonpb"
 	"github.com/jhump/protoreflect/dynamic"
@@ -15,6 +18,7 @@ import (
 	"github.com/jhump/protoreflect/grpcreflect"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
@@ -42,8 +46,9 @@ func (t *GRPC) Invoke(ctx context.Context, req core.Request) core.Response {
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	conn, err := grpc.DialContext(reqCtx, strings.TrimSpace(t.cfg.GRPC.Address),
-		grpc.WithTransportCredentials(insecure.NewCredentials()),
+	address := strings.TrimSpace(t.cfg.GRPC.Address)
+	conn, err := grpc.DialContext(reqCtx, address,
+		grpc.WithTransportCredentials(grpcTransportCredentials(address, t.cfg.GRPC.Plaintext)),
 		grpc.WithBlock(),
 	)
 	if err != nil {
@@ -121,6 +126,44 @@ func (t *GRPC) invokeUnary(ctx context.Context, conn *grpc.ClientConn, data []by
 		ExtractError: extractErr,
 		Normalized:   grpcNormalized(fullMethod, codes.OK, headers, trailers),
 	}, nil
+}
+
+// grpcTransportCredentials picks transport credentials for a dial target.
+// Auth tokens travel in gRPC headers and every payload is otherwise sent in
+// cleartext, so TLS is the default for any remote host. Plaintext is only used
+// when the caller explicitly opts in via GRPC.Plaintext or when the target is a
+// loopback address (localhost / 127.0.0.1 / ::1), which keeps local test
+// targets working without exposing traffic on the network.
+func grpcTransportCredentials(address string, plaintext bool) credentials.TransportCredentials {
+	if plaintext || isLoopbackGRPCAddress(address) {
+		return insecure.NewCredentials()
+	}
+	return credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
+}
+
+// isLoopbackGRPCAddress reports whether a gRPC dial target refers to the local
+// host. It accepts host, host:port, and bare-port forms.
+func isLoopbackGRPCAddress(address string) bool {
+	address = strings.TrimSpace(address)
+	if address == "" {
+		return false
+	}
+	// Strip a gRPC name-resolver scheme such as "dns:///" or "passthrough:///".
+	if idx := strings.Index(address, "://"); idx >= 0 {
+		address = address[idx+3:]
+	}
+	host := address
+	if h, _, err := net.SplitHostPort(address); err == nil {
+		host = h
+	}
+	host = strings.Trim(strings.TrimSpace(host), "[]")
+	if host == "" || strings.EqualFold(host, "localhost") {
+		return true
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		return ip.IsLoopback()
+	}
+	return false
 }
 
 func parseGRPCMethod(raw string) (string, string, string, error) {

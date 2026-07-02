@@ -247,6 +247,7 @@ func buildComparisonMatrix(ctx context.Context, runCtx *core.RunContext, cfg cor
 	for _, target := range targets {
 		labels = append(labels, target.label)
 	}
+	judges := buildJudgePool(cfg, judge)
 	for _, scenario := range scenarios {
 		scores := map[string]float64{}
 		bestLabel := ""
@@ -256,6 +257,7 @@ func buildComparisonMatrix(ctx context.Context, runCtx *core.RunContext, cfg cor
 				runCtx:   &core.RunContext{Config: runCtx.Config, Target: target.target},
 				cfg:      cfg,
 				judge:    judge,
+				judges:   judges,
 				scenario: scenario,
 				run:      run,
 			})

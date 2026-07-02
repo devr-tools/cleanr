@@ -5,10 +5,13 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/devr-tools/cleanr/cleanr"
@@ -51,6 +54,7 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 		_, _ = fmt.Fprintf(stderr, "config error: %v\n", err)
 		return 2
 	}
+	slog.Debug("run config loaded", "path", resolvedConfigPath, "scenarios", len(cfg.Scenarios))
 	applyRunOptions(&cfg, opts)
 	if len(cfg.Scenarios) == 0 {
 		_, _ = fmt.Fprintln(stderr, "run error: config contains no scenarios; generate or import scenarios before running tests")
@@ -60,26 +64,79 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 
 	ctx, cancel := runContext(opts.timeout)
 	defer cancel()
+	slog.Debug("run starting", "format", cfg.Reporting.Format, "output", cfg.Reporting.Output)
 	report := cleanr.NewHTTPRunner(cfg).Run(ctx)
+	if ctx.Err() != nil {
+		_, _ = fmt.Fprintf(stderr, "run interrupted: %v; writing partial report\n", ctx.Err())
+		slog.Warn("run interrupted", "error", ctx.Err())
+	}
+
+	// persistWarnings accumulates non-fatal bookkeeping failures so the run can
+	// still exit non-zero at the end without ever discarding the paid report.
+	var persistWarnings []string
+
+	// Trend history enriches the report and its gates can flip pass/fail, so it
+	// must run before the report is written. A persistence failure here is
+	// downgraded to a warning instead of discarding the whole run.
 	if err := cleanr.AttachTrendHistory(&report, cfg.Reporting.TrendFile, cfg.Reporting.BuildID, cfg.Reporting.TrendLimit); err != nil {
-		_, _ = fmt.Fprintf(stderr, "trend history error: %v\n", err)
-		return 2
+		_, _ = fmt.Fprintf(stderr, "trend history warning: %v\n", err)
+		slog.Warn("trend history persistence failed", "error", err)
+		persistWarnings = append(persistWarnings, "trend history")
 	}
 	cleanr.EvaluateTrendGates(&report, cfg.Reporting.TrendGates)
-	replayArtifact, hasReplayArtifact, err := buildAndWriteReplayArtifact(cfg, report, stderr)
+
+	// Build the replay artifact and attestation in memory and publish
+	// integrations before writing the report: these enrich the report content
+	// (integration results, attached artifacts) that the written report must
+	// contain. Only the on-disk persistence of these artifacts is deferred until
+	// after the report is written.
+	replayArtifact, hasReplayArtifact := buildReplayArtifact(cfg, report)
+	attestation, err := buildAttestation(cfg, report, replayArtifact, hasReplayArtifact, stderr)
 	if err != nil {
-		return 2
-	}
-	attestation, err := buildAndWriteAttestation(cfg, report, replayArtifact, hasReplayArtifact, resolvedConfigPath, stderr)
-	if err != nil {
-		return 2
+		slog.Warn("attestation build failed", "error", err)
+		persistWarnings = append(persistWarnings, "attestation")
 	}
 	publishIntegrations(ctx, cfg, &report, replayArtifact, hasReplayArtifact, attestation, resolvedConfigPath, stderr)
 
+	// Write the report first among the disk-persistence side effects: the
+	// artifact and attestation file writes below are best-effort and must never
+	// prevent the paid report from reaching the user.
 	if err := writeRunReport(stdout, stderr, cfg.Reporting, report); err != nil {
 		_, _ = fmt.Fprintf(stderr, "write report: %v\n", err)
+		slog.Error("write report failed", "error", err)
 		return 2
 	}
+	slog.Debug("run report written", "format", cfg.Reporting.Format, "output", cfg.Reporting.Output, "passed", report.Passed)
+
+	if err := persistReplayArtifactFile(cfg, replayArtifact, stderr); err != nil {
+		slog.Warn("replay artifact persistence failed", "error", err)
+		persistWarnings = append(persistWarnings, "replay artifact")
+	}
+	if err := persistAttestationFile(cfg, attestation, resolvedConfigPath, stderr); err != nil {
+		slog.Warn("attestation persistence failed", "error", err)
+		persistWarnings = append(persistWarnings, "attestation write")
+	}
+
+	persistWarnings = append(persistWarnings, emitRunSideOutputs(opts, cfg, report, resolvedConfigPath, stdout, stderr)...)
+
+	// Primary pass/fail from the run result takes precedence; only when the run
+	// itself passed do bookkeeping failures surface as the distinct exit code 2.
+	if !report.Passed {
+		return 1
+	}
+	if len(persistWarnings) > 0 {
+		slog.Warn("run passed but persistence steps failed", "steps", persistWarnings)
+		return 2
+	}
+	return 0
+}
+
+// emitRunSideOutputs writes the optional CI/integration side outputs (GitHub,
+// Buildkite, GitLab) after the report has been written. All failures are
+// non-fatal warnings; it returns any that should surface as the run's distinct
+// bookkeeping-failure exit code.
+func emitRunSideOutputs(opts runOptions, cfg cleanr.Config, report cleanr.Report, resolvedConfigPath string, stdout, stderr io.Writer) []string {
+	var warnings []string
 	if opts.githubOutputs {
 		if err := writeRunGitHubOutputs(report); err != nil {
 			_, _ = fmt.Fprintf(stderr, "github output warning: %v\n", err)
@@ -88,10 +145,12 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 	if opts.githubPRComment {
 		number, err := postRunGitHubPRComment(report, opts.githubPRNumber)
 		if err != nil {
-			_, _ = fmt.Fprintf(stderr, "github pr comment error: %v\n", err)
-			return 2
+			_, _ = fmt.Fprintf(stderr, "github pr comment warning: %v\n", err)
+			slog.Warn("github pr comment failed", "error", err)
+			warnings = append(warnings, "github pr comment")
+		} else {
+			_, _ = fmt.Fprintf(stdout, "posted GitHub PR comment to #%d\n", number)
 		}
-		_, _ = fmt.Fprintf(stdout, "posted GitHub PR comment to #%d\n", number)
 	}
 	if err := maybeWriteBuildkiteRunOutputs(opts.buildkite, cfg.Reporting, report, resolvedConfigPath); err != nil {
 		_, _ = fmt.Fprintf(stderr, "buildkite warning: %v\n", err)
@@ -99,10 +158,7 @@ func executeRunCommand(opts runOptions, stdout, stderr io.Writer) int {
 	if err := maybeWriteGitLabRunOutputs(opts.gitlab, cfg, report, resolvedConfigPath); err != nil {
 		_, _ = fmt.Fprintf(stderr, "gitlab warning: %v\n", err)
 	}
-	if report.Passed {
-		return 0
-	}
-	return 1
+	return warnings
 }
 
 func parseRunOptions(args []string, stderr io.Writer) (runOptions, error) {
@@ -155,31 +211,48 @@ func resolveRunPaths(cfg *cleanr.Config, resolvedConfigPath string) {
 	cfg.Reporting.ReplayArtifactFile = resolveConfigRelativePath(resolvedConfigPath, cfg.Reporting.ReplayArtifactFile)
 }
 
+// runContext returns a context that is cancelled on SIGINT/SIGTERM so an
+// interrupt stops the run gracefully (allowing a partial report to be written),
+// with the optional execution timeout layered on top.
 func runContext(timeout time.Duration) (context.Context, context.CancelFunc) {
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	if timeout <= 0 {
-		return context.Background(), func() {}
+		return ctx, stop
 	}
-	return context.WithTimeout(context.Background(), timeout)
+	timeoutCtx, cancel := context.WithTimeout(ctx, timeout)
+	return timeoutCtx, func() {
+		cancel()
+		stop()
+	}
 }
 
-func buildAndWriteReplayArtifact(cfg cleanr.Config, report cleanr.Report, stderr io.Writer) (cleanr.ReplayArtifact, bool, error) {
-	replayArtifact := cleanr.ReplayArtifact{}
-	hasReplayArtifact := false
+// buildReplayArtifact constructs the in-memory replay artifact when the config
+// requires one (for the report, attestation, or integration sinks). It performs
+// no disk I/O; see persistReplayArtifactFile for the best-effort write.
+func buildReplayArtifact(cfg cleanr.Config, report cleanr.Report) (cleanr.ReplayArtifact, bool) {
 	if needsReplayArtifact(cfg) {
-		replayArtifact = cleanr.BuildReplayArtifact(report)
-		hasReplayArtifact = true
+		return cleanr.BuildReplayArtifact(report), true
 	}
+	return cleanr.ReplayArtifact{}, false
+}
+
+// persistReplayArtifactFile writes the replay artifact to disk when a path is
+// configured. It is best-effort: callers treat a returned error as a warning.
+func persistReplayArtifactFile(cfg cleanr.Config, replayArtifact cleanr.ReplayArtifact, stderr io.Writer) error {
 	if strings.TrimSpace(cfg.Reporting.ReplayArtifactFile) == "" {
-		return replayArtifact, hasReplayArtifact, nil
+		return nil
 	}
 	if err := cleanr.WriteReplayArtifactFile(cfg.Reporting.ReplayArtifactFile, replayArtifact); err != nil {
 		_, _ = fmt.Fprintf(stderr, "replay artifact error: %v\n", err)
-		return cleanr.ReplayArtifact{}, false, err
+		return err
 	}
-	return replayArtifact, hasReplayArtifact, nil
+	return nil
 }
 
-func buildAndWriteAttestation(cfg cleanr.Config, report cleanr.Report, replayArtifact cleanr.ReplayArtifact, hasReplayArtifact bool, resolvedConfigPath string, stderr io.Writer) (*cleanr.ReleaseGateAttestation, error) {
+// buildAttestation constructs the signed release-gate attestation in memory
+// when governance attestation is enabled. It returns (nil, nil) when disabled
+// and performs no disk I/O; see persistAttestationFile for the write.
+func buildAttestation(cfg cleanr.Config, report cleanr.Report, replayArtifact cleanr.ReplayArtifact, hasReplayArtifact bool, stderr io.Writer) (*cleanr.ReleaseGateAttestation, error) {
 	if !cfg.Governance.Attestation.Enabled {
 		return nil, nil
 	}
@@ -192,12 +265,22 @@ func buildAndWriteAttestation(cfg cleanr.Config, report cleanr.Report, replayArt
 		_, _ = fmt.Fprintf(stderr, "attestation error: %v\n", err)
 		return nil, err
 	}
-	outputPath := resolveConfigRelativePath(resolvedConfigPath, cfg.Governance.Attestation.Output)
-	if err := cleanr.WriteReleaseGateAttestationFile(outputPath, builtAttestation); err != nil {
-		_, _ = fmt.Fprintf(stderr, "attestation error: %v\n", err)
-		return nil, err
-	}
 	return &builtAttestation, nil
+}
+
+// persistAttestationFile writes the built attestation to disk. It is
+// best-effort: callers treat a returned error as a warning. A nil attestation
+// (attestation disabled) is a no-op.
+func persistAttestationFile(cfg cleanr.Config, attestation *cleanr.ReleaseGateAttestation, resolvedConfigPath string, stderr io.Writer) error {
+	if attestation == nil {
+		return nil
+	}
+	outputPath := resolveConfigRelativePath(resolvedConfigPath, cfg.Governance.Attestation.Output)
+	if err := cleanr.WriteReleaseGateAttestationFile(outputPath, *attestation); err != nil {
+		_, _ = fmt.Fprintf(stderr, "attestation error: %v\n", err)
+		return err
+	}
+	return nil
 }
 
 func publishIntegrations(ctx context.Context, cfg cleanr.Config, report *cleanr.Report, replayArtifact cleanr.ReplayArtifact, hasReplayArtifact bool, attestation *cleanr.ReleaseGateAttestation, resolvedConfigPath string, stderr io.Writer) {
@@ -225,7 +308,7 @@ func writeRunReport(stdout, stderr io.Writer, reporting cleanr.ReportingConfig, 
 		if err != nil {
 			return fmt.Errorf("open report output: %w", err)
 		}
-		defer f.Close()
+		defer func() { _ = f.Close() }()
 		dest = f
 	}
 	if err := cleanr.WriteReport(dest, report, reporting.Format); err != nil {

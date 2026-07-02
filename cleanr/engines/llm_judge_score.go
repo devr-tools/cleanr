@@ -26,6 +26,7 @@ type scoreCaseInput struct {
 	runCtx   *core.RunContext
 	cfg      core.LLMJudgeConfig
 	judge    core.Target
+	judges   []namedTarget
 	scenario core.Scenario
 	run      scoreRun
 }
@@ -59,12 +60,19 @@ func (e LLMJudgeEngine) runScore(ctx context.Context, runCtx *core.RunContext, c
 		maxFlakeRate:    cfg.MaxFlakeRate,
 		cascadeMargin:   cfg.CascadeMargin,
 	}
+	// Build the judge pool once for the whole run instead of once per case; each
+	// ensemble entry otherwise allocates a fresh http.Client on every scenario.
+	judges := buildJudgePool(cfg, judge)
 	cases := make([]core.CaseResult, 0, len(scenarios))
 	for _, scenario := range scenarios {
+		if ctx.Err() != nil {
+			break
+		}
 		cases = append(cases, e.runScoreCase(ctx, scoreCaseInput{
 			runCtx:   runCtx,
 			cfg:      cfg,
 			judge:    judge,
+			judges:   judges,
 			scenario: scenario,
 			run:      run,
 		}))
@@ -103,7 +111,11 @@ func (e LLMJudgeEngine) runScoreCase(ctx context.Context, in scoreCaseInput) cor
 	if len(outputs) > 0 {
 		details["judge_outputs"] = outputs
 	}
-	samples := collectScoreSamples(ctx, in.judge, scoreSampleInput{
+	judges := in.judges
+	if judges == nil {
+		judges = buildJudgePool(in.cfg, in.judge)
+	}
+	samples := collectScoreSamples(ctx, judges, scoreSampleInput{
 		cfg:       in.cfg,
 		scenario:  in.scenario,
 		response:  resp.Text,
@@ -123,13 +135,12 @@ func (e LLMJudgeEngine) runScoreCase(ctx context.Context, in scoreCaseInput) cor
 	}
 }
 
-func collectScoreSamples(ctx context.Context, judge core.Target, in scoreSampleInput) scoreSamples {
+func collectScoreSamples(ctx context.Context, judges []namedTarget, in scoreSampleInput) scoreSamples {
 	system, prompt := buildJudgePrompt(in.scenario, in.response, in.criteria, in.reference, in.run.scale, in.outputs)
 	out := scoreSamples{
 		scores:     make([]float64, 0, in.run.samples),
 		rationales: make([]string, 0, in.run.samples),
 	}
-	judges := buildJudgePool(in.cfg, judge)
 	for i := 0; i < in.run.samples; i++ {
 		score, rationale, cascadeTriggered, ok, err := collectScoreSample(ctx, judges, system, prompt, in)
 		if err != nil {

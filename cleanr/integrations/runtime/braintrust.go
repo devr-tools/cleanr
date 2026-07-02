@@ -59,12 +59,13 @@ func useNativeBraintrustSink(sink core.ResultSinkConfig) bool {
 }
 
 func newBraintrustClient(baseURL, endpoint, apiKeyEnv string, headers map[string]string, timeoutMS int) *braintrustClient {
+	resolvedBaseURL := normalizedBaseURL(baseURL, endpoint, defaultBraintrustBaseURL)
 	return &braintrustClient{
 		http: newJSONAPIClient(
-			normalizedBaseURL(baseURL, endpoint, defaultBraintrustBaseURL),
+			resolvedBaseURL,
 			headers,
 			timeoutMS,
-			func(h http.Header) { applyAuth(h, apiKeyEnv) },
+			func(h http.Header) { applyAuth(h, apiKeyEnv, resolvedBaseURL) },
 		),
 	}
 }

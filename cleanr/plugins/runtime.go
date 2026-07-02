@@ -272,7 +272,7 @@ func runCommand(ctx context.Context, entry Entry, input []byte) (bytes.Buffer, e
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 	cmd.Dir = commandWorkingDir(entry)
-	cmd.Env = buildEntryEnv(entry)
+	cmd.Env = BuildEntryEnv(entry)
 	if err := cmd.Run(); err != nil {
 		msg := strings.TrimSpace(stderr.String())
 		if msg == "" {
@@ -283,8 +283,45 @@ func runCommand(ctx context.Context, entry Entry, input []byte) (bytes.Buffer, e
 	return stdout, nil
 }
 
-func buildEntryEnv(entry Entry) []string {
-	env := append([]string(nil), os.Environ()...)
+// pluginEnvPrefix scopes which host environment variables a subprocess plugin
+// may inherit. Rather than leaking the entire host environment (and any secrets
+// it holds) into every plugin, only variables the plugin legitimately declares
+// plus cleanr's own CLEANR_PLUGIN_* namespace are passed through.
+const pluginEnvPrefix = "CLEANR_PLUGIN_"
+
+// BuildEntryEnv builds the environment for a subprocess plugin. It starts from
+// an empty environment and adds only an explicit allowlist: the plugin's
+// declared entry.Env, any host CLEANR_PLUGIN_* variables, and cleanr's own
+// plugin context variables. The full host environment is intentionally NOT
+// forwarded so that host secrets cannot be exfiltrated by plugin code.
+func BuildEntryEnv(entry Entry) []string {
+	env := hostPluginEnv()
+	return append(env, manifestEntryEnv(entry)...)
+}
+
+// BuildWASMEnv builds the environment for a wazero WASM module. Nothing beyond
+// what the plugin manifest declares is injected: host CLEANR_PLUGIN_* variables
+// are deliberately excluded so the sandbox only ever sees manifest-declared
+// values.
+func BuildWASMEnv(entry Entry) []string {
+	return manifestEntryEnv(entry)
+}
+
+// hostPluginEnv returns the CLEANR_PLUGIN_* subset of the host environment.
+func hostPluginEnv() []string {
+	var env []string
+	for _, kv := range os.Environ() {
+		if strings.HasPrefix(kv, pluginEnvPrefix) {
+			env = append(env, kv)
+		}
+	}
+	return env
+}
+
+// manifestEntryEnv returns the environment variables declared by the plugin
+// manifest itself, including cleanr's plugin context variables.
+func manifestEntryEnv(entry Entry) []string {
+	env := make([]string, 0, len(entry.Env)+3)
 	for key, value := range entry.Env {
 		env = append(env, key+"="+value)
 	}

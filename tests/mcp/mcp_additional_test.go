@@ -171,10 +171,13 @@ func TestMCPServerCoversUnknownToolAndConfigPathRun(t *testing.T) {
 	cfg.Suites.Chaos.Enabled = false
 	cfg.Suites.Drift.Enabled = false
 	cfg.Suites.TokenOptimization.Enabled = false
-	path := filepath.Join(t.TempDir(), "cleanr.json")
-	if err := cleanr.WriteConfigFile(path, cfg); err != nil {
+	// The MCP path guard confines config_path to the process working
+	// directory, so write the config to a CWD-relative path.
+	relPath := "cleanr_mcp_test_config.json"
+	if err := cleanr.WriteConfigFile(relPath, cfg); err != nil {
 		t.Fatalf("write config: %v", err)
 	}
+	t.Cleanup(func() { _ = os.Remove(relPath) })
 	resp = mustHandleMCP(t, server, map[string]any{
 		"jsonrpc": "2.0",
 		"id":      8,
@@ -182,7 +185,7 @@ func TestMCPServerCoversUnknownToolAndConfigPathRun(t *testing.T) {
 		"params": map[string]any{
 			"name": "cleanr_run",
 			"arguments": map[string]any{
-				"config_path":   path,
+				"config_path":   relPath,
 				"report_format": "json",
 			},
 		},
