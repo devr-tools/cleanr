@@ -238,14 +238,12 @@ func runJSONEntry(ctx context.Context, entry Entry, input any, output any) error
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
-	cmdCtx, cancel := context.WithTimeout(ctx, timeout)
-	defer cancel()
 
 	data, err := json.Marshal(input)
 	if err != nil {
 		return err
 	}
-	stdout, err := executeEntry(cmdCtx, entry, data)
+	stdout, err := executeEntry(ctx, entry, data, timeout)
 	if err != nil {
 		return err
 	}
@@ -255,12 +253,18 @@ func runJSONEntry(ctx context.Context, entry Entry, input any, output any) error
 	return nil
 }
 
-func executeEntry(ctx context.Context, entry Entry, input []byte) (bytes.Buffer, error) {
+// executeEntry runs the entry with timeout bounding plugin execution. For the
+// WASM backend the deadline is applied inside runWASMModule around guest
+// execution only, so host-side module compilation does not eat into the
+// plugin's execution budget.
+func executeEntry(ctx context.Context, entry Entry, input []byte, timeout time.Duration) (bytes.Buffer, error) {
 	switch backendFor(entry.Command, entry.Runtime) {
 	case BackendWASM:
-		return runWASMModule(ctx, entry, input)
+		return runWASMModule(ctx, entry, input, timeout)
 	default:
-		return runCommand(ctx, entry, input)
+		cmdCtx, cancel := context.WithTimeout(ctx, timeout)
+		defer cancel()
+		return runCommand(cmdCtx, entry, input)
 	}
 }
 
