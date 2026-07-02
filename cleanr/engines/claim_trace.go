@@ -6,6 +6,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
@@ -22,8 +23,15 @@ func (ClaimTraceEngine) Run(ctx context.Context, runCtx *core.RunContext) core.S
 	}
 
 	cfg := claimTraceConfigWithDefaults(runCtx.Config.Suites.ClaimTrace)
+	// claim-trace observes filesystem side effects with a per-scenario
+	// before/after capture window, so it must stay serial (concurrent runs would
+	// interleave and misattribute observed changes) and cannot reuse the shared
+	// read-only response cache (a cached response performs no live side effects).
 	cases := make([]core.CaseResult, 0, len(runCtx.Config.Scenarios))
 	for _, scenario := range runCtx.Config.Scenarios {
+		if ctx.Err() != nil {
+			break
+		}
 		start := time.Now()
 		findings := make([]core.Finding, 0)
 
@@ -165,13 +173,23 @@ func detectCitationClaims(scenario core.Scenario, responseText string, indicator
 	return sortedKeys(claims)
 }
 
+// toolClaimRegexCache memoizes the tool-claim pattern (derived from the
+// configured indicators) so it is compiled once per distinct indicator set
+// rather than on every scenario evaluation.
+var toolClaimRegexCache sync.Map // pattern string -> *regexp.Regexp
+
 func detectToolClaims(responseText string, indicators []string) []string {
 	if len(indicators) == 0 {
 		return nil
 	}
 	pattern := fmt.Sprintf(`(?i)\b(?:%s)\s+([a-zA-Z0-9._-]+)\b`, joinAlternatives(indicators))
-	re := regexp.MustCompile(pattern)
-	matches := re.FindAllStringSubmatch(responseText, -1)
+	re, ok := toolClaimRegexCache.Load(pattern)
+	if !ok {
+		compiled := regexp.MustCompile(pattern)
+		toolClaimRegexCache.Store(pattern, compiled)
+		re = compiled
+	}
+	matches := re.(*regexp.Regexp).FindAllStringSubmatch(responseText, -1)
 	if len(matches) == 0 {
 		return nil
 	}

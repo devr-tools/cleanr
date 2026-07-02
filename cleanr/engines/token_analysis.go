@@ -26,12 +26,17 @@ func inferTokenUsage(scenario core.Scenario, resp core.Response) core.TokenUsage
 	}
 }
 
+var (
+	estimateTokensPattern = regexp.MustCompile(`[A-Za-z0-9_]+|[^\sA-Za-z0-9_]`)
+	tokenUnitSplitPattern = regexp.MustCompile(`[\n\r]+|[.!?;]+`)
+)
+
 func estimateTokens(text string) int {
 	text = strings.TrimSpace(text)
 	if text == "" {
 		return 0
 	}
-	parts := regexp.MustCompile(`[A-Za-z0-9_]+|[^\sA-Za-z0-9_]`).FindAllString(text, -1)
+	parts := estimateTokensPattern.FindAllString(text, -1)
 	total := 0
 	for _, part := range parts {
 		runes := []rune(part)
@@ -76,8 +81,7 @@ func duplicationRatio(text string) float64 {
 }
 
 func splitTokenUnits(text string) []string {
-	splitter := regexp.MustCompile(`[\n\r]+|[.!?;]+`)
-	raw := splitter.Split(text, -1)
+	raw := tokenUnitSplitPattern.Split(text, -1)
 	units := make([]string, 0, len(raw))
 	for _, unit := range raw {
 		unit = strings.TrimSpace(unit)

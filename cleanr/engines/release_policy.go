@@ -9,17 +9,26 @@ import (
 	"github.com/devr-tools/cleanr/cleanr/core"
 )
 
-type ReleasePolicyEngine struct{}
+type ReleasePolicyEngine struct {
+	cache *responseCache
+}
 
 func (ReleasePolicyEngine) Name() string { return "release-policy" }
 
-func (ReleasePolicyEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteResult {
+func (e ReleasePolicyEngine) Run(ctx context.Context, runCtx *core.RunContext) core.SuiteResult {
 	cfg := releasePolicyConfigWithDefaults(runCtx.Config.Suites.ReleasePolicy)
-	cases := make([]core.CaseResult, 0, len(runCtx.Config.Scenarios))
+	scenarios := runCtx.Config.Scenarios
+	cases := make([]core.CaseResult, len(scenarios))
+	runBoundedByIndex(ctx, len(scenarios), runCtx.Config.CaseConcurrency(), func(i int) {
+		cases[i] = e.evaluateScenario(ctx, runCtx, scenarios[i], cfg)
+	})
+	return core.SuiteResult{Name: "release-policy", Passed: allPassed(cases), Cases: cases}
+}
 
-	for _, scenario := range runCtx.Config.Scenarios {
+func (e ReleasePolicyEngine) evaluateScenario(ctx context.Context, runCtx *core.RunContext, scenario core.Scenario, cfg core.ReleasePolicyConfig) core.CaseResult {
+	{
 		start := time.Now()
-		resp := runCtx.Target.Invoke(ctx, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
+		resp := e.cache.invoke(ctx, runCtx.Target, scenarioRequest(scenario, runCtx.Config.Target.Timeout()))
 
 		findings := responseFindings(resp, nil)
 		approved := hasApprovedApprovalArtifact(resp.Normalized.Approvals)
@@ -60,16 +69,14 @@ func (ReleasePolicyEngine) Run(ctx context.Context, runCtx *core.RunContext) cor
 			details["unexpected_observed_state_changes"] = unexpectedObserved
 		}
 
-		cases = append(cases, core.CaseResult{
+		return core.CaseResult{
 			Name:     scenario.Name,
 			Passed:   len(findings) == 0,
 			Duration: time.Since(start),
 			Findings: findings,
 			Details:  details,
-		})
+		}
 	}
-
-	return core.SuiteResult{Name: "release-policy", Passed: allPassed(cases), Cases: cases}
 }
 
 func releasePolicyConfigWithDefaults(cfg core.ReleasePolicyConfig) core.ReleasePolicyConfig {

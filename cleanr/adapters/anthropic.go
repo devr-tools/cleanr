@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/devr-tools/cleanr/cleanr/core"
@@ -18,20 +19,32 @@ import (
 type Anthropic struct {
 	cfg    core.TargetConfig
 	client *http.Client
+
+	keyOnce sync.Once
+	apiKeyV string
+	apiKeyE error
 }
 
 func NewAnthropic(cfg core.TargetConfig, client *http.Client) *Anthropic {
 	return &Anthropic{cfg: cfg, client: client}
 }
 
+// resolveAPIKey resolves the API key once per target so a missing env key does
+// not re-read and re-parse the stored profile on every Invoke.
+func (t *Anthropic) resolveAPIKey() (string, error) {
+	t.keyOnce.Do(func() {
+		t.apiKeyV, t.apiKeyE = t.apiKey(t.apiKeyEnv())
+	})
+	return t.apiKeyV, t.apiKeyE
+}
+
 func (t *Anthropic) Invoke(ctx context.Context, req core.Request) core.Response {
-	apiKeyEnv := t.apiKeyEnv()
-	apiKey, err := t.apiKey(apiKeyEnv)
+	apiKey, err := t.resolveAPIKey()
 	if err != nil {
 		return core.Response{Err: err}
 	}
 	if apiKey == "" {
-		return core.Response{Err: fmt.Errorf("anthropic api key env %q is not set", apiKeyEnv)}
+		return core.Response{Err: fmt.Errorf("anthropic api key env %q is not set", t.apiKeyEnv())}
 	}
 
 	body := t.buildRequestBody(req)
@@ -47,22 +60,25 @@ func (t *Anthropic) Invoke(ctx context.Context, req core.Request) core.Response 
 	reqCtx, cancel := context.WithTimeout(ctx, timeout)
 	defer cancel()
 
-	httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, t.endpointURL(), bytes.NewReader(data))
-	if err != nil {
-		return core.Response{Err: err}
-	}
-	httpReq.Header.Set("Content-Type", "application/json")
-	httpReq.Header.Set("x-api-key", apiKey)
-	httpReq.Header.Set("anthropic-version", t.cfg.Anthropic.VersionValue())
-	for k, v := range t.cfg.Headers {
-		httpReq.Header.Set(k, v)
-	}
-	for k, v := range req.Headers {
-		httpReq.Header.Set(k, v)
+	build := func() (*http.Request, error) {
+		httpReq, err := http.NewRequestWithContext(reqCtx, http.MethodPost, t.endpointURL(), bytes.NewReader(data))
+		if err != nil {
+			return nil, err
+		}
+		httpReq.Header.Set("Content-Type", "application/json")
+		httpReq.Header.Set("x-api-key", apiKey)
+		httpReq.Header.Set("anthropic-version", t.cfg.Anthropic.VersionValue())
+		for k, v := range t.cfg.Headers {
+			httpReq.Header.Set(k, v)
+		}
+		for k, v := range req.Headers {
+			httpReq.Header.Set(k, v)
+		}
+		return httpReq, nil
 	}
 
 	start := time.Now()
-	httpResp, err := t.client.Do(httpReq)
+	httpResp, err := doWithRetry(reqCtx, t.client, build)
 	latency := time.Since(start)
 	if err != nil {
 		return core.Response{Err: err, Latency: latency}

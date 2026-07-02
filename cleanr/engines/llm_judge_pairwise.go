@@ -23,6 +23,7 @@ type pairwiseCaseInput struct {
 	runCtx   *core.RunContext
 	cfg      core.LLMJudgeConfig
 	judge    core.Target
+	judges   []namedTarget
 	baseline core.Target
 	scenario core.Scenario
 	run      pairwiseRun
@@ -59,12 +60,18 @@ func (e LLMJudgeEngine) runPairwise(ctx context.Context, runCtx *core.RunContext
 		cascadeMargin:   cfg.CascadeMargin,
 	}
 	baseline := baselineTargetFactory(cfg.Baseline)
+	// Build the judge pool once for the run rather than once per case.
+	judges := buildJudgePool(cfg, judge)
 	cases := make([]core.CaseResult, 0, len(scenarios))
 	for _, scenario := range scenarios {
+		if ctx.Err() != nil {
+			break
+		}
 		cases = append(cases, e.runPairwiseCase(ctx, pairwiseCaseInput{
 			runCtx:   runCtx,
 			cfg:      cfg,
 			judge:    judge,
+			judges:   judges,
 			baseline: baseline,
 			scenario: scenario,
 			run:      run,
@@ -113,7 +120,11 @@ func (e LLMJudgeEngine) runPairwiseCase(ctx context.Context, in pairwiseCaseInpu
 	if len(input.outputs2) > 0 {
 		details["baseline_judge_outputs"] = input.outputs2
 	}
-	samples := collectPairwiseSamples(ctx, in.cfg, in.judge, in.cfg.Provider.Timeout(), input, in.run.samples)
+	judges := in.judges
+	if judges == nil {
+		judges = buildJudgePool(in.cfg, in.judge)
+	}
+	samples := collectPairwiseSamples(ctx, judges, in.cfg.Provider.Timeout(), input, in.run.samples)
 	passed := finalizePairwiseCase(in.run, details, &findings, samples)
 	return core.CaseResult{
 		Name:     in.scenario.Name,
@@ -124,9 +135,8 @@ func (e LLMJudgeEngine) runPairwiseCase(ctx context.Context, in pairwiseCaseInpu
 	}
 }
 
-func collectPairwiseSamples(ctx context.Context, cfg core.LLMJudgeConfig, judge core.Target, timeout time.Duration, input pairwiseInput, sampleCount int) pairwiseSamples {
+func collectPairwiseSamples(ctx context.Context, judges []namedTarget, timeout time.Duration, input pairwiseInput, sampleCount int) pairwiseSamples {
 	out := pairwiseSamples{rationales: make([]string, 0, sampleCount)}
-	judges := buildJudgePool(cfg, judge)
 	for i := 0; i < sampleCount; i++ {
 		w1, r1, cascadeTriggered, ok1, err1 := pairwiseDecisionSet(ctx, judges, timeout, input, false)
 		if err1 != nil {

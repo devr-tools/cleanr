@@ -4,11 +4,15 @@ import "github.com/devr-tools/cleanr/cleanr/core"
 
 func Default(cfg core.Config) []core.Engine {
 	var out []core.Engine
+	// Read-only engines that replay the same unmodified scenario request share a
+	// per-run response cache so the target is invoked once per scenario instead
+	// of once per engine.
+	sharedResponses := newResponseCache()
 	if cfg.Suites.PromptInjection.Enabled {
 		out = append(out, PromptInjectionEngine{})
 	}
 	if cfg.Suites.Security.Enabled {
-		out = append(out, SecurityEngine{})
+		out = append(out, SecurityEngine{cache: sharedResponses})
 	}
 	if cfg.Suites.Load.Enabled {
 		out = append(out, LoadEngine{})
@@ -29,13 +33,13 @@ func Default(cfg core.Config) []core.Engine {
 		out = append(out, ClaimTraceEngine{})
 	}
 	if cfg.Suites.ReleasePolicy.Enabled {
-		out = append(out, ReleasePolicyEngine{})
+		out = append(out, ReleasePolicyEngine{cache: sharedResponses})
 	}
 	if cfg.Suites.MemorySafety.Enabled {
 		out = append(out, MemorySafetyEngine{})
 	}
 	if cfg.Suites.TokenOptimization.Enabled {
-		out = append(out, TokenOptimizationEngine{})
+		out = append(out, TokenOptimizationEngine{cache: sharedResponses})
 	}
 	if cfg.Suites.LLMJudge.Enabled {
 		out = append(out, LLMJudgeEngine{})
