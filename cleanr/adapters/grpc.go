@@ -138,7 +138,7 @@ func grpcTransportCredentials(address string, plaintext bool) credentials.Transp
 	if plaintext || isLoopbackGRPCAddress(address) {
 		return insecure.NewCredentials()
 	}
-	return credentials.NewTLS(&tls.Config{})
+	return credentials.NewTLS(&tls.Config{MinVersion: tls.VersionTLS12})
 }
 
 // isLoopbackGRPCAddress reports whether a gRPC dial target refers to the local

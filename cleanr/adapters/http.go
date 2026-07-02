@@ -3,10 +3,11 @@ package adapters
 import (
 	"bytes"
 	"context"
+	crand "crypto/rand"
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
+	"math/big"
 	"net/http"
 	neturl "net/url"
 	"strconv"
@@ -76,7 +77,13 @@ func backoffDelay(attempt int, resp *http.Response) time.Duration {
 		}
 	}
 	base := time.Duration(200*(1<<attempt)) * time.Millisecond
-	jitter := time.Duration(rand.Int63n(int64(base/2) + 1))
+	// Jitter to avoid synchronized retries. crypto/rand is used (over math/rand)
+	// only to satisfy the security scanner; the randomness quality is immaterial
+	// here. Fall back to no jitter if the reader fails.
+	jitter := time.Duration(0)
+	if n, err := crand.Int(crand.Reader, big.NewInt(int64(base/2)+1)); err == nil {
+		jitter = time.Duration(n.Int64())
+	}
 	return base + jitter
 }
 
