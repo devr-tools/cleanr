@@ -237,6 +237,9 @@ func GenerateDataset(ctx context.Context, args map[string]any) (toolkit.Result, 
 	if err != nil {
 		return toolkit.Result{}, err
 	}
+	if err := toolkit.GuardMCPConfig(cfg); err != nil {
+		return toolkit.Result{}, err
+	}
 
 	dataset, err := GenerateScenarioDatasetFunc(ctx, cfg, (*http.Client)(nil))
 	if err != nil {

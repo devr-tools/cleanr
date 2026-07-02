@@ -38,7 +38,7 @@ func readTrendSourceBytes(ctx context.Context, source core.TrendSourceConfig, ba
 	if err != nil {
 		return nil, "", fmt.Errorf("load trend source %s: %w", displayName(source.Name, source.Type), err)
 	}
-	applyAuth(req.Header, source.APIKeyEnv)
+	applyAuth(req.Header, source.APIKeyEnv, source.URL)
 	applyHeaders(req.Header, source.Headers)
 	resp, err := client.Do(req)
 	if err != nil {
