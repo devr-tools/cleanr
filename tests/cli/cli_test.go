@@ -126,7 +126,7 @@ func TestValidateCommandPrintsActionableFieldErrors(t *testing.T) {
 		"invalid: invalid config:",
 		"target.url: is required. Fix: set target.url to the full API endpoint URL",
 		"scenarios[0].input: is required. Fix: set the end-user prompt or test input for this scenario",
-		"reporting.format: must be one of text, json, junit, sarif, or agent",
+		"reporting.format: must be one of text, json, junit, sarif, agent, or html",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("expected %q in output:\n%s", want, output)
@@ -212,7 +212,7 @@ reporting:
 		"invalid: invalid config:",
 		"target.url: is required. Fix: set target.url to the full API endpoint URL",
 		"scenarios[0].input: is required. Fix: set the end-user prompt or test input for this scenario",
-		"reporting.format: must be one of text, json, junit, sarif, or agent",
+		"reporting.format: must be one of text, json, junit, sarif, agent, or html",
 	} {
 		if !strings.Contains(output, want) {
 			t.Fatalf("expected %q in output:\n%s", want, output)

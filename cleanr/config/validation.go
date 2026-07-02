@@ -5,8 +5,23 @@ import (
 	"regexp"
 	"strings"
 
+	"github.com/devr-tools/cleanr/cleanr/adapters"
 	"github.com/devr-tools/cleanr/cleanr/core"
 )
+
+// supportedTargetTypesList renders adapters.SupportedTargetTypes as a
+// human-readable, comma-separated list with an Oxford "or" before the last
+// element, for embedding in validation hint strings.
+func supportedTargetTypesList() string {
+	types := adapters.SupportedTargetTypes
+	switch len(types) {
+	case 0:
+		return ""
+	case 1:
+		return types[0]
+	}
+	return strings.Join(types[:len(types)-1], ", ") + ", or " + types[len(types)-1]
+}
 
 func ValidateConfig(cfg core.Config) error {
 	var errs ValidationErrors
@@ -36,7 +51,7 @@ func validateScenarioGenerationConfig(errs *ValidationErrors, cfg core.ScenarioG
 		return
 	}
 	if strings.TrimSpace(cfg.Provider.Type) == "" {
-		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to cli, graphql, grpc, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, mcp, or http")
+		errs.Add("scenario_generation.provider.type", "is required", "set scenario_generation.provider.type to "+supportedTargetTypesList())
 	}
 	validateTargetConfig(errs, "scenario_generation.provider", cfg.Provider)
 	if cfg.Provider.TimeoutMS < 0 {
@@ -249,7 +264,7 @@ func validateLLMJudgeSuite(errs *ValidationErrors, cfg core.LLMJudgeConfig, scen
 	if !cfg.Enabled {
 		return
 	}
-	validateLLMJudgeProvider(errs, cfg.Provider, "suites.llm_judge.provider", "set suites.llm_judge.provider.type to cli, graphql, grpc, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, mcp, or http so a judge model can grade responses")
+	validateLLMJudgeProvider(errs, cfg.Provider, "suites.llm_judge.provider", "set suites.llm_judge.provider.type to "+supportedTargetTypesList()+" so a judge model can grade responses")
 	validateLLMJudgeMode(errs, cfg)
 	validateLLMJudgeThresholds(errs, cfg)
 	validateLLMJudgeTargets(errs, cfg.Ensemble, "suites.llm_judge.ensemble")
@@ -277,7 +292,7 @@ func validateLLMJudgeMode(errs *ValidationErrors, cfg core.LLMJudgeConfig) {
 	if cfg.ModeValue() != "pairwise" {
 		return
 	}
-	validateLLMJudgeProvider(errs, cfg.Baseline, "suites.llm_judge.baseline", "set suites.llm_judge.baseline.type to cli, graphql, grpc, openai, openai_compatible, azure_openai, gemini, bedrock, vertex, mistral, anthropic, mcp, or http so the target can be compared against a baseline")
+	validateLLMJudgeProvider(errs, cfg.Baseline, "suites.llm_judge.baseline", "set suites.llm_judge.baseline.type to "+supportedTargetTypesList()+" so the target can be compared against a baseline")
 	if cfg.MinWinRate < 0 || cfg.MinWinRate > 1 {
 		errs.Add("suites.llm_judge.min_win_rate", "must be between 0 and 1", "use a fraction of decisive comparisons the target must win, such as 0.5")
 	}
@@ -498,9 +513,9 @@ func validateTokenOptimizationSuite(errs *ValidationErrors, cfg core.TokenOptimi
 func validateReportingConfig(errs *ValidationErrors, cfg core.ReportingConfig) {
 	if format := strings.TrimSpace(cfg.Format); format != "" {
 		switch format {
-		case "text", "json", "junit", "sarif", "agent":
+		case "text", "json", "junit", "sarif", "agent", "html":
 		default:
-			errs.Add("reporting.format", "must be one of text, json, junit, sarif, or agent", "use one of the built-in report formats or omit the field for text output")
+			errs.Add("reporting.format", "must be one of text, json, junit, sarif, agent, or html", "use one of the built-in report formats or omit the field for text output")
 		}
 	}
 	validateNonNegativeInt(errs, "reporting.trend_limit", cfg.TrendLimit, "use 0 to disable history trimming or set a positive run-retention count such as 30")
