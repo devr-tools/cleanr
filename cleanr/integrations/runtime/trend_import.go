@@ -33,7 +33,7 @@ func readTrendSourceBytes(ctx context.Context, source core.TrendSourceConfig, ba
 		}
 		return data, resolved, nil
 	}
-	client := &http.Client{Timeout: time.Duration(source.TimeoutMS) * time.Millisecond}
+	client := newIntegrationHTTPClient(source.TimeoutMS)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimSpace(source.URL), nil)
 	if err != nil {
 		return nil, "", fmt.Errorf("load trend source %s: %w", displayName(source.Name, source.Type), err)

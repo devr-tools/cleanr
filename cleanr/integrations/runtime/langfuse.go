@@ -38,9 +38,17 @@ func newLangfuseClient(sink core.ResultSinkConfig) (*langfuseClient, error) {
 	if publicKey == "" || secretKey == "" {
 		return nil, fmt.Errorf("missing Langfuse credentials in %s or %s", emptyValue(sink.PublicKeyEnv), emptyValue(sink.SecretKeyEnv))
 	}
+	baseURL := normalizedBaseURL(sink.BaseURL, sink.Endpoint, defaultLangfuseBaseURL)
+	// Basic auth here is built outside applyAuth; enforce the same egress
+	// policy so provider secrets cannot be routed to an arbitrary base_url.
+	for _, keyEnv := range []string{sink.PublicKeyEnv, sink.SecretKeyEnv} {
+		if !CredentialEgressAllowed(keyEnv, baseURL) {
+			return nil, fmt.Errorf("refusing to send credential %q to untrusted host %q", strings.TrimSpace(keyEnv), destinationHost(baseURL))
+		}
+	}
 	return &langfuseClient{
 		http: newJSONAPIClient(
-			normalizedBaseURL(sink.BaseURL, sink.Endpoint, defaultLangfuseBaseURL),
+			baseURL,
 			sink.Headers,
 			sink.TimeoutMS,
 			func(h http.Header) {
