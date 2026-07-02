@@ -29,25 +29,24 @@ func New() *Server {
 func (s *Server) Serve(ctx context.Context, in io.Reader, out io.Writer) error {
 	reader := bufio.NewReader(in)
 	for {
-		line, err := reader.ReadBytes('\n')
-		if err != nil {
-			if errors.Is(err, io.EOF) {
+		// ReadBytes can return data together with io.EOF when the final
+		// request has no trailing newline (common for one-shot piped
+		// clients); process the line before acting on the error so that
+		// request is answered instead of silently dropped.
+		line, readErr := reader.ReadBytes('\n')
+		line = bytes.TrimSpace(line)
+		if len(line) > 0 {
+			if resp := s.HandleLine(ctx, line); resp != nil {
+				if err := writeMessage(out, resp); err != nil {
+					return err
+				}
+			}
+		}
+		if readErr != nil {
+			if errors.Is(readErr, io.EOF) {
 				return nil
 			}
-			return err
-		}
-
-		line = bytes.TrimSpace(line)
-		if len(line) == 0 {
-			continue
-		}
-
-		resp := s.HandleLine(ctx, line)
-		if resp == nil {
-			continue
-		}
-		if err := writeMessage(out, resp); err != nil {
-			return err
+			return readErr
 		}
 	}
 }
@@ -134,23 +133,42 @@ func (s *Server) handleToolCall(ctx context.Context, req requestEnvelope) *respo
 
 	result, err := safeToolCall(ctx, params.Name, params.Arguments)
 	if err != nil {
-		return errorResponse(req.ID, jsonRPCInternalError, err.Error(), nil)
+		// Per the MCP spec: an unknown tool is a protocol-level invalid-params
+		// error and a panic is a genuine server fault, but ordinary execution
+		// failures (bad config path, invalid arguments) are returned as
+		// isError results so the calling model can read them and self-correct
+		// instead of the client treating the server as broken.
+		switch {
+		case errors.Is(err, mcptools.ErrUnknownTool):
+			return errorResponse(req.ID, jsonRPCInvalidParams, err.Error(), nil)
+		case errors.Is(err, errToolPanicked):
+			return errorResponse(req.ID, jsonRPCInternalError, err.Error(), nil)
+		default:
+			return successResponse(req.ID, mcptools.Result{
+				Content: []mcptools.Content{{Type: "text", Text: err.Error()}},
+				IsError: true,
+			})
+		}
 	}
 	return successResponse(req.ID, result)
 }
 
+// errToolPanicked marks a contained tool-handler panic so it surfaces as an
+// internal JSON-RPC error rather than an isError tool result.
+var errToolPanicked = errors.New("tool handler panicked")
+
 // safeToolCall contains a panicking tool handler: the server speaks stdio, so
 // an uncaught panic would kill the whole process and every session with it.
-func safeToolCall(ctx context.Context, name string, args map[string]any) (result any, err error) {
+func safeToolCall(ctx context.Context, name string, args map[string]any) (result mcptools.Result, err error) {
 	defer func() {
 		if r := recover(); r != nil {
-			err = fmt.Errorf("tool %s panicked: %v", name, r)
+			err = fmt.Errorf("%w: tool %s panicked: %v", errToolPanicked, name, r)
 		}
 	}()
 	return mcptools.Call(ctx, name, args)
 }
 
-func (s *Server) requireInitialized(id any) *responseEnvelope {
+func (s *Server) requireInitialized(id json.RawMessage) *responseEnvelope {
 	if s.initialized {
 		return nil
 	}

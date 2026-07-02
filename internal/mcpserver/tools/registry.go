@@ -2,6 +2,7 @@ package tools
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"github.com/devr-tools/cleanr/internal/mcpserver/catalog"
@@ -11,6 +12,12 @@ import (
 
 type Definition = toolkit.Definition
 type Result = toolkit.Result
+type Content = toolkit.Content
+
+// ErrUnknownTool marks a tools/call for a name that is not registered, so the
+// server can answer with a protocol-level invalid-params error instead of a
+// tool-execution failure.
+var ErrUnknownTool = errors.New("unknown tool")
 
 type handler func(context.Context, map[string]any) (toolkit.Result, error)
 
@@ -49,7 +56,7 @@ func Definitions() []Definition {
 func Call(ctx context.Context, name string, args map[string]any) (Result, error) {
 	h, ok := handlers[name]
 	if !ok {
-		return Result{}, fmt.Errorf("unknown tool: %s", name)
+		return Result{}, fmt.Errorf("%w: %s", ErrUnknownTool, name)
 	}
 	return h(ctx, args)
 }
